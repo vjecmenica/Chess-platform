@@ -82,10 +82,10 @@ describe('game lifecycle', () => {
     expect(game.getHistory()).toEqual([]);
   });
 
-  it('does not silently apply repetition or move-count draw rules', () => {
+  it('does not automatically finish on a threefold repetition', () => {
     const game = createGame();
-    for (let i = 0; i < 38; i++) play(game, 'g1f3', 'g8f6', 'f3g1', 'f6g8');
-    expect(game.getHistory()).toHaveLength(152);
+    for (let i = 0; i < 2; i++) play(game, 'g1f3', 'g8f6', 'f3g1', 'f6g8');
+    expect(game.getHistory()).toHaveLength(8);
     expect(game.getState()).toMatchObject({ status: 'active', result: null });
   });
 
@@ -126,11 +126,12 @@ describe('draw agreement', () => {
     expect(game.getHistory()).toEqual(history);
   });
 
-  it('requires a move from both sides before an offer', () => {
+  it('allows early offers but requires a move from both sides before agreement', () => {
     const game = createGame();
-    rejectUnchanged(game, () => game.offerDraw({ side: 'white' }), 'draw_too_early');
+    expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
+    rejectUnchanged(game, () => game.acceptDraw({ side: 'black' }), 'draw_too_early');
     play(game, 'e2e4');
-    rejectUnchanged(game, () => game.offerDraw({ side: 'black' }), 'draw_too_early');
+    rejectUnchanged(game, () => game.acceptDraw({ side: 'black' }), 'draw_too_early');
   });
 
   it('rejects responses without an offer, self-responses, and duplicate or crossed offers', () => {
@@ -214,6 +215,7 @@ describe.each(endings)('after $name', ({ finish, result }) => {
       rejectUnchanged(game, () => game.submitMove({ side, from: 'g1', to: 'f3' }), 'game_finished');
       for (const method of sideMethods) rejectUnchanged(game, () => game[method]({ side }), 'game_finished');
     }
+    rejectUnchanged(game, () => game.claimDraw({ side: 'white', rule: 'threefold_repetition' }), 'game_finished');
     const lastMove = game.getHistory().at(-1)!;
     rejectUnchanged(game, () => game.submitMove(lastMove), 'game_finished');
     rejectUnchanged(game, () => game.resign({ side: 'spectator' as Side }), 'game_finished');

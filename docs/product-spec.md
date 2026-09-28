@@ -19,7 +19,7 @@ These are the product's explicit assignments for all 16 time controls. Do not su
 
 ### Results and draws
 
-The domain lifecycle supports checkmate, stalemate, resignation, and an agreed draw. A finished game rejects all further commands. The [game rules](game-rules.md) specify automatic versus agreed draws, the offer protocol, the current resignation limitation, and proposals still needing review before clocks. Repetition, move-count claims, and dead-position adjudication are not implemented yet.
+The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, and threefold/50-move claims. Intended-move claims do not play the move. Proven dead positions draw automatically, and resignation uses the same conservative mating check intended for timeouts. That detector is incomplete; the [game rules](game-rules.md) define its exact coverage, online adaptations, and remaining clock procedures. A finished game rejects all further commands.
 
 ### Ratings and matchmaking
 
@@ -98,7 +98,7 @@ Acceptance criteria:
 
 **Identity and access.** Secure guest sessions and a casual 5+3 challenge are chosen for the first playable flow. Session recovery, saved-game visibility, and invitation-link privacy still need design before that flow is implemented. Accounts for rated play remain the suggestion for the later rating step.
 
-**Game rules and time.** Review the [pending draw decisions](game-rules.md#decisions-required-before-clocks), then set the clock start condition, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
+**Game rules and time.** Review the [remaining rule procedures](game-rules.md#decisions-required-before-clocks), then set the clock start condition, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
 
 **Board and access needs.** Choose the board component and piece assets with their licenses, then agree on mobile and keyboard behavior. A responsive board and visible keyboard focus are proposed defaults. English copy is already agreed.
 

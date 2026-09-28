@@ -1,39 +1,59 @@
 # Game results and draw policy
 
-This document separates the small lifecycle implementation from rules still proposed for the complete game. The current API is not a complete competition ruleset. Resolve the pending rules below before adding clocks or exposing live play.
+The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, and clock/arbiter procedures are not implemented.
 
 ## Implemented lifecycle
 
-A game starts active at the standard position. Each command names its acting side, `white` or `black`. This is not authentication: the future server must supply that side from an authorized session.
+Games start at the standard position. Every command identifies its acting side; the later server must derive that side from an authorized session. Finished games reject every mutation, including repeated terminal commands. Position and history remain available for replay.
 
-After an accepted move, checkmate immediately awards a win to the mover. Stalemate immediately produces a draw: the next side has no legal move and is not in check. These checks require no player request. The final move remains in replay history.
+After each accepted move, adjudication checks these conditions in order:
 
-Either side may resign, including outside its turn. In this initial implementation, resignation awards the opponent a win. The exception for an opponent unable to mate is deferred with mating-possibility adjudication below; this simplified behavior must not be mistaken for full FIDE compliance.
+1. Checkmate: the mover wins.
+2. Stalemate: draw.
+3. Proven dead position: draw.
+4. Fifth occurrence of the same position: automatic draw.
+5. 150 consecutive half-moves without a pawn move or capture: automatic 75-move draw.
 
-An agreed draw requires an offer and an explicit acceptance from the other side. For this increment, both sides must have made at least one move before an offer is allowed. After that, offers and responses are not restricted to the side to move. Only one offer can be pending. Another offer, including one from the opponent, is rejected rather than treated as acceptance. Only the recipient can accept or decline it. There is no withdrawal command.
+This order gives checkmate precedence over the 75-move rule. Where several draw conditions apply, it selects one stable reason. The final played move remains in history.
 
-An accepted move by the recipient declines the offer. A move by the offerer preserves it. Rejected moves and commands leave the offer unchanged. Any game result clears the offer. No time-based expiry or tournament restriction is implemented.
+## Repetition and claims
 
-A result is final. All subsequent move, resignation, offer, acceptance, and decline commands return `game_finished`, including exact retries. They cannot change the position, history, or result. Network request deduplication will later belong to the server; the domain does not pretend that a repeated terminal command succeeded again.
+Position identity includes piece placement, side to move, castling rights, and an en passant target only when a legal capture exists. A pinned pawn with no legal en passant capture does not distinguish positions. Counters are excluded. The initial position counts once; only accepted moves add occurrences. Losing castling rights matters even when castling is temporarily blocked.
 
-## Draws not implemented yet
+Only the side to move can claim threefold repetition or 50 moves by each side without a pawn move or capture. A claim names its rule and optionally an intended move. The domain validates that move on a separate board, with normal king-safety and promotion rules, and checks the resulting position against the threshold.
 
-Stalemate is the only automatic draw in this increment. Agreement is the only player-requested draw. Repetition, move counters, or low material do not currently finish a game; there is no draw-claim command. The game API never uses chess.js `isGameOver()` or `isDraw()` to select competition policy.
+A successful claim ends the game immediately without playing the intended move. Board, turn, and move history remain at the position before the claim; the result reason identifies the claim. A legal intended move is required even when the current position would already qualify. Claims do not wait for opponent consent.
 
-The following is a proposal for review, not an approved extension:
+Invalid claims leave everything unchanged, including repetition counts and pending offers. No claim availability is inferred from chess.js's aggregate game-over or draw helpers.
 
-- Make threefold repetition and 50 moves by each side without a pawn move or capture claimable by the side to move. Support a claim about the current position or a specified legal move that would reach the threshold.
-- Make fivefold repetition and 75 such moves by each side automatic. Checkmate on the final move takes precedence over the move-count draw.
-- Make dead positions automatic. Decide the supported detector and its limitations; chess.js's insufficient-material test alone does not establish every position in which mate is impossible.
-- Use mating possibility for the resignation and future timeout exceptions: consider whether the opponent could ever deliver mate through legal play, not whether it could force mate.
+## Offers and agreement
 
-These proposals use [FIDE Laws of Chess, articles 5, 6.9, and 9](https://handbook.fide.com/chapter/E012023) as a reference. Online claim handling and draw-offer commands still need our own explicit protocol.
+An offer is separate from a claim. It may be sent outside the player's turn, even before both players have moved. Acceptance requires at least one played move by each side. Only the recipient may accept or decline. A second or crossed offer is rejected; the recipient must explicitly accept instead. Offers cannot be withdrawn.
+
+An offer survives the sender's moves. It ends on recipient acceptance, explicit decline, the recipient's accepted move, or any game result. Rejected moves do not decline an offer. This maps physical piece-touching to an accepted online move; selecting a piece has no domain effect. Tournament restrictions and repeated-offer moderation belong to later steps.
+
+## Mating possibility and resignation
+
+Resignation draws when the opponent is proven unable to mate; otherwise it awards the opponent a win. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. Its results are `impossible` and `not_ruled_out`; the latter is not a proof that mate is reachable or forceable.
+
+The detector proves impossibility for:
+
+- A bare king.
+- A king and one knight against a bare king or a king with only queens.
+- A king with only bishops when every bishop on the board occupies the same square color and the opponent has no pawn or knight. Opposing rooks or queens do not invalidate this particular proof.
+- Pawn-only positions whose entire reachable graph contains only quiet king moves and no checkmate. The search stops as inconclusive at 4,096 distinct positions or as soon as a pawn move or capture is reachable. It ignores move counters and does not use repetition or move-count draws to prove mating impossibility.
+
+Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
+
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `not_ruled_out`. This avoids false draws, but can miss a dead position or a resignation draw exception. Complete reachability adjudication is intentionally deferred; resolve that limitation before claiming full compliance or enabling public competitive play. Ordinary engine evaluations and force-mate tablebase scores are not substitutes for cooperative mate reachability.
 
 ## Decisions required before clocks
 
-1. Approve or replace the proposed claimable and automatic repetition/move-count thresholds and their precedence.
-2. Choose a dead-position and one-sided mating-possibility policy, including a practical detector, any declared limitations, and consistent resignation/timeout outcomes. Resolve the current resignation simplification before live play.
-3. Decide how a claim carries an intended move, whether that move is committed on acceptance, and what an invalid claim does to the running clock. Decide whether claim handling also creates a draw offer; no such side effect exists yet.
-4. Review the implemented offer protocol, including the one-move-per-side minimum, before attaching clocks. Decide how an acceptance or claim racing a move or expiry is ordered. Tournament-specific agreement limits can wait for the tournament step.
+The requested repetition thresholds and successful-claim behavior are now implemented, not proposals. Remaining work is:
 
-Clock start, deadline boundaries, increment, disconnects, and server outages remain separate open questions in the [architecture](architecture.md#clocks-and-recovery).
+- Integrate claim evaluation with authoritative time and command ordering, including claims or agreement racing expiry. FIDE 9.5 pauses time for adjudication and adds two minutes to the opponent after an incorrect claim. No time change exists yet.
+- Decide the online handling of FIDE 9.1.2.3 (a claim also being an offer) and 9.5.3 (playing the indicated move after an incorrect claim). To honor atomic rejection now, a rejected claim neither creates an offer nor commits or binds a move. A later penalty procedure must be explicit rather than silently changing rejection semantics.
+- Reuse the mating check for the 6.9 timeout exception, while addressing its documented incomplete coverage. Do not turn `not_ruled_out` into a claim of proven mating possibility.
+- Set clock start, deadline boundaries, increment, disconnect, and server-outage behavior in the [architecture](architecture.md#clocks-and-recovery).
+
+Arbiter intervention, paper notation, and touch-move procedures are not simulated. The domain checks commands synchronously; the future server must serialize them and provide durable request receipts. No clock, transport, or persistence has been added here.

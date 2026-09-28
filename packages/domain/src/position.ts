@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import { matingPossibility } from './mating.js';
 
 export type Side = 'white' | 'black';
 export type Promotion = 'q' | 'r' | 'b' | 'n';
@@ -53,9 +54,10 @@ export function createPosition(): ChessPosition {
 }
 
 // Internal adapter: only the game owner may inspect terminal board conditions.
-export function createPositionAdapter() {
-  const chess = new Chess(STANDARD_STARTING_FEN);
+export function createPositionAdapter(startingFen = STANDARD_STARTING_FEN) {
+  const chess = new Chess(startingFen);
   const history: MoveRecord[] = [];
+  let lockedPawnPosition: boolean | undefined;
   const getPosition = (): PositionSnapshot => ({
     fen: chess.fen(),
     sideToMove: chess.turn() === 'w' ? 'white' : 'black',
@@ -83,6 +85,7 @@ export function createPositionAdapter() {
       if (!candidate) return reject('illegal_move');
 
       const move = chess.move(candidate);
+      lockedPawnPosition = undefined;
       const record: MoveRecord = {
         side: request.side,
         from: move.from,
@@ -100,7 +103,43 @@ export function createPositionAdapter() {
   };
   return {
     position,
+    // chess.js normalizes en passant to a target with an actually legal capture.
+    repetitionKey: () => chess.fen().split(' ').slice(0, 4).join(' '),
+    reversiblePlies: () => Number(chess.fen().split(' ')[4]),
+    matingPossibility: (side: Side) => {
+      const pieces = chess.board().flatMap(row => row.flatMap(piece => piece ? [{
+        side: piece.color === 'w' ? 'white' as const : 'black' as const,
+        kind: piece.type, square: piece.square,
+      }] : []));
+      const material = matingPossibility(pieces, side);
+      if (material === 'impossible') return material;
+      if (pieces.every(piece => piece.kind === 'p' || piece.kind === 'k')) {
+        lockedPawnPosition ??= proveLockedPawnPosition(chess.fen());
+        if (lockedPawnPosition) return 'impossible';
+      }
+      return 'not_ruled_out';
+    },
+    previewMove: (request: MoveRequest) => createPositionAdapter(chess.fen()).position.submitMove(request),
     isCheckmate: () => chess.isCheckmate(),
     isStalemate: () => chess.isStalemate(),
   };
+}
+
+// A closed graph of quiet king moves in a pawn-only position proves that no pawn
+// can ever move or be captured. Budget exhaustion is inconclusive, never a draw.
+function proveLockedPawnPosition(fen: string): boolean {
+  const pending = [fen];
+  const seen = new Set<string>();
+  while (pending.length > 0) {
+    const candidate = new Chess(pending.pop()!);
+    const key = candidate.fen().split(' ').slice(0, 4).join(' ');
+    if (seen.has(key)) continue;
+    if (seen.size >= 4096) return false;
+    seen.add(key);
+    if (candidate.isCheckmate()) return false;
+    const moves = candidate.moves({ verbose: true });
+    if (moves.some(move => move.piece !== 'k' || move.captured !== undefined)) return false;
+    for (const move of moves) pending.push(move.after);
+  }
+  return true;
 }
