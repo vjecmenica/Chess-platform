@@ -73,7 +73,7 @@ The board is the main element. Keep clocks, the side to move, the result, and co
 
 ## First playable milestone
 
-Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The proposed starting scope is a casual 5+3 game from the standard starting position, with two identified sessions. Guest access and archive visibility still need a decision. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
+Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
 
 Acceptance criteria:
 
@@ -88,13 +88,13 @@ Acceptance criteria:
 
 ## Choices still open
 
-### Before implementation
+### Initial choices and remaining setup decisions
 
-**Stack and deployment.** Review the [architecture proposal](architecture.md): TypeScript, React/Vite, Node.js/Fastify, Socket.IO, and PostgreSQL. Agree on package organization, database access, supported versions, an initial hosting region and budget, and expected load. Measure latency and define monitoring, data retention, and backup/restore targets before public release.
+**Stack and deployment.** TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries were chosen on September 28, 2026. This keeps the development setup small and gives persistence a real transactional database from the start. See the [architecture](architecture.md) for the setup and later proposals. Socket.IO remains a proposal for live play. Hosting region, budget, load targets, monitoring, retention, and backup/restore targets remain open before public release.
 
-**Identity and access.** Decide whether the first challenge supports guests or requires accounts, how sessions recover, who can read saved games, and how private invitation links work. Secure guest sessions for the first casual flow and accounts for rated play are the current suggestion.
+**Identity and access.** Secure guest sessions and a casual 5+3 challenge are chosen for the first playable flow. Session recovery, saved-game visibility, and invitation-link privacy still need design before that flow is implemented. Accounts for rated play remain the suggestion for the later rating step.
 
-**Game rules and time.** Set the clock start condition, claimable versus automatic draws, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too.
+**Game rules and time.** Set the clock start condition, claimable versus automatic draws, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
 
 **Board and access needs.** Choose the board component and piece assets with their licenses, then agree on mobile and keyboard behavior. A responsive board and visible keyboard focus are proposed defaults. English copy is already agreed.
 

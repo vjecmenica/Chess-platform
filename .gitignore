@@ -1,4 +1,4 @@
-# Local dependencies and package-manager caches (tooling is still a proposal)
+# Local dependencies and package-manager caches
 node_modules/
 .npm/
 .pnpm-store/

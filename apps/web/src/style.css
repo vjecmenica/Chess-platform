@@ -1,0 +1,22 @@
+:root { font-family: system-ui, sans-serif; color: #1d352c; background: #f5f3ec; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 960px; margin: auto; padding: 40px 32px; }
+header { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700; letter-spacing: .15em; }
+.mark { font-size: 36px; line-height: 1; }
+.intro { padding: 72px 0 42px; }
+.eyebrow { color: #506857; font-size: 14px; }
+h1 { font-family: Georgia, serif; font-weight: 400; font-size: clamp(44px, 8vw, 80px); line-height: 1.07; letter-spacing: -.04em; margin: 20px 0; }
+.description { max-width: 480px; font-size: 19px; line-height: 1.65; color: #526157; }
+.notice { border: 1px solid #d2d9cb; border-radius: 12px; background: #fffdf8; padding: 28px; }
+h2 { font-size: 19px; margin: 0 0 12px; }
+.notice > p { color: #526157; line-height: 1.6; }
+.connection { border-top: 1px solid #e1e5db; margin-top: 24px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.connection p { font-size: 14px; line-height: 1.6; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #947342; margin-right: 10px; }
+.dot.ok { background: #28734c; }
+button { border: 1px solid #143d30; background: #143d30; color: white; border-radius: 6px; padding: 10px 16px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+button:disabled { cursor: wait; opacity: .6; }
+button:focus-visible { outline: 3px solid #a47a37; outline-offset: 4px; }
+footer { margin-top: 36px; color: #617163; font-size: 13px; }
+@media (max-width: 540px) { main { padding: 24px 20px; } .intro { padding-top: 48px; } .notice { padding: 20px; } .connection { align-items: flex-start; flex-direction: column; gap: 8px; } }

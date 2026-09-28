@@ -1,0 +1,21 @@
+{
+  "name": "@chess/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --watch-preserve-output --import tsx src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "db:check": "tsx src/db-cli.ts check",
+    "db:migrate": "tsx src/db-cli.ts migrate"
+  },
+  "dependencies": {
+    "@chess/contracts": "0.0.0",
+    "@chess/domain": "0.0.0",
+    "fastify": "5.12.5",
+    "pg": "8.23.0"
+  },
+  "devDependencies": { "@types/pg": "8.23.1" }
+}

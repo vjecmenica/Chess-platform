@@ -2,17 +2,17 @@
 
 The first complete flow is a game over a challenge link, followed by a saved replay. That creates the reliable game history needed for the project's other core feature: analysis. Interactive engine analysis and full game review come before Swiss tournaments in this proposed sequence.
 
-The repository is still documentation only. The steps below describe future work, not completed features or delivery dates. Product rules and open choices live in the [specification](product-spec.md); the [architecture](architecture.md) explains the proposed implementation.
+The development environment is implemented. Clean-install type checks, HTTP/configuration tests, and builds pass; live PostgreSQL verification is still pending because this development machine has no PostgreSQL service or Docker. All game, analysis, and tournament work below remains future work, not a delivery commitment. Product rules and open choices live in the [specification](product-spec.md); the [architecture](architecture.md) explains the implementation and later proposals.
 
 ## Agree on the starting scope
 
-Review the stack, identity model, clock and draw rules, board component, and initial hosting budget. A casual 5+3 challenge with secure guest sessions is the proposed first slice. Record the choices before creating the runtime setup. Settle server-outage recovery before implementing reconnect and restart handling.
+The initial stack is chosen: TypeScript, npm workspaces, React + Vite, Fastify, PostgreSQL, and separate domain/contracts packages. The first playable flow will use secure guest sessions and a casual 5+3 challenge. Detailed clock and draw rules remain open until those steps; settle server-outage recovery before implementing reconnect and restart handling. Board selection and deployment planning can proceed when those features need them.
 
 ## First playable milestone
 
 Take these steps in order, keeping each change small enough to demonstrate on its own.
 
-1. **Set up the development environment.** Add the agreed web/server setup, locked dependencies, a database, and an initial migration. A clean checkout must install and start using the README, pass server and database health checks, and need no secrets committed to Git.
+1. **Set up the development environment — implemented, database verification pending.** The web/server workspaces, locked dependencies, PostgreSQL configuration, health checks, and initial migration are in place. A clean checkout must install and start using the README, pass server and database health checks, and need no secrets committed to Git. Run `npm run db:check`, `npm run db:migrate`, and `npm run test:db` against PostgreSQL to complete the remaining verification; connection failures are not passing database tests.
 2. **Validate moves.** Build the game domain and move history. Deterministic tests must accept legal moves and reject illegal ones, including wrong turns, castling through check, en passant errors, promotion errors, and moves that leave the king in check.
 3. **Add results and clocks.** Implement checkmate, stalemate, resignation, the selected draw rules, and server-controlled time with increment. Tests with a controlled clock must cover expiry without incoming messages and moves before, at, and after the deadline. Invalid requests must not reset time; repeated requests must not add increment twice.
 4. **Create and accept a challenge.** Bind the two seats to authorized sessions and show a simple board. Two simultaneous acceptances must not create a third player, and an unrelated session must not move for either participant.

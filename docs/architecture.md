@@ -1,25 +1,33 @@
-# Architecture proposal
+# Architecture
 
-This is a design for review, not an approved stack. It supports the [product specification](product-spec.md) and the small delivery steps in the [roadmap](roadmap.md). The repository currently contains no application code or installed dependencies.
+The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries. Secure guest sessions and a casual 5+3 challenge are the chosen first playable scope. The development environment implements only setup, a web page, health checks, and migrations. The game protocols, clocks, sessions, analysis, and scaling designs below remain proposals for their later steps. See the [specification](product-spec.md) and [roadmap](roadmap.md) for scope and order.
 
 ## Start with one game server
 
 The proposed starting point is a modular monolith: one long-running process for the API and active games, a web client, and PostgreSQL. One process owns each game's move order and clock, which makes conflicting decisions easier to prevent. Keep clear module boundaries so expensive analysis can run separately and other services can be extracted when measurements justify it.
 
-### Proposed stack
+### Chosen foundation and later proposals
 
 - **TypeScript throughout.** Shared types help the client and server agree on messages. They do not validate network input, so message schemas must also run at the server boundary.
 - **React, Vite, and plain CSS for the client.** The board, clocks, replay, and analysis controls fit a small interactive application. Choose the board component for promotion handling, accessibility, and licensing. Server rendering is not needed for the first playable milestone.
 - **A supported Node.js LTS release with Fastify.** This keeps the server in the same language and gives API schemas and modules a clear home. CPU-heavy engine work must run outside the process that controls game clocks, because it can block the event loop.
-- **Socket.IO for live messages, HTTP for challenges and the archive.** Connection handling, rooms, and acknowledgments are useful building blocks. Ordered delivery does not guarantee receipt; the application still needs durable requests and recovery.
-- **chess.js behind a domain adapter.** Reuse move validation, notation, and history rather than writing a move generator. The library is not an AI engine or a complete competition rulebook. Verify its draw behavior and implement the chosen timeout and claim rules explicitly.
-- **PostgreSQL with versioned SQL migrations.** Transactions, row locks, and uniqueness constraints protect moves and results, then ratings and tournament pairings. Direct SQL through `pg` is the initial suggestion. An ORM remains an option if it keeps those transactions explicit.
-- **npm workspaces, a committed lockfile, Vitest, and Playwright.** Keep one repository, test domain logic with controlled time, exercise persistence against a real test database, and verify the complete flow in two browser contexts.
-- **Stockfish for analysis.** A separate server worker or browser Web Worker could provide evaluations and multiple lines. Execution location, resource budgets, distribution, and package licensing need review before integration.
+- **Proposed later: Socket.IO for live messages, HTTP for challenges and the archive.** Connection handling, rooms, and acknowledgments are useful building blocks. Ordered delivery does not guarantee receipt; the application still needs durable requests and recovery.
+- **Proposed later: chess.js behind a domain adapter.** Reuse move validation, notation, and history rather than writing a move generator. The library is not an AI engine or a complete competition rulebook. Verify its draw behavior and implement the chosen timeout and claim rules explicitly.
+- **PostgreSQL with versioned SQL migrations.** Transactions, row locks, and uniqueness constraints protect moves and results, then ratings and tournament pairings. The setup uses `pg` for connection checks and SQL migrations. Revisit an ORM only if later queries justify it and critical transactions stay explicit.
+- **npm workspaces, a committed lockfile, and Vitest; Playwright later.** Keep one repository, test domain logic with controlled time, exercise persistence against a real test database, and verify the complete flow in two browser contexts.
+- **Proposed later: Stockfish for analysis.** A separate server worker or browser Web Worker could provide evaluations and multiple lines. Execution location, resource budgets, distribution, and package licensing need review before integration.
 
-React/Vite suits the initial board-focused application; consider Next.js if server rendering or content pages become a real requirement. Raw WebSocket would reduce dependencies but require more connection-management code, and it would still need request deduplication. SQLite could serve a local prototype, but PostgreSQL avoids changing concurrency behavior later. Go is a reasonable server alternative if the team prefers it, at the cost of separate language tooling and contracts.
+React/Vite suits the initial board-focused application; consider Next.js if server rendering or content pages become a real requirement. Raw WebSocket would reduce dependencies but require more connection-management code, and it would still need request deduplication. SQLite could serve a local prototype, but PostgreSQL avoids changing concurrency behavior later. The selected TypeScript/Fastify server keeps shared tooling simple; switching languages is not part of the initial setup.
 
-Choose compatible versions when the development setup is built, pin them, and document how to run them. Use a supported LTS runtime. The stack alone says nothing about capacity: measure concurrent games and move latency before promising a service level.
+The setup supports Node.js 22.12+ in the 22.x line or 24.x LTS, uses PostgreSQL 17 for local development, and pins npm dependencies in the lockfile. See the README for exact setup commands. The stack alone says nothing about capacity: measure concurrent games and move latency before promising a service level.
+
+### What the development setup implements
+
+The web page calls `/api/health/ready` through Vite's local proxy. Fastify exposes `/health` for liveness and `/health/ready` for a fresh `SELECT 1` database probe, returning 503 when that probe fails. Readiness measures connectivity, not whether migrations are current. Startup validates the root `.env` configuration and connects to PostgreSQL before opening the HTTP port. Connection and query timeouts keep failures bounded, errors omit database credentials, and shutdown closes the pool.
+
+`npm run db:migrate` applies numbered SQL files under a transaction-scoped advisory lock. `public.schema_migrations` records each filename, checksum, and application time. Applied files cannot change or disappear, and new versions must follow existing ones. The whole pending batch commits or rolls back together. The initial migration creates only the empty `chess` schema. Migration files must ship with the server; schema changes are explicit commands, never an automatic side effect of starting an app.
+
+The shared packages build before their consumers. Contracts currently share only a readiness response type, and the domain package has no game rules or runtime dependencies. Vitest exercises configuration and HTTP behavior without a database; a separate integration command requires a disposable PostgreSQL database and checks migrations, rollback, and live readiness. No database-backed success is claimed until that command runs against PostgreSQL.
 
 ## Responsibilities and dependencies
 
@@ -34,14 +42,14 @@ Later: ratings, matchmaking, and Swiss coordination in server modules
 Later: AI explanations based on checked engine findings
 ```
 
-The analysis path above shows the server-worker option; browser execution is still an alternative for interactive analysis.
+This diagram describes the later application, not features already implemented. The analysis path shows the server-worker option; browser execution is still an alternative for interactive analysis.
 
 - `apps/web` handles the board, move input, pending/confirmed state, clock display, replay, and analysis controls. It does not decide the official position, time, or result.
 - `apps/server` authenticates users, authorizes commands, serializes work for each game, manages transactions, and broadcasts confirmed events.
 - `packages/domain` contains the chess adapter, game transitions, and clock calculations, with rating and tournament rules added later. It has no browser, network, or direct database dependency. Time is passed in so tests can control it.
 - `packages/contracts` contains versioned command/event schemas and shared types. It contains no secrets and does not make client input trustworthy.
 
-Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The existing directories are placeholders for these proposed boundaries.
+Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The setup makes these real workspaces. Domain code remains empty until the move-validation step; contracts initially describe only health responses.
 
 ## Accepting a move
 
@@ -129,7 +137,7 @@ When measured load requires several game servers, give each active game one owne
 
 Use domain tests with controlled time, integration tests against a real database, and a complete flow in two browser contexts. Focus on concurrent moves, a move racing expiry, duplicate requests, a commit followed by a lost broadcast, disconnects, restarts, and archive reconstruction. Then test rating and round consumers with repeated events. Measure load before claiming bullet reliability, because short controls expose server delays most clearly.
 
-The [open choices](product-spec.md#choices-still-open) separate decisions needed before implementation from those needed for later features. Record the initial choices before adding dependencies; this proposal does not settle them.
+The [open choices](product-spec.md#choices-still-open) separate decisions needed before implementation from those needed for later features. The initial stack and guest/casual scope are settled; detailed clock, draw, and outage rules remain open until their implementation steps.
 
 ## Technical references
 
