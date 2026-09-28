@@ -6,7 +6,7 @@ The planned product includes rated and casual games, friend challenges, matchmak
 
 ## Current scope
 
-The development foundation is implemented: a React page, Fastify health endpoints, a PostgreSQL connection check, and versioned SQL migrations. There are no games, sessions, accounts, ratings, matchmaking, analysis, or tournaments yet.
+The development foundation is implemented: a React page, Fastify health endpoints, a PostgreSQL connection check, and versioned SQL migrations. The domain package now validates moves and records replay history from the standard starting position. There is no playable game, session handling, account system, rating calculation, matchmaking, analysis, or tournament flow yet.
 
 The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and PostgreSQL. The first playable flow will use secure guest sessions and a casual 5+3 challenge. Detailed clock, draw, and server-outage rules remain open until their implementation steps.
 
@@ -73,7 +73,7 @@ Vite forwards `/api/*` to the server during development and preview. Only the se
 npm run check
 ```
 
-This runs workspace type checks, configuration/HTTP tests, and all production builds. These checks do **not** require PostgreSQL; the HTTP tests inject a database probe and do not prove a real database is connected.
+This runs workspace type checks, domain and configuration/HTTP tests, and all production builds. These checks do **not** require PostgreSQL; the HTTP tests inject a database probe and do not prove a real database is connected.
 
 For real database verification, create a separate disposable database, such as `chess_test` owned by `chess`, then set `TEST_DATABASE_URL` in `.env` and run:
 
@@ -83,14 +83,15 @@ npm run test:db
 
 This explicit integration test checks a real connection, initial migration, repeat migration, changed-file detection, transaction rollback, and HTTP readiness backed by PostgreSQL. It fails clearly when configuration or PostgreSQL is missing; it never silently skips. It leaves the initial schema and migration records in that test database.
 
-Initial Windows verification: a clean `npm ci` and `npm run check` passed, as did the web-page/retry smoke check and expected startup failures. PostgreSQL and Docker were unavailable on that machine. `db:check`, `db:migrate`, and `test:db` were attempted and failed at connection, so successful migration, rollback, and live database readiness remain unverified there.
+Initial Windows verification: a clean `npm ci` and `npm run check` passed, as did the web-page/retry smoke check and expected startup failures. PostgreSQL and Docker were unavailable on that machine. `db:check`, `db:migrate`, and `test:db` were attempted and failed at connection, so that run did not verify successful migration, rollback, or live database readiness. The maintainer confirmed on September 29, 2026 that the Windows setup now runs with PostgreSQL and the web page is visible. The move-validation step does not rerun the separate database integration suite.
 
 Individual commands:
 
 | Command | Purpose |
 | --- | --- |
 | `npm run typecheck` | Build shared declarations and check all TypeScript, including tests and tooling. |
-| `npm test` | Run configuration and HTTP tests without a database. |
+| `npm test` | Run domain, configuration, and HTTP tests without a database. |
+| `npm test -- packages/domain/test` | Run only the deterministic move-validation tests. |
 | `npm run build` | Build shared packages, server JavaScript, and web assets in dependency order. |
 | `npm run start:server` | Run the compiled server after a build, still requiring PostgreSQL. |
 | `npm run preview:web` | Preview the built web app at port 4173, proxying to the separately running server. |
@@ -119,6 +120,6 @@ Add the next numbered file, such as `002_description.sql`, for each change. Neve
 - [Roadmap](docs/roadmap.md): the development setup and later feature order.
 - [Architecture](docs/architecture.md): chosen foundation and proposed game/analysis design.
 
-`apps/web` owns the interface; `apps/server` owns HTTP and database access. `packages/contracts` shares the readiness response type. `packages/domain` is intentionally empty until game rules are implemented and has no runtime dependencies. Runtime packages build to their own `dist` directories. Migrations stay alongside the server source and must accompany a server deployment.
+`apps/web` owns the interface; `apps/server` owns HTTP and database access. `packages/contracts` shares the readiness response type. `packages/domain` wraps chess.js for move validation and replay history, with no browser, server, or database dependency. Its [API guide](packages/domain/README.md) documents inputs, snapshots, and rejection results. Runtime packages build to their own `dist` directories. Migrations stay alongside the server source and must accompany a server deployment.
 
 **Use English for all repository content**, including documentation, code comments, tests, commit messages, and UI copy. Keep requirements separate from proposals, update affected documents together, and check `git diff --check` before committing. Commit the lockfile and sanitized examples; never commit `.env` or credentials.

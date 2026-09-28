@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["vitest*.config.ts", "apps/server/test/**/*.ts"]
+  "include": ["vitest*.config.ts", "apps/server/test/**/*.ts", "packages/domain/test/**/*.ts"]
 }

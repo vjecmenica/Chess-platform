@@ -1,6 +1,6 @@
 # Architecture
 
-The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries. Secure guest sessions and a casual 5+3 challenge are the chosen first playable scope. The development environment implements only setup, a web page, health checks, and migrations. The game protocols, clocks, sessions, analysis, and scaling designs below remain proposals for their later steps. See the [specification](product-spec.md) and [roadmap](roadmap.md) for scope and order.
+The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries. Secure guest sessions and a casual 5+3 challenge are the chosen first playable scope. The development environment provides setup, a web page, health checks, and migrations. The domain package now implements move validation and replay history behind a chess.js adapter. The game protocols, clocks, sessions, analysis, and scaling designs below remain proposals for their later steps. See the [specification](product-spec.md) and [roadmap](roadmap.md) for scope and order.
 
 ## Start with one game server
 
@@ -12,7 +12,7 @@ The proposed starting point is a modular monolith: one long-running process for 
 - **React, Vite, and plain CSS for the client.** The board, clocks, replay, and analysis controls fit a small interactive application. Choose the board component for promotion handling, accessibility, and licensing. Server rendering is not needed for the first playable milestone.
 - **A supported Node.js LTS release with Fastify.** This keeps the server in the same language and gives API schemas and modules a clear home. CPU-heavy engine work must run outside the process that controls game clocks, because it can block the event loop.
 - **Proposed later: Socket.IO for live messages, HTTP for challenges and the archive.** Connection handling, rooms, and acknowledgments are useful building blocks. Ordered delivery does not guarantee receipt; the application still needs durable requests and recovery.
-- **Proposed later: chess.js behind a domain adapter.** Reuse move validation, notation, and history rather than writing a move generator. The library is not an AI engine or a complete competition rulebook. Verify its draw behavior and implement the chosen timeout and claim rules explicitly.
+- **chess.js 1.4.0 behind the domain API.** Move validation, notation, and history now use this adapter. Callers use project-owned types rather than chess.js types. The library is not an AI engine or a complete competition rulebook; its game-over and draw helpers are not used. Select result, timeout, and claim rules in the next step.
 - **PostgreSQL with versioned SQL migrations.** Transactions, row locks, and uniqueness constraints protect moves and results, then ratings and tournament pairings. The setup uses `pg` for connection checks and SQL migrations. Revisit an ORM only if later queries justify it and critical transactions stay explicit.
 - **npm workspaces, a committed lockfile, and Vitest; Playwright later.** Keep one repository, test domain logic with controlled time, exercise persistence against a real test database, and verify the complete flow in two browser contexts.
 - **Proposed later: Stockfish for analysis.** A separate server worker or browser Web Worker could provide evaluations and multiple lines. Execution location, resource budgets, distribution, and package licensing need review before integration.
@@ -27,7 +27,7 @@ The web page calls `/api/health/ready` through Vite's local proxy. Fastify expos
 
 `npm run db:migrate` applies numbered SQL files under a transaction-scoped advisory lock. `public.schema_migrations` records each filename, checksum, and application time. Applied files cannot change or disappear, and new versions must follow existing ones. The whole pending batch commits or rolls back together. The initial migration creates only the empty `chess` schema. Migration files must ship with the server; schema changes are explicit commands, never an automatic side effect of starting an app.
 
-The shared packages build before their consumers. Contracts currently share only a readiness response type, and the domain package has no game rules or runtime dependencies. Vitest exercises configuration and HTTP behavior without a database; a separate integration command requires a disposable PostgreSQL database and checks migrations, rollback, and live readiness. No database-backed success is claimed until that command runs against PostgreSQL.
+The shared packages build before their consumers. Contracts currently share only a readiness response type. The domain package owns move validation and depends only on chess.js at runtime. Vitest exercises domain, configuration, and HTTP behavior without a database; a separate integration command requires a disposable PostgreSQL database and checks migrations, rollback, and live readiness. No database-backed success is claimed until that command runs against PostgreSQL.
 
 ## Responsibilities and dependencies
 
@@ -46,10 +46,10 @@ This diagram describes the later application, not features already implemented. 
 
 - `apps/web` handles the board, move input, pending/confirmed state, clock display, replay, and analysis controls. It does not decide the official position, time, or result.
 - `apps/server` authenticates users, authorizes commands, serializes work for each game, manages transactions, and broadcasts confirmed events.
-- `packages/domain` contains the chess adapter, game transitions, and clock calculations, with rating and tournament rules added later. It has no browser, network, or direct database dependency. Time is passed in so tests can control it.
+- `packages/domain` contains the chess adapter, position snapshots, and ordered move history. It has no browser, network, or database dependency. Results and clock calculations are later work; time will be passed in so tests can control it.
 - `packages/contracts` contains versioned command/event schemas and shared types. It contains no secrets and does not make client input trustworthy.
 
-Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The setup makes these real workspaces. Domain code remains empty until the move-validation step; contracts initially describe only health responses.
+Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The setup makes these real workspaces. The domain API is documented in its [package guide](../packages/domain/README.md); contracts still describe only health responses. `createPosition()` keeps the chess.js instance private. Move requests identify a side and coordinates; legal candidates are checked before any state change. Missing promotion choices return a specific rejection, and accepted moves record SAN, UCI, and before/after FEN. Returned snapshots and history are detached copies. Side validation is turn checking, not authentication; a later server must derive the side from its authorized session.
 
 ## Accepting a move
 
