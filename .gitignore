@@ -1,0 +1,46 @@
+# Local dependencies and package-manager caches (tooling is still a proposal)
+node_modules/
+.npm/
+.pnpm-store/
+
+# Generated output, caches and test reports
+dist/
+build/
+coverage/
+.cache/
+.vite/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Secrets and local configuration; sanitized examples remain trackable
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# Logs and local runtime/database state
+*.log
+logs/
+.local/
+*.pid
+*.pid.lock
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# OS/editor user state
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Dependency lockfiles, migrations, fixtures and shared configuration belong in Git.
