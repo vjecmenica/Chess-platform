@@ -1,44 +1,67 @@
 # Roadmap
 
-Status: predlog redosleda razvoja, 28. septembar 2026. Ovo nisu obećani rokovi. Svaki korak završava se malom demonstracijom ili ponovljivom proverom. Zahtevi i otvorene odluke nalaze se u [specifikaciji](product-spec.md); tehnički pristup je [predlog arhitekture](architecture.md).
+The first complete flow is a game over a challenge link, followed by a saved replay. That creates the reliable game history needed for the project's other core feature: analysis. Interactive engine analysis and full game review come before Swiss tournaments in this proposed sequence.
 
-## Granica ovog zadatka
+The repository is still documentation only. The steps below describe future work, not completed features or delivery dates. Product rules and open choices live in the [specification](product-spec.md); the [architecture](architecture.md) explains the proposed implementation.
 
-Sada se isporučuju samo četiri Markdown dokumenta, `.gitignore` i prazni direktorijumi. Koraci M0–M13 ispod nisu započeti. Pisanje ovog predloga ne predstavlja odobrenje tehnologija niti početak naredne razvojne faze.
+## Agree on the starting scope
 
-## Prvi funkcionalni cilj: izazov preko linka, sat, sačuvan pregled
+Review the stack, identity model, clock and draw rules, board component, and initial hosting budget. A casual 5+3 challenge with secure guest sessions is the proposed first slice. Record the choices before creating the runtime setup. Settle server-outage recovery before implementing reconnect and restart handling.
 
-M1–M4 su tehnički koraci ka istom cilju. **Prva celovita funkcionalna isporuka je M5:** dva igrača odigraju legalnu partiju sa satom preko linka i zatim je pregledaju potez po potez. Matchmaking, rejtinzi, engine, AI i turniri nisu zavisnosti M5.
+## First playable milestone
 
-| Korak | Mala isporuka | Provera završetka | Zavisnosti |
-| --- | --- | --- | --- |
-| M0 — Pregled odluka | Zabeležiti izbor tehnologija i početni obim; predlog je nerejtingovana 5+3. Razjasniti identitet, pravila kraja partije i politiku sata/prekida. | O-01, početni deo O-02/O-03/O-11/O-12 imaju eksplicitne odluke; preostale stavke imaju korak u kojem se rešavaju. | Pregled dokumentacije sa vlasnikom projekta. |
-| M1 — Razvojna osnova | Tek po pregledu dodati manifest, zaključane zavisnosti, minimalni web/server, bazu i prvu migraciju. Dokumentovati lokalno pokretanje i konfiguraciju. | Čist checkout se instalira i pokreće po README-u; provera zdravlja servera i konekcije sa bazom prolazi; nema tajni u Git-u. | M0. |
-| M2a — Pravila poteza | Izdvojeni domen partije: početna pozicija, potez, redosled, rokada, en passant, promocija i evidencija istorije. | Deterministički testovi prihvataju legalne i odbijaju nelegalne poteze, uključujući izlazak iz šaha i zabranjenu rokadu kroz šah. | M1, O-03. |
-| M2b — Završetak i sat | Mat, pat, dogovorena pravila remija i predaje; serverski sat sa inkrementom i istekom. | Kontrolisani sat u testu pokriva potez pre/na/posle roka, pogrešan potez, dodavanje inkrementa samo jednom i istek bez dolaska novog zahteva. | M2a, završena odluka O-03 za pravila. |
-| M3a — Izazov i mesta | Kreiranje i prihvatanje jednokratnog linka; dve autorizovane sesije i jednostavna tabla. | Dve sesije zauzimaju različita mesta; dva istovremena prihvatanja ne stvaraju tri igrača; treći korisnik ne može igrati u njihovo ime. | M2b, O-02/O-11. |
-| M3b — Potvrda poteza uživo | Razmena zahteva i autoritativnih potvrda; oba klijenta prikazuju poziciju, sat i status veze. | Dva pregledača vide istu verziju partije; pogrešan igrač i zastarela verzija bivaju odbijeni; UI ne tretira nepotvrđen potez kao konačan. | M3a. |
-| M4a — Trajno čuvanje | Atomsko čuvanje poteza, verzije stanja, satova, rezultata i identifikatora zahteva pre potvrde. | Restart posle potvrde ne gubi potez; ponovljen zahtev ne pravi duplikat; greška upisa ne proizvodi uspešnu potvrdu; dva zahteva ne mogu završiti partiju dvaput. | M3b. |
-| M4b — Oporavak veze | Reconnect sa snapshot-om i redosledom događaja; postupak za restart/pad servera. | Prekid pre/posle potvrde, refresh i restart vode do istog stanja; izgubljeno emitovanje nadoknađuje se čitanjem baze; sat prati dogovorenu politiku prekida. | M4a, potpuna odluka O-03 o prekidima. |
-| M5 — Sačuvan pregled i celovit tok | Stranica završene partije, rezultat, lista poteza i navigacija početak/prethodni/sledeći/kraj. | Dve sesije završe partiju i ponovo je otvore posle restarta; svaki polupotez rekonstruiše očekivanu poziciju; svi kriterijumi iz odeljka 2 specifikacije prolaze. | M4b, pristup arhivi iz O-02; O-12 pre javne dostupnosti. |
+Take these steps in order, keeping each change small enough to demonstrate on its own.
 
-Pre zatvaranja M5 napraviti jednu celovitu proveru u dva browser konteksta i ciljane integracione testove za konkurentne poteze, duplikate, istek sata i oporavak. Testovi koriste kontrolisano vreme umesto čekanja stvarnih minuta. Operativni pregled obuhvata vraćanje sačuvane partije iz backup-a i dogovorene kriterijume latencije; ne tvrditi da je platforma spremna za veliko opterećenje bez merenja.
+1. **Set up the development environment.** Add the agreed web/server setup, locked dependencies, a database, and an initial migration. A clean checkout must install and start using the README, pass server and database health checks, and need no secrets committed to Git.
+2. **Validate moves.** Build the game domain and move history. Deterministic tests must accept legal moves and reject illegal ones, including wrong turns, castling through check, en passant errors, promotion errors, and moves that leave the king in check.
+3. **Add results and clocks.** Implement checkmate, stalemate, resignation, the selected draw rules, and server-controlled time with increment. Tests with a controlled clock must cover expiry without incoming messages and moves before, at, and after the deadline. Invalid requests must not reset time; repeated requests must not add increment twice.
+4. **Create and accept a challenge.** Bind the two seats to authorized sessions and show a simple board. Two simultaneous acceptances must not create a third player, and an unrelated session must not move for either participant.
+5. **Exchange confirmed moves.** Connect two browser sessions and display the confirmed position, clocks, and connection status. Wrong-player and stale-version commands must be rejected. A pending move must remain visibly unconfirmed until the server accepts it.
+6. **Make the state durable.** Save each move, state version, clocks, request receipt, and any result atomically before acknowledgment. Restart after an acknowledgment must not lose the move. Failed writes, duplicate requests, and racing completion requests must not create false confirmations or a second result.
+7. **Recover interrupted sessions.** Restore the same authorized player's state after reconnect or refresh. Test disconnection before and after acknowledgment, a committed move whose broadcast was lost, and a server restart. State and clocks must converge under the agreed outage policy, including when the connection appears healthy but an event was missed.
+8. **Replay the finished game.** Add the result, move list, and start/previous/next/end controls. Two players must complete a game, reopen it after a restart, and reproduce the position at every half-move.
 
-## Proširenja tek posle M5
+The milestone is complete when all [first playable acceptance criteria](product-spec.md#first-playable-milestone) pass. Verify the full flow in two browser contexts, use a real test database for transactions, and test races and clock boundaries with controlled time. Include a backup restore check and measure latency against the agreed targets before public release.
 
-Ovi koraci predstavljaju predloženi redosled; njihove zavisnosti dopuštaju kasniju promenu prioriteta. Svaki red sa više isporuka razdvojiti u navedene male izmene.
+## Accounts, ratings, and matchmaking
 
-| Korak | Redosled malih isporuka | Provera završetka | Zavisnosti/odluke |
-| --- | --- | --- | --- |
-| M6 — Nalozi, tempoi i rejtinzi | (1) Nalozi i povezivanje arhive; (2) svih 16 tempa i izbor rejtingovano/nerejtingovano; (3) dokumentovana Glicko-2 konfiguracija i obračun. | Sve kategorije odgovaraju tabeli P-01; poznat referentni Glicko-2 primer prolazi; jedna partija utiče samo jednom na odgovarajući rejting, nerejtingovana ni na jedan. | M5; O-02/O-04/O-10. |
-| M7 — Matchmaking | (1) Red po tempu i tipu; (2) sličan rejting i širenje opsega; (3) otkazivanje i konkurentno uparivanje. | Kontrolisano vreme dokazuje širenje; nema mešanja tempa/tipa, samouparivanja ni dvostrukog rezervisanja igrača; otkazani zahtev se ne uparuje. | M6; O-05. |
-| M8 — Interaktivna analiza | (1) Politika pristupa završenim partijama; (2) uključivanje engine-a i evaluacije; (3) više linija i ograničenja resursa. | Aktivni igrač ne može dobiti savet kroz UI ni direktan API; završena partija daje legalne linije i jasno označenu perspektivu evaluacije; rad ne usporava satove partija. | M5; O-06/O-10; M6 ako politika zahteva naloge. |
-| M9 — Analiza cele partije | (1) Dokumentovati metodologiju; (2) pozadinski posao; (3) accuracy i oznake sa verzijom metodologije. | Fiksni skup partija daje proverljive rezultate u dogovorenoj toleranciji; pragovi imaju primere i granične slučajeve, uključujući matne ocene; ponovljen posao ne duplira rezultat. | M8; O-09. |
-| M10 — Swiss turniri | (1) Kreiranje/prijave; (2) testiran modul parovanja; (3) jedna runda kroz postojeću partiju; (4) više rundi, pauza, tabela i procena trajanja. | Mali simulirani turnir pokriva neparan broj igrača, bye, odustajanje i jednak broj bodova; poslednji rezultat pokreće tačno jednu narednu rundu posle pauze; rated izbor radi, restart ne pravi duple parove. | M6 i pouzdan M4; O-07. Ne zavisi od M7–M9. |
-| M11 — Zadaci | (1) Licenciran izvor i rešavanje; (2) provera poteza i napretka; (3) kasnije izdvajanje pozicija iz sopstvenih partija. | Rešenje je provereno; pogrešan potez se dosledno ocenjuje; pristup privatnim pozicijama prati prava nad izvornom partijom. | M5/M8; O-10; izdvajanje sopstvenih pozicija posle M9. |
-| M12 — AI objašnjenja | (1) Ugovor engine rezultata i tekstualnog objašnjenja; (2) provera svake predložene varijante; (3) UI objašnjenja. | Nelegalna ili engine-om nepotvrđena tvrdnja ne prolazi kao potvrđen savet; neuspeh AI-ja ne blokira pregled; zabrana saveta tokom aktivne partije ostaje na serveru. | M8; O-10 i izbor AI servisa/privatnosti. |
-| M13 — Custom izazovi | (1) Validacija tempa; (2) dokumentovana kategorija i rated politika; (3) izbor u direktnom izazovu. | Granične vrednosti su proverene; kategorija je vidljiva pre prihvatanja; custom izazov ne ulazi u standardne matchmaking redove. | M6; O-08. |
+Build accounts and archive ownership first, then expose all 16 time controls and the rated/casual choice. Document Glicko-2 parameters and rating periods before adding calculations. A reference calculation must pass; an eligible result must affect only its pool, once, and casual results must leave every rating unchanged.
 
-## Pravilo završetka svakog koraka
+Next, add matchmaking in three small changes: exact time-control/type queues, rating-range expansion, and cancellation with concurrent reservations. Tests must show that elapsed time widens the search without changing the selected control or type. No self-pairing, double reservation, or match from a canceled request is allowed.
 
-Zabeležiti rezultat demonstracije/testova, ažurirati dokumentaciju i zatvoriti relevantne O-ID-je. Izmene koje utiču na vreme, autoritet servera, trajno čuvanje ili rejting zahtevaju test neuspeha i ponavljanja, ne samo uspešnog toka. Ne dodavati sledeću veliku funkciju dok prethodni kriterijumi nisu ispunjeni.
+This is the proposed order, not an analysis dependency: once saved games and the required access controls exist, analysis work can proceed without waiting for matchmaking.
+
+## Interactive engine analysis
+
+Start with the saved-game analysis board and access policy. Then add engine on/off controls and evaluations, followed by multiple candidate lines and resource limits. Choose where the engine runs before integrating it; that choice affects both cost and enforcement of the active-game advice restriction.
+
+Completion means that lines are legal for the selected position, evaluation perspective is clear, and the player can explore multiple lines. An active player must not obtain advice through either the UI or a direct server request under the chosen policy. Engine work must not delay active-game clocks. Account support is needed here only if the chosen access policy requires it.
+
+## Full game review
+
+First write and validate the accuracy and move-label methodology. Then build a bounded background job, and finally show the review with its engine and methodology versions. Full review depends on the analysis infrastructure, not on tournaments or AI.
+
+Use a fixed set of games to verify results within a documented tolerance. Cover mate evaluations and label boundaries with worked examples. A retry must reuse or replace the intended result without creating duplicates. A failed job must leave the saved game and ordinary replay available.
+
+## Swiss tournaments
+
+Schedule this work after interactive analysis and full review. It reuses the game, persistence, identity, and rating systems; it does not require matchmaking.
+
+1. Add creation and registration with the name, capacity, time control, round count, start time, and rated/casual setting.
+2. Implement and test the chosen Swiss pairing and scoring rules separately from live games.
+3. Run one round using the existing game flow and collect its results.
+4. Add later rounds, breaks, standings, and an explained duration estimate.
+
+A simulated tournament must cover an odd player count, byes, withdrawals, no-shows, and tied standings according to the selected rules. Every game must inherit the organizer's rating choice. The next round must start only after all current results are resolved and the break has elapsed. Duplicate events or a restart must not generate a second pairing set, a second next round, or duplicate rating changes.
+
+## Puzzles and later extensions
+
+**Puzzles:** start with an appropriately licensed collection, verified solutions, move checking, and progress. Later, use full game review to find practice positions in a player's own games. Incorrect moves must be handled consistently, and private positions must retain the source game's access rules.
+
+**AI explanations:** build on engine analysis. Define the information passed to the explanation service, validate any proposed lines, and then add the explanation interface. Illegal or unverified lines must not appear as confirmed advice. Service failure must not block replay or engine analysis, and active-game restrictions still apply. Choose the service and privacy policy before sending it personal game data.
+
+**Custom challenges:** after standard controls and ratings work, agree on custom limits, pool assignment, and rated eligibility. Validate boundary values and show the rules before the opponent accepts. Keep custom challenges out of standard matchmaking queues.
+
+## Finishing a step
+
+Record the demonstration or test result and update the affected documentation. Changes to clocks, persistence, ratings, and round progression need failure and retry tests as well as a successful example. Measure capacity before making performance claims, especially for bullet games.
