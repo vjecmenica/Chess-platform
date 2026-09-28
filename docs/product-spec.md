@@ -17,6 +17,10 @@ In `m+s` notation, each player starts with `m` minutes and receives `s` seconds 
 
 These are the product's explicit assignments for all 16 time controls. Do not substitute a formula that moves a listed control into a different pool. Custom time controls will come later for direct challenges; their limits, rating pool, and eligibility for rated play still need to be decided.
 
+### Results and draws
+
+The domain lifecycle supports checkmate, stalemate, resignation, and an agreed draw. A finished game rejects all further commands. The [game rules](game-rules.md) specify automatic versus agreed draws, the offer protocol, the current resignation limitation, and proposals still needing review before clocks. Repetition, move-count claims, and dead-position adjudication are not implemented yet.
+
 ### Ratings and matchmaking
 
 Each player has separate Glicko-2 ratings for bullet, blitz, rapid, and classical. An eligible rated result affects only its own pool and must be applied once. Casual games never change ratings. The treatment of abandoned or voided games remains open.
@@ -94,7 +98,7 @@ Acceptance criteria:
 
 **Identity and access.** Secure guest sessions and a casual 5+3 challenge are chosen for the first playable flow. Session recovery, saved-game visibility, and invitation-link privacy still need design before that flow is implemented. Accounts for rated play remain the suggestion for the later rating step.
 
-**Game rules and time.** Set the clock start condition, claimable versus automatic draws, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
+**Game rules and time.** Review the [pending draw decisions](game-rules.md#decisions-required-before-clocks), then set the clock start condition, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
 
 **Board and access needs.** Choose the board component and piece assets with their licenses, then agree on mobile and keyboard behavior. A responsive board and visible keyboard focus are proposed defaults. English copy is already agreed.
 
