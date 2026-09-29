@@ -40,11 +40,11 @@ The position API checks legality without enforcing game status. It remains suita
 
 `createGame()` creates an independent active game and privately owns its position. Callers cannot bypass completion checks by accessing that position.
 
-`getState()` returns a detached snapshot with `position`, `status`, `result`, and `drawOffer`. An active snapshot has a null result and an optional offerer's side. A finished snapshot has a result and no offer. `getHistory()` returns the same ordered, detached move records as the position API.
+`getState()` returns a detached snapshot with `position`, `status`, `result`, and `drawOffer`. An active snapshot has a null result and an optional offerer's side. An accepted unresolved resignation has status `pending_adjudication`, a null result, no offer, and the resigning side. A finished snapshot has a result and no offer; one resolved by review also carries its `adjudication` ruling. `getHistory()` returns the same ordered, detached move records as the position API.
 
 `submitMove({ side, from, to, promotion? })` uses the existing move rules. Success returns `{ accepted: true, move, game }`, including any result caused by the move. Resignation and offer/response commands take `{ side }` and return `{ accepted: true, game }` on success:
 
-- `resign` draws when the opponent is proven unable to mate and awards a win when a legal mate witness exists. An unresolved case returns `adjudication_required` without changing the game.
+- `resign` draws when the opponent is proven unable to mate and awards a win when a legal mate witness exists. Otherwise it accepts the resignation and freezes the game in `pending_adjudication`.
 - `offerDraw` requires no pending offer and is allowed even before the first move.
 - `acceptDraw` finishes by agreement; only the recipient of a pending offer can accept, after both sides have played a move.
 - `declineDraw` clears an offer without finishing; only its recipient can decline.
@@ -53,7 +53,7 @@ Offers can be made outside the actor's turn. The offerer's move preserves an off
 
 A win is `{ outcome: 'win', winner, reason: 'checkmate' | 'resignation' }`. A draw has `outcome: 'draw'` and a reason: `stalemate`, `agreement`, `dead_position`, `fivefold_repetition`, `seventy_five_move`, `threefold_repetition`, `fifty_move`, or `resignation_no_mating_possibility`. These distinguish automatic draws, claims, agreement, and resignation exceptions.
 
-Rejections return `{ accepted: false, reason, message }` and preserve all state. The game first checks completion (`game_finished`), then the acting side (`invalid_side`). Moves then use the position API's rejection reasons. Draw commands can reject with `draw_too_early`, `draw_offer_pending`, `no_draw_offer`, or `own_draw_offer`. A terminal retry is rejected even if it repeats the original command; later server request receipts will handle network retries. The future server must validate payloads and derive the side from the authorized session, not trust a client-supplied side.
+Rejections return `{ accepted: false, reason, message }` and preserve all state. The game first checks completion (`game_finished`) or an accepted resignation (`adjudication_pending`), then the acting side (`invalid_side`). Moves then use the position API's rejection reasons. Draw commands can reject with `draw_too_early`, `draw_offer_pending`, `no_draw_offer`, or `own_draw_offer`. A terminal or pending retry is rejected even if it repeats the original command; later server request receipts will handle network retries. The future server must validate payloads and derive the side from the authorized session, not trust a client-supplied side.
 
 ```ts
 import { createGame } from '@chess/domain';
@@ -72,7 +72,9 @@ if (response.accepted) console.log(response.game.result); // Draw by agreement.
 
 An invalid side, wrong turn, unknown rule (`invalid_claim`), invalid intended move (the existing move rejection reasons), or unmet threshold (`claim_not_available`) rejects without changing state or offers. A rejected claim does not bind the player to the intended move or add a draw offer. Clock penalties and the FIDE claim-as-offer procedure need explicit integration later.
 
-`getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation checks only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-and-resignation) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations. An unresolved resignation is rejected unchanged until an adjudication service exists. The [online decision](../../docs/adjudication-design.md) describes that future path.
+`getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation checks only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-and-resignation) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations.
+
+An accepted unresolved resignation stops all player commands. `resolveResignation({ verdict: 'mate_possible', mateLine })` checks a legal line from the frozen position through checkmate by the opponent, including earlier automatic-result checks. `resolveResignation({ verdict: 'mate_impossible', reviewerId, evidenceReference })` records a trusted reviewer's attestation of a complete no-mate proof and finishes as a draw. Invalid rulings leave the pending state unchanged. The domain cannot verify an external impossibility proof or authorize a reviewer; only a trusted server adjudication path may call this method, and it must retain the proof behind the reference. The [online decision](../../docs/adjudication-design.md) specifies the remaining server work. There is no server reviewer yet, so a pending game can remain pending indefinitely.
 
 `createGame()` still starts only from the standard position. The internal FEN fixture factory is not part of the package API and cannot restore repetition history; production restoration will need the complete move history.
 

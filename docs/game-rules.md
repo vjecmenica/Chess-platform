@@ -4,7 +4,7 @@ The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/cha
 
 ## Implemented lifecycle
 
-Games start at the standard position. Every command identifies its acting side; the later server must derive that side from an authorized session. Finished games reject every mutation, including repeated terminal commands. Position and history remain available for replay.
+Games start at the standard position. Every player command identifies its acting side; the later server must derive that side from an authorized session. Finished games reject every mutation, including repeated terminal commands. A game with an accepted, unresolved resignation is `pending_adjudication` and also rejects all player commands. Position and history remain available for replay.
 
 After each accepted move, adjudication checks these conditions in order:
 
@@ -34,7 +34,7 @@ An offer survives the sender's moves. It ends on recipient acceptance, explicit 
 
 ## Mating possibility and resignation
 
-Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. It returns `impossible`, `possible`, or `unresolved`. The current positive proof is a legal checkmate on the next move by that side. If the answer is unresolved, `resign` returns `adjudication_required` without changing the game. The [adjudication decision](adjudication-design.md) defines the server review path before live play.
+Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. It returns `impossible`, `possible`, or `unresolved`. The current automatic positive proof is a legal checkmate on the next move by that side. An unresolved resignation is accepted into `pending_adjudication`: no further move or result-changing player command can occur. It can be resolved to a win by a domain-verified mate line or to a draw by an authorized reviewer's complete impossibility proof. The domain records a reviewer ID and evidence reference but does not validate the external proof or authorize the caller. The [adjudication decision](adjudication-design.md) defines the server responsibility before live play.
 
 The detector proves impossibility for:
 
@@ -45,7 +45,7 @@ The detector proves impossibility for:
 
 Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
 
-**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify either a resignation win or a draw. The game may miss an automatic dead position until a complete proof or adjudicator resolves it. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify either a resignation win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation can wait indefinitely at this stage because there is no server reviewer, durable queue, or general proof engine. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
 
 ## Work required before clocks
 

@@ -5,6 +5,7 @@ export type {
 export { createGame } from './game.js';
 export type {
   ChessGame, GameSnapshot, GameResult, SideCommand, GameRejection, CommandResult, GameMoveResult,
+  ResignationRuling,
 } from './game.js';
 export type { DrawClaim, ClaimResult } from './game.js';
 export type { MatingPossibility } from './mating.js';

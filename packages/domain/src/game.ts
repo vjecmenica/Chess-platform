@@ -13,13 +13,20 @@ export type GameResult =
 
 export type GameSnapshot = { readonly position: PositionSnapshot } & (
   | { readonly status: 'active'; readonly result: null; readonly drawOffer: Side | null }
-  | { readonly status: 'finished'; readonly result: GameResult; readonly drawOffer: null }
+  | { readonly status: 'pending_adjudication'; readonly result: null; readonly drawOffer: null;
+      readonly pending: { readonly kind: 'resignation'; readonly resigningSide: Side } }
+  | { readonly status: 'finished'; readonly result: GameResult; readonly drawOffer: null;
+      readonly adjudication?: ResignationRuling }
 );
 
 export type GameRejection =
   | 'game_finished' | 'invalid_side' | 'draw_too_early'
   | 'draw_offer_pending' | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
-  | 'adjudication_required';
+  | 'adjudication_pending' | 'no_pending_resignation' | 'invalid_ruling';
+
+export type ResignationRuling =
+  | { readonly verdict: 'mate_possible'; readonly mateLine: readonly Omit<MoveRequest, 'side'>[] }
+  | { readonly verdict: 'mate_impossible'; readonly reviewerId: string; readonly evidenceReference: string };
 
 export interface DrawClaim extends SideCommand {
   readonly rule: 'threefold_repetition' | 'fifty_move';
@@ -45,6 +52,7 @@ export interface ChessGame {
   claimDraw(command: DrawClaim): ClaimResult;
   submitMove(request: MoveRequest): GameMoveResult;
   resign(command: SideCommand): CommandResult;
+  resolveResignation(ruling: ResignationRuling): CommandResult;
   offerDraw(command: SideCommand): CommandResult;
   acceptDraw(command: SideCommand): CommandResult;
   declineDraw(command: SideCommand): CommandResult;
@@ -56,7 +64,9 @@ const messages: Record<GameRejection, string> = {
   draw_too_early: 'Both sides must make a move before a draw can be agreed.',
   invalid_claim: 'Choose threefold_repetition or fifty_move as the claim rule.',
   claim_not_available: 'The specified position does not meet the claimed draw threshold.',
-  adjudication_required: 'Mating possibility is unresolved; the result needs adjudication.',
+  adjudication_pending: 'The accepted resignation is awaiting adjudication.',
+  no_pending_resignation: 'There is no resignation awaiting adjudication.',
+  invalid_ruling: 'Provide a legal mate line or a reviewed impossibility ruling with an evidence reference.',
   draw_offer_pending: 'Respond to the pending draw offer before making another.',
   no_draw_offer: 'There is no pending draw offer.',
   own_draw_offer: 'Only the opponent can respond to your draw offer.',
@@ -75,22 +85,33 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   const board = createPositionAdapter(startingFen);
   const position = board.position;
   let result: GameResult | null = null;
+  let pendingResignation: Side | null = null;
+  let adjudication: ResignationRuling | null = null;
   let drawOffer: Side | null = null;
   let ply = 0;
   const occurrences = new Map([[board.repetitionKey(), 1]]);
 
-  const getState = (): GameSnapshot => result === null
-    ? { status: 'active', result: null, drawOffer, position: position.getPosition() }
-    : { status: 'finished', result: { ...result }, drawOffer: null, position: position.getPosition() };
+  const getState = (): GameSnapshot => {
+    if (result !== null) return { status: 'finished', result: { ...result }, drawOffer: null,
+      ...(adjudication === null ? {} : { adjudication: adjudication.verdict === 'mate_possible'
+        ? { verdict: 'mate_possible' as const, mateLine: adjudication.mateLine.map(move => ({ ...move })) }
+        : { ...adjudication } }), position: position.getPosition() };
+    if (pendingResignation !== null) return { status: 'pending_adjudication', result: null,
+      drawOffer: null, pending: { kind: 'resignation', resigningSide: pendingResignation },
+      position: position.getPosition() };
+    return { status: 'active', result: null, drawOffer, position: position.getPosition() };
+  };
 
   function validate(command: SideCommand): Rejected<GameRejection> | undefined {
     if (result !== null) return reject('game_finished');
+    if (pendingResignation !== null) return reject('adjudication_pending');
     if (command.side !== 'white' && command.side !== 'black') return reject('invalid_side');
     return undefined;
   }
 
   function finish(finalResult: GameResult): void {
     result = finalResult;
+    pendingResignation = null;
     drawOffer = null;
   }
 
@@ -161,10 +182,52 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       if (rejection) return rejection;
       const winner = command.side === 'white' ? 'black' : 'white';
       const possibility = board.matingPossibility(winner);
-      if (possibility === 'unresolved') return reject('adjudication_required');
+      if (possibility === 'unresolved') {
+        pendingResignation = command.side;
+        drawOffer = null;
+        return { accepted: true, game: getState() };
+      }
       finish(possibility === 'impossible'
         ? { outcome: 'draw', reason: 'resignation_no_mating_possibility' }
         : { outcome: 'win', winner, reason: 'resignation' });
+      return { accepted: true, game: getState() };
+    },
+    resolveResignation(ruling) {
+      if (result !== null) return reject('game_finished');
+      if (pendingResignation === null) return reject('no_pending_resignation');
+      if (!ruling || typeof ruling !== 'object') return reject('invalid_ruling');
+      const winner = pendingResignation === 'white' ? 'black' : 'white';
+      if (ruling.verdict === 'mate_possible') {
+        if (!Array.isArray(ruling.mateLine) || ruling.mateLine.length === 0 || ruling.mateLine.length > 256) {
+          return reject('invalid_ruling');
+        }
+        const replay = createGameFromPosition(startingFen);
+        for (const move of position.getHistory()) {
+          const response = replay.submitMove(move);
+          if (!response.accepted) return reject('invalid_ruling');
+        }
+        for (const move of ruling.mateLine) {
+          if (!move || typeof move !== 'object') return reject('invalid_ruling');
+          const response = replay.submitMove({ ...move, side: replay.getState().position.sideToMove });
+          if (!response.accepted) return reject('invalid_ruling');
+        }
+        const replayResult = replay.getState().result;
+        if (replayResult?.outcome !== 'win' || replayResult.reason !== 'checkmate'
+          || replayResult.winner !== winner) return reject('invalid_ruling');
+        finish({ outcome: 'win', winner, reason: 'resignation' });
+        adjudication = { verdict: 'mate_possible', mateLine: ruling.mateLine.map(move => ({
+          from: move.from, to: move.to, ...(move.promotion === undefined ? {} : { promotion: move.promotion }),
+        })) };
+      } else if (ruling.verdict === 'mate_impossible') {
+        if (typeof ruling.reviewerId !== 'string' || !ruling.reviewerId.trim()
+          || typeof ruling.evidenceReference !== 'string' || !ruling.evidenceReference.trim()) {
+          return reject('invalid_ruling');
+        }
+        // This branch is a trusted adjudicator's attestation, not a domain proof.
+        finish({ outcome: 'draw', reason: 'resignation_no_mating_possibility' });
+        adjudication = { verdict: 'mate_impossible', reviewerId: ruling.reviewerId.trim(),
+          evidenceReference: ruling.evidenceReference.trim() };
+      } else return reject('invalid_ruling');
       return { accepted: true, game: getState() };
     },
     offerDraw(command) {

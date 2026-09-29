@@ -19,7 +19,7 @@ These are the product's explicit assignments for all 16 time controls. Do not su
 
 ### Results and draws
 
-The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, and threefold/50-move claims. Intended-move claims do not play the move. Proven dead positions draw automatically. Resignation uses a three-answer mating check: proven impossible, proven possible, or unresolved. An unresolved resignation cannot set a final result. The [game rules](game-rules.md) describe current behavior; the [adjudication decision](adjudication-design.md) specifies the server procedure for claims, flags, and unresolved cases. A finished game rejects all further commands.
+The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, and threefold/50-move claims. Intended-move claims do not play the move. Proven dead positions draw automatically. Resignation uses a three-answer mating check: proven impossible, proven possible, or unresolved. An unresolved resignation is accepted and freezes the game without a final result until a supported ruling is supplied. The [game rules](game-rules.md) describe current behavior; the [adjudication decision](adjudication-design.md) specifies the server procedure for claims, flags, and unresolved cases. Finished and pending games reject further player commands.
 
 ### Ratings and matchmaking
 
