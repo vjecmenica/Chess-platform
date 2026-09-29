@@ -73,11 +73,11 @@ AI will later explain positions using engine findings. Any chess line it propose
 
 ## Interface
 
-The board is the main element. Keep clocks, the side to move, the result, and connection status easy to read, without unnecessary animations. UI copy is English, as is all other repository content. The board component, mobile layout, keyboard access, colors, and asset licenses remain to be chosen.
+The board is the main element. Keep clocks, the side to move, the result, and connection status easy to read, without unnecessary animations. The current preview uses a small FEN-rendered board with Unicode pieces, seat orientation, keyboard-focusable squares, and a promotion choice. It prominently says that clocks are absent. Review mobile and keyboard behavior, colors, and piece glyph support before public release. UI copy is English, as is all other repository content.
 
 ## First playable milestone
 
-Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current server already creates a game on acceptance and saves legal HTTP moves with version checks and retry receipts. That route has no authoritative clock, deadlines, live updates, or replay interface, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
+Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, polling, and saved history. It has no authoritative clock, deadlines, live push, or move-by-move replay controls, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
 
 Acceptance criteria:
 
@@ -100,7 +100,7 @@ Acceptance criteria:
 
 **Game rules and time.** The [adjudication decision](adjudication-design.md) sets claim penalties, offers, forced intended moves, receipt ordering, and the flag-fall boundary. For the first 5+3 game, the clock starts when both authorized seats confirm readiness; White is charged from the second confirmation. An accepted move stops its mover's clock at server receipt and starts the other clock at confirmation, with one increment. Resignation, completion, or pending adjudication stops both. The domain has this in-memory clock and timeout boundary, but durable receipts, a background worker for pending results, and claim penalties still need implementation before timed play is enabled. Handling a missing first move, client disconnects, server outages, and latency still needs selection. Keeping clocks running during client disconnects and omitting latency compensation remain proposals. A server outage needs its own policy: continue charging time, pause it, or abort/void the game.
 
-**Board and access needs.** Choose the board component and piece assets with their licenses, then agree on mobile and keyboard behavior. A responsive board and visible keyboard focus are proposed defaults. English copy is already agreed.
+**Board and access needs.** The preview uses native buttons and Unicode pieces, with no external board package or asset license. Validate screen-reader, keyboard, touch, and glyph behavior in two-browser testing, then decide whether this board needs a dedicated component or other piece assets. English copy is already agreed.
 
 ### Before the relevant feature
 
