@@ -1,6 +1,6 @@
 # Game results and draw policy
 
-The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, and clock/arbiter procedures are not implemented.
+The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, and only the first 5+3 clock boundary is implemented; timeout results and claim penalties are not.
 
 ## Implemented lifecycle
 
@@ -47,12 +47,12 @@ Both sides must be proven unable to mate for an automatic dead-position result. 
 
 **Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify either a resignation win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation can wait indefinitely at this stage because there is no server reviewer, durable queue, or complete proof engine. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
 
-## Work required before clocks
+## Work remaining for timed play
 
 The requested repetition thresholds and successful-claim behavior are implemented. The [online claim and clock decision](adjudication-design.md#incorrect-claims-online) specifies the remaining procedure:
 
 - Pause a valid claim at server receipt. An incorrect threshold claim adds the applicable time penalty, creates a draw offer, and commits its legal intended move if supplied. The current domain rejects such a claim unchanged because it has no clock or durable command receipt yet.
-- Use the same three-answer mating decision for the 6.9 timeout exception. An unresolved timeout needs adjudication; it cannot become a win by default.
-- Apply the selected receipt/deadline ordering and claim pause in the clock step. Choose server-outage recovery separately in the [architecture](architecture.md#clocks-and-recovery).
+- The 5+3 clock wrapper already stamps commands, orders them, charges accepted moves, and freezes at flag fall. Use the same three-answer mating decision for the 6.9 timeout exception; a flag currently has no final result. An unresolved timeout needs adjudication and cannot become a win by default.
+- Make command receipts and clocks durable, then implement the selected claim pause and time bonus. Choose server-outage recovery separately in the [architecture](architecture.md#clocks-and-recovery).
 
-Arbiter intervention, paper notation, and touch-move procedures are not simulated. The domain checks commands synchronously; the future server must serialize them and provide durable request receipts. No clock, transport, or persistence has been added here.
+Arbiter intervention, paper notation, and touch-move procedures are not simulated. The clock boundary has an in-memory FIFO queue, but the future server must authorize and serialize commands with durable request receipts. There is no transport or game persistence yet.

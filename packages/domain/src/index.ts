@@ -11,3 +11,6 @@ export type { DrawClaim, ClaimResult } from './game.js';
 export type { MatingPossibility } from './mating.js';
 export { findResignationMateWitness } from './mate-search.js';
 export type { MateLine, MateSearchBudget, MateSearchResult } from './mate-search.js';
+export { createTimedGame, FIVE_PLUS_THREE } from './timed-game.js';
+export type { TimedGame, TimedGameSnapshot, MonotonicTimeSource, ClockSnapshot, ClockReceipt,
+  ClockEnqueueResult, ClockCommandResolution, ClockCommandOutcome } from './timed-game.js';
