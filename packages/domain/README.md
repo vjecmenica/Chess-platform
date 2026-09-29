@@ -74,7 +74,22 @@ An invalid side, wrong turn, unknown rule (`invalid_claim`), invalid intended mo
 
 `getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation checks only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-and-resignation) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations.
 
-An accepted unresolved resignation stops all player commands. `resolveResignation({ verdict: 'mate_possible', mateLine })` checks a legal line from the frozen position through checkmate by the opponent, including earlier automatic-result checks. `resolveResignation({ verdict: 'mate_impossible', reviewerId, evidenceReference })` records a trusted reviewer's attestation of a complete no-mate proof and finishes as a draw. Invalid rulings leave the pending state unchanged. The domain cannot verify an external impossibility proof or authorize a reviewer; only a trusted server adjudication path may call this method, and it must retain the proof behind the reference. The [online decision](../../docs/adjudication-design.md) specifies the remaining server work. There is no server reviewer yet, so a pending game can remain pending indefinitely.
+An accepted unresolved resignation stops all player commands. `resolveResignation({ verdict: 'mate_possible', mateLine })` checks a legal line from the frozen position through checkmate by the opponent, including earlier automatic-result checks. Invalid lines leave the pending state unchanged. There is no external no-mate ruling command: a reviewer ID or evidence string alone cannot approve a draw. Positions that the built-in detector proves impossible still draw immediately on resignation. Other no-mate cases remain pending until a future implementation can validate a complete proof. The [online decision](../../docs/adjudication-design.md) specifies the remaining server work.
+
+Call `findResignationMateWitness(game, { maxDepth?, maxNodes? })` **after** a resignation has entered `pending_adjudication`, from a worker rather than a move handler. It tries replay-verified opening witnesses and then a deterministic, cooperative legal-move search. The defaults are seven plies and 5,000 visited positions; hard limits are eight plies and 20,000 positions. Seed-line positions count toward that budget. A `found` result contains a mate line and node count. An `unresolved` result identifies `not_pending`, `depth_exhausted`, or `budget_exhausted`; none proves mate impossible. Search never changes the game. `verifyResignationMateLine(line)` is a read-only check; `resolveResignation` verifies again before changing the result.
+
+```ts
+import { createGame, findResignationMateWitness } from '@chess/domain';
+
+const game = createGame();
+game.resign({ side: 'white' });
+const search = findResignationMateWitness(game);
+if (search.status === 'found') {
+  game.resolveResignation({ verdict: 'mate_possible', mateLine: search.mateLine });
+}
+```
+
+This example is an in-memory domain flow. The server still needs authorized sessions, game persistence, a serialized command queue, and a separate worker to save an accepted resignation and its verified final result safely.
 
 `createGame()` still starts only from the standard position. The internal FEN fixture factory is not part of the package API and cannot restore repetition history; production restoration will need the complete move history.
 
@@ -87,4 +102,4 @@ npm test -- packages/domain/test
 npm run check
 ```
 
-Move-validation and original lifecycle fixtures use legal sequences from the standard start. Focused rule tests also use internal FEN fixtures to isolate counters, material, and repetition rights without adding public custom-game setup. Tests cover normal moves, turn order, king safety, castling and lost rights, en passant and its expiry, all four promotion choices, replay history, and unchanged state after rejection. Lifecycle tests cover both colors delivering mate, stalemate, resignation, agreement, draw-offer lifetime, invalid commands, terminal retries, and unchanged state after rejection. Draw-rule tests cover claim and automatic thresholds, intended moves, repetition identity, counter resets, mate precedence, closed pawn positions, resignation exceptions, and cases where cooperative mate remains possible. They need no database, network service, or clock.
+Move-validation and original lifecycle fixtures use legal sequences from the standard start. Focused rule tests also use internal FEN fixtures to isolate counters, material, and repetition rights without adding public custom-game setup. Tests cover normal moves, turn order, king safety, castling and lost rights, en passant and its expiry, all four promotion choices, replay history, and unchanged state after rejection. Lifecycle tests cover both colors delivering mate, stalemate, resignation, agreement, draw-offer lifetime, invalid commands, terminal retries, and unchanged state after rejection. Draw-rule tests cover claim and automatic thresholds, intended moves, repetition identity, counter resets, mate precedence, closed pawn positions, resignation exceptions, and cases where cooperative mate remains possible. Search tests cover both colors from the start, a developed position, invalid witnesses, and budget exhaustion. They need no database, network service, or clock.

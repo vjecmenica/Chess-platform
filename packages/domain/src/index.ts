@@ -9,3 +9,5 @@ export type {
 } from './game.js';
 export type { DrawClaim, ClaimResult } from './game.js';
 export type { MatingPossibility } from './mating.js';
+export { findResignationMateWitness } from './mate-search.js';
+export type { MateLine, MateSearchBudget, MateSearchResult } from './mate-search.js';

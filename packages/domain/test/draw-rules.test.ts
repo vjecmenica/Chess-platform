@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, type ChessGame, type DrawClaim } from '../src/index.js';
+import { createGame, type ChessGame, type DrawClaim, type ResignationRuling } from '../src/index.js';
 import { createGameFromPosition } from '../src/game.js';
 import { createPositionAdapter } from '../src/position.js';
 
@@ -340,10 +340,6 @@ describe('mating possibility and dead positions', () => {
     expect(game.getState().position).toEqual(position);
     expect(game.getHistory()).toEqual(history);
     unchanged(game, () => game.submitMove({ side: 'white', from: 'g1', to: 'f3' }), 'adjudication_pending');
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_impossible', reviewerId: '',
-      evidenceReference: 'case-1' }), 'invalid_ruling');
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_impossible', reviewerId: 'reviewer-1',
-      evidenceReference: ' ' }), 'invalid_ruling');
     const mateLine = ['f1c4', 'b8c6', 'd1h5', 'g8f6', 'h5f7']
       .map(uci => ({ from: uci.slice(0, 2), to: uci.slice(2) }));
     expect(game.resolveResignation({ verdict: 'mate_possible', mateLine })).toMatchObject({ accepted: true,
@@ -357,19 +353,16 @@ describe('mating possibility and dead positions', () => {
       'no_pending_resignation');
   });
 
-  it('accepts a reviewed no-mate ruling for a closed pawn wall outside the current detector', () => {
+  it('does not turn an unsupported no-mate claim into a draw', () => {
     // Every file has opposed pawns on ranks four and five. Kings and bishops stay behind their own wall.
     const game = createGameFromPosition('b6k/8/8/pppppppp/PPPPPPPP/8/8/B3K3 w - - 0 1');
     expect(game.getState().status).toBe('active');
     expect(game.getMatingPossibility('black')).toBe('unresolved');
     expect(game.resign({ side: 'white' }).accepted).toBe(true);
-    expect(game.resolveResignation({ verdict: 'mate_impossible', reviewerId: 'reviewer-1',
-      evidenceReference: 'closed-wall-proof-1' })).toMatchObject({ accepted: true,
-      game: { status: 'finished', result: { outcome: 'draw', reason: 'resignation_no_mating_possibility' },
-        adjudication: { verdict: 'mate_impossible', reviewerId: 'reviewer-1',
-          evidenceReference: 'closed-wall-proof-1' } } });
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_impossible', reviewerId: 'reviewer-1',
-      evidenceReference: 'closed-wall-proof-1' }), 'game_finished');
+    const unsupported = { verdict: 'mate_impossible', reviewerId: 'reviewer-1',
+      evidenceReference: 'closed-wall-proof-1' } as unknown as ResignationRuling;
+    unchanged(game, () => game.resolveResignation(unsupported), 'invalid_ruling');
+    expect(game.getState()).toMatchObject({ status: 'pending_adjudication', result: null });
   });
 });
 
