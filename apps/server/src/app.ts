@@ -1,7 +1,10 @@
 import Fastify from 'fastify';
+import type pg from 'pg';
 import type { ReadinessResponse } from '@chess/contracts';
+import { registerChallengeRoutes } from './challenge-routes.js';
 
-export function buildApp(checkDatabase: () => Promise<void>, logger = false) {
+export function buildApp(checkDatabase: () => Promise<void>, logger = false,
+  challenges?: { pool: pg.Pool; secureCookies: boolean }) {
   const app = Fastify({ logger });
 
   app.get('/health', async () => ({ status: 'ok' }));
@@ -14,6 +17,8 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false) {
       return reply.code(503).send({ status: 'error', database: 'unavailable' });
     }
   });
+
+  if (challenges) registerChallengeRoutes(app, challenges.pool, challenges.secureCookies);
 
   return app;
 }

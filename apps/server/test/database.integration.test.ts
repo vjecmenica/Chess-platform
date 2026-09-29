@@ -6,6 +6,7 @@ import { databaseUrl, loadEnvironment } from '../src/config.js';
 import { checkDatabase, createPool } from '../src/database.js';
 import { migrate, migrationDirectory } from '../src/migrations.js';
 import { buildApp } from '../src/app.js';
+import { checkChallengeSchema } from '../src/challenge-routes.js';
 
 it('connects, migrates once, detects drift, rolls back failed SQL, and serves readiness', async () => {
   loadEnvironment();
@@ -15,6 +16,7 @@ it('connects, migrates once, detects drift, rolls back failed SQL, and serves re
   try {
     await checkDatabase(pool);
     await migrate(pool);
+    await checkChallengeSchema(pool);
     expect(await migrate(pool)).toEqual([]);
     expect((await pool.query("SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'chess'")).rowCount).toBe(1);
     expect((await app.inject('/health/ready')).statusCode).toBe(200);

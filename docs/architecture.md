@@ -1,6 +1,6 @@
 # Architecture
 
-The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries. Secure guest sessions and a casual 5+3 challenge are the chosen first playable scope. The development environment provides setup, a web page, health checks, and migrations. The domain package implements move validation, replay history, game results, and an in-memory 5+3 clock behind a chess.js adapter. Live protocols, durable clocks, sessions, analysis, and scaling designs below remain proposals for their later steps. See the [specification](product-spec.md) and [roadmap](roadmap.md) for scope and order.
+The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries. The first playable scope is a casual 5+3 challenge with guest sessions. The server now persists guest identity and seat reservations, while the domain implements move validation, replay history, results, and an in-memory clock. Live protocols, durable game state, analysis, and scaling designs below remain proposals for their later steps. See the [specification](product-spec.md) and [roadmap](roadmap.md) for scope and order.
 
 ## Start with one game server
 
@@ -23,11 +23,11 @@ The setup supports Node.js 22.12+ in the 22.x line or 24.x LTS, uses PostgreSQL 
 
 ### What the development setup implements
 
-The web page calls `/api/health/ready` through Vite's local proxy. Fastify exposes `/health` for liveness and `/health/ready` for a fresh `SELECT 1` database probe, returning 503 when that probe fails. Readiness measures connectivity, not whether migrations are current. Startup validates the root `.env` configuration and connects to PostgreSQL before opening the HTTP port. Connection and query timeouts keep failures bounded, errors omit database credentials, and shutdown closes the pool.
+Vite proxies `/api` calls to Fastify. Fastify exposes `/health` for liveness and `/health/ready` for a fresh `SELECT 1` database probe, returning 503 when that probe fails. Readiness measures connectivity, not migration currency. Startup validates the root `.env`, connects to PostgreSQL, and checks the guest/challenge tables before opening the HTTP port. Connection and query timeouts keep failures bounded, errors omit database credentials, and shutdown closes the pool.
 
-`npm run db:migrate` applies numbered SQL files under a transaction-scoped advisory lock. `public.schema_migrations` records each filename, checksum, and application time. Applied files cannot change or disappear, and new versions must follow existing ones. The whole pending batch commits or rolls back together. The initial migration creates only the empty `chess` schema. Migration files must ship with the server; schema changes are explicit commands, never an automatic side effect of starting an app.
+`npm run db:migrate` applies numbered SQL files under a transaction-scoped advisory lock. `public.schema_migrations` records each filename, checksum, and application time. Applied files cannot change or disappear, and new versions must follow existing ones. The whole pending batch commits or rolls back together. Migration 001 creates the `chess` schema; 002 adds guest sessions and challenges. Migration files must ship with the server; schema changes are explicit commands, never an automatic side effect of starting an app.
 
-The shared packages build before their consumers. Contracts currently share only a readiness response type. The domain package owns move validation, results, and the in-memory clock, and depends only on chess.js at runtime. Vitest exercises domain, configuration, and HTTP behavior without a database; a separate integration command requires a disposable PostgreSQL database and checks migrations, rollback, and live readiness. No database-backed success is claimed until that command runs against PostgreSQL.
+The shared packages build before their consumers. Contracts share readiness, guest-session, and challenge response types. The domain package owns move validation, results, and the in-memory clock, and depends only on chess.js at runtime. Vitest exercises domain, configuration, and health behavior without a database; `npm run test:db` uses a disposable PostgreSQL database for migrations, rollback, guest ownership, concurrent acceptance, and access control.
 
 ## Responsibilities and dependencies
 
@@ -49,7 +49,13 @@ This diagram describes the later application, not features already implemented. 
 - `packages/domain` contains the chess adapter, position snapshots, ordered move history, game lifecycle, and a transport-free 5+3 clock owner. It has no browser, network, or database dependency. Clock tests inject a monotonic time source.
 - `packages/contracts` contains versioned command/event schemas and shared types. It contains no secrets and does not make client input trustworthy.
 
-Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The setup makes these real workspaces. The domain API is documented in its [package guide](../packages/domain/README.md); contracts still describe only health responses. `createPosition()` keeps the chess.js instance private. Move requests identify a side and coordinates; legal candidates are checked before any state change. Missing promotion choices return a specific rejection, and accepted moves record SAN, UCI, and before/after FEN. Returned snapshots and history are detached copies. Side validation is turn checking, not authentication; a later server must derive the side from its authorized session.
+Both apps use the contracts; the server uses the domain. If the client later uses domain code to highlight possible moves, the server still independently validates every command. The domain API is documented in its [package guide](../packages/domain/README.md). `createPosition()` keeps the chess.js instance private. Move requests identify a side and coordinates; legal candidates are checked before any state change. Missing promotion choices return a specific rejection, and accepted moves record SAN, UCI, and before/after FEN. Returned snapshots and history are detached copies. Side validation is turn checking, not authentication; future game routes must derive the side from a guest's persisted seat.
+
+### Current guest and challenge boundary
+
+`GET /guest-session` creates or restores a guest. The browser receives a random 256-bit token in an HttpOnly, SameSite=Lax cookie; PostgreSQL stores only its SHA-256 hash and a 30-day expiry. The endpoint returns a separate CSRF token to same-origin JavaScript. Challenge writes require that token in `X-CSRF-Token`. Local loopback HTTP omits the cookie's `Secure` flag; production mode or a non-loopback bind sets it, so deployment must use HTTPS and keep web/API requests on one origin. The server does not enable cross-origin reads.
+
+`POST /challenges` requires a UUID `Idempotency-Key`. A unique `(creator_guest_id, create_request_id)` constraint returns the same challenge on a retry, even under concurrent requests. The creator owns White. `POST /challenges/:id/accept` atomically fills Black only while it is empty and only for another guest. A same-guest retry returns the accepted summary; a competing guest receives a conflict. The random challenge UUID is the shareable link: any authenticated guest holding an open link can see its limited summary and try to accept. Once filled, only the two seat owners can read it. Responses contain occupancy and the caller's seat, never guest IDs or session tokens. No game row, readiness state, or live move route exists yet. Add invitation expiry/revocation and guest recovery before treating these sessions as durable player accounts.
 
 ### Current game boundary
 
@@ -91,8 +97,8 @@ A client disconnect would not pause the clock under the proposal. On reconnect, 
 
 The proposed data model separates the game history from the information needed to authorize and recover commands:
 
-- **Identity and session:** guest or registered identity, expiry, and access rights. A public game ID does not grant permission to play.
-- **Challenge:** creator, time control, rated status, state, expiry, and invitation token. Acceptance is atomic and one-time.
+- **Identity and session:** the current guest token hash and expiry, with registered identity and recovery later. A public game ID will not grant permission to play.
+- **Challenge:** the current creator and acceptor seats, fixed casual 5+3 terms, and create request ID. Acceptance is atomic. Expiry, revocation, and a separate invitation token remain future choices.
 - **Game:** both players and colors, status, starting FEN, time control and explicit rating pool, rated status, rules/state versions, clocks and time reference, result/reason, and start/end times. Add an optional tournament reference later.
 - **Move:** game ID, half-move number (`ply`), UCI move including promotion, SAN, server time, clocks after the move, and optionally FEN. Enforce a unique `(gameId, ply)` pair.
 - **Command receipt:** actor, request ID, payload fingerprint, outcome, and resulting version. A uniqueness constraint makes retry handling durable.
@@ -131,7 +137,7 @@ Select and test the Swiss implementation against the rules we choose; do not cla
 
 ## Security and operation
 
-Authorize every command, not just the initial connection. Bind a session to its seat, use unpredictable invitation tokens with limited lifetimes, and accept each invitation atomically. The proposed session mechanism is HttpOnly/Secure/SameSite cookies over HTTPS/WSS, with WebSocket origin checks and CSRF protection for HTTP commands. Limit message size and frequency and the number of open challenges. Keep secrets and tokens out of logs and Git; `.env` remains local.
+Authorize every command, not just the initial connection. The current challenge routes derive guest identity from an HttpOnly cookie, require a CSRF token for writes, reject client-supplied seat bodies, and use a random link plus atomic acceptance. Production cookies require HTTPS. Later live routes must bind that identity to a seat on every command, add WebSocket origin checks if that transport is chosen, and limit request size, frequency, and open challenges. Invitation expiry and revocation are still open. Keep secrets and tokens out of logs and Git; `.env` remains local.
 
 The proposed deployment is a static web client, one long-running server behind a WebSocket-capable proxy, and PostgreSQL with backups. Avoid hosting that sleeps the game process or cuts active connections. Drain before deployment by stopping new challenges and letting games finish, or apply the agreed outage policy. Adding replicas is not enough to make game ownership safe.
 

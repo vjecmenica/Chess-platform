@@ -1,16 +1,20 @@
 import { buildApp } from './app.js';
 import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
+import { checkChallengeSchema } from './challenge-routes.js';
 
 async function main() {
   loadEnvironment();
   const config = readConfig();
   const pool = createPool(config.connectionString);
-  const app = buildApp(() => checkDatabase(pool), true);
+  const secureCookies = process.env.NODE_ENV === 'production'
+    || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
+  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies });
   app.addHook('onClose', async () => pool.end());
 
   try {
     await checkDatabase(pool);
+    await checkChallengeSchema(pool);
   } catch (error) {
     await app.close();
     throw error;
