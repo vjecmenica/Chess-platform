@@ -24,17 +24,17 @@ Only the side to move can claim threefold repetition or 50 moves by each side wi
 
 A successful claim ends the game immediately without playing the intended move. Board, turn, and move history remain at the position before the claim; the result reason identifies the claim. A legal intended move is required even when the current position would already qualify. Claims do not wait for opponent consent.
 
-Invalid claims leave everything unchanged, including repetition counts and pending offers. No claim availability is inferred from chess.js's aggregate game-over or draw helpers.
+In the current domain-only API, invalid claims leave everything unchanged, including repetition counts and pending offers. The future clock procedure handles an incorrect, otherwise valid claim differently, as specified in the [adjudication decision](adjudication-design.md#incorrect-claims-online). No claim availability is inferred from chess.js's aggregate game-over or draw helpers.
 
 ## Offers and agreement
 
-An offer is separate from a claim. It may be sent outside the player's turn, even before both players have moved. Acceptance requires at least one played move by each side. Only the recipient may accept or decline. A second or crossed offer is rejected; the recipient must explicitly accept instead. Offers cannot be withdrawn.
+The current domain has separate offer and claim commands. An explicit offer may be sent outside the player's turn, even before both players have moved. Acceptance requires at least one played move by each side. Only the recipient may accept or decline. A second or crossed explicit offer is rejected; the recipient must explicitly accept instead. Offers cannot be withdrawn. The future online procedure also treats an incorrect claim as an offer and will support offers from both sides at once.
 
 An offer survives the sender's moves. It ends on recipient acceptance, explicit decline, the recipient's accepted move, or any game result. Rejected moves do not decline an offer. This maps physical piece-touching to an accepted online move; selecting a piece has no domain effect. Tournament restrictions and repeated-offer moderation belong to later steps.
 
 ## Mating possibility and resignation
 
-Resignation draws when the opponent is proven unable to mate; otherwise it awards the opponent a win. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. Its results are `impossible` and `not_ruled_out`; the latter is not a proof that mate is reachable or forceable.
+Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. It returns `impossible`, `possible`, or `unresolved`. The current positive proof is a legal checkmate on the next move by that side. If the answer is unresolved, `resign` returns `adjudication_required` without changing the game. The [adjudication decision](adjudication-design.md) defines the server review path before live play.
 
 The detector proves impossibility for:
 
@@ -45,15 +45,14 @@ The detector proves impossibility for:
 
 Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
 
-**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `not_ruled_out`. This avoids false draws, but can miss a dead position or a resignation draw exception. Complete reachability adjudication is intentionally deferred; resolve that limitation before claiming full compliance or enabling public competitive play. Ordinary engine evaluations and force-mate tablebase scores are not substitutes for cooperative mate reachability.
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify either a resignation win or a draw. The game may miss an automatic dead position until a complete proof or adjudicator resolves it. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
 
-## Decisions required before clocks
+## Work required before clocks
 
-The requested repetition thresholds and successful-claim behavior are now implemented, not proposals. Remaining work is:
+The requested repetition thresholds and successful-claim behavior are implemented. The [online claim and clock decision](adjudication-design.md#incorrect-claims-online) specifies the remaining procedure:
 
-- Integrate claim evaluation with authoritative time and command ordering, including claims or agreement racing expiry. FIDE 9.5 pauses time for adjudication and adds two minutes to the opponent after an incorrect claim. No time change exists yet.
-- Decide the online handling of FIDE 9.1.2.3 (a claim also being an offer) and 9.5.3 (playing the indicated move after an incorrect claim). To honor atomic rejection now, a rejected claim neither creates an offer nor commits or binds a move. A later penalty procedure must be explicit rather than silently changing rejection semantics.
-- Reuse the mating check for the 6.9 timeout exception, while addressing its documented incomplete coverage. Do not turn `not_ruled_out` into a claim of proven mating possibility.
-- Set clock start, deadline boundaries, increment, disconnect, and server-outage behavior in the [architecture](architecture.md#clocks-and-recovery).
+- Pause a valid claim at server receipt. An incorrect threshold claim adds the applicable time penalty, creates a draw offer, and commits its legal intended move if supplied. The current domain rejects such a claim unchanged because it has no clock or durable command receipt yet.
+- Use the same three-answer mating decision for the 6.9 timeout exception. An unresolved timeout needs adjudication; it cannot become a win by default.
+- Apply the selected receipt/deadline ordering and claim pause in the clock step. Choose server-outage recovery separately in the [architecture](architecture.md#clocks-and-recovery).
 
 Arbiter intervention, paper notation, and touch-move procedures are not simulated. The domain checks commands synchronously; the future server must serialize them and provide durable request receipts. No clock, transport, or persistence has been added here.

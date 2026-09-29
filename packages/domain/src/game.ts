@@ -18,7 +18,8 @@ export type GameSnapshot = { readonly position: PositionSnapshot } & (
 
 export type GameRejection =
   | 'game_finished' | 'invalid_side' | 'draw_too_early'
-  | 'draw_offer_pending' | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available';
+  | 'draw_offer_pending' | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
+  | 'adjudication_required';
 
 export interface DrawClaim extends SideCommand {
   readonly rule: 'threefold_repetition' | 'fifty_move';
@@ -55,6 +56,7 @@ const messages: Record<GameRejection, string> = {
   draw_too_early: 'Both sides must make a move before a draw can be agreed.',
   invalid_claim: 'Choose threefold_repetition or fifty_move as the claim rule.',
   claim_not_available: 'The specified position does not meet the claimed draw threshold.',
+  adjudication_required: 'Mating possibility is unresolved; the result needs adjudication.',
   draw_offer_pending: 'Respond to the pending draw offer before making another.',
   no_draw_offer: 'There is no pending draw offer.',
   own_draw_offer: 'Only the opponent can respond to your draw offer.',
@@ -107,7 +109,7 @@ export function createGameFromPosition(startingFen: string): ChessGame {
     const next = position.getPosition().sideToMove;
     if (board.isCheckmate()) finish({ outcome: 'win', winner: next === 'white' ? 'black' : 'white', reason: 'checkmate' });
     else if (board.isStalemate()) finish({ outcome: 'draw', reason: 'stalemate' });
-    else if (board.matingPossibility('white') === 'impossible' && board.matingPossibility('black') === 'impossible') {
+    else if (board.proveNoMate('white') === 'impossible' && board.proveNoMate('black') === 'impossible') {
       finish({ outcome: 'draw', reason: 'dead_position' });
     } else if (occurrences.get(board.repetitionKey())! >= 5) finish({ outcome: 'draw', reason: 'fivefold_repetition' });
     else if (board.reversiblePlies() >= 150) finish({ outcome: 'draw', reason: 'seventy_five_move' });
@@ -158,7 +160,9 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       const rejection = validate(command);
       if (rejection) return rejection;
       const winner = command.side === 'white' ? 'black' : 'white';
-      finish(board.matingPossibility(winner) === 'impossible'
+      const possibility = board.matingPossibility(winner);
+      if (possibility === 'unresolved') return reject('adjudication_required');
+      finish(possibility === 'impossible'
         ? { outcome: 'draw', reason: 'resignation_no_mating_possibility' }
         : { outcome: 'win', winner, reason: 'resignation' });
       return { accepted: true, game: getState() };

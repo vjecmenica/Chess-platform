@@ -8,7 +8,7 @@ The planned product includes rated and casual games, friend challenges, matchmak
 
 The development foundation is implemented: a React page, Fastify health endpoints, a PostgreSQL connection check, and versioned SQL migrations. The domain package validates moves, records replay history, and handles game results, repetition and move-count draws, player claims, and draw agreement. Its [result policy](docs/game-rules.md) documents online adaptations and the limits of dead-position and resignation detection. There is no playable game, session handling, account system, rating calculation, matchmaking, analysis, or tournament flow yet.
 
-The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and PostgreSQL. The first playable flow will use secure guest sessions and a casual 5+3 challenge. Clocks, complete mating-possibility detection, and server-outage handling remain open.
+The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and PostgreSQL. The first playable flow will use secure guest sessions and a casual 5+3 challenge. The [adjudication decision](docs/adjudication-design.md) sets the claim and flag-fall procedure; clocks, a review path for unresolved mate possibilities, and server-outage handling still need implementation.
 
 ## Local setup
 

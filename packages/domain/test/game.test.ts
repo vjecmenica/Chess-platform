@@ -71,15 +71,19 @@ describe('game lifecycle', () => {
     expect(game.getHistory().at(-1)?.san).toBe('Qe6');
   });
 
-  it.each(['white', 'black'] as const)('allows %s to resign regardless of turn', side => {
+  it.each([
+    { side: 'white' as const, moves: ['f2f3', 'e7e5', 'g2g4'] },
+    { side: 'black' as const, moves: ['e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6'] },
+  ])('allows $side to resign when a mate is demonstrably possible', ({ side, moves }) => {
     const game = createGame();
+    play(game, ...moves);
     const board = game.getState().position;
     expect(game.resign({ side })).toMatchObject({
       accepted: true, game: { status: 'finished', drawOffer: null,
         result: { outcome: 'win', winner: side === 'white' ? 'black' : 'white', reason: 'resignation' } },
     });
     expect(game.getState().position).toEqual(board);
-    expect(game.getHistory()).toEqual([]);
+    expect(game.getHistory()).toHaveLength(moves.length);
   });
 
   it('does not automatically finish on a threefold repetition', () => {
@@ -92,7 +96,7 @@ describe('game lifecycle', () => {
   it('returns detached state, result, and history and isolates game instances', () => {
     const game = createGame();
     const other = createGame();
-    play(game, 'e2e4');
+    play(game, 'e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6');
     const move = game.getHistory()[0]!;
     Object.assign(move, { san: 'changed', from: 'a1' });
     const response = game.resign({ side: 'black' });
@@ -102,7 +106,7 @@ describe('game lifecycle', () => {
     const snapshot = game.getState();
     Object.assign(snapshot, { status: 'active' });
     expect(game.getState()).toMatchObject({
-      status: 'finished', result: { winner: 'white' }, position: { sideToMove: 'black' },
+      status: 'finished', result: { winner: 'white' }, position: { sideToMove: 'white' },
     });
     expect(game.getState().position.fen).not.toBe('changed');
     expect(game.getHistory()[0]).toMatchObject({ san: 'e4', from: 'e2' });
@@ -195,7 +199,7 @@ const endings: { name: string; finish: (game: ChessGame) => void; result: GameRe
   { name: 'stalemate', finish: game => play(game, ...stalemateMoves),
     result: { outcome: 'draw', reason: 'stalemate' } },
   { name: 'resignation', finish: game => {
-    play(game, 'e2e4', 'e7e5');
+    play(game, 'e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     expect(game.resign({ side: 'black' }).accepted).toBe(true);
   }, result: { outcome: 'win', winner: 'white', reason: 'resignation' } },

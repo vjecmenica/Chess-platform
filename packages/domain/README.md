@@ -44,7 +44,7 @@ The position API checks legality without enforcing game status. It remains suita
 
 `submitMove({ side, from, to, promotion? })` uses the existing move rules. Success returns `{ accepted: true, move, game }`, including any result caused by the move. Resignation and offer/response commands take `{ side }` and return `{ accepted: true, game }` on success:
 
-- `resign` draws when the opponent is proven unable to mate; otherwise the opponent wins. See the detector limitations below.
+- `resign` draws when the opponent is proven unable to mate and awards a win when a legal mate witness exists. An unresolved case returns `adjudication_required` without changing the game.
 - `offerDraw` requires no pending offer and is allowed even before the first move.
 - `acceptDraw` finishes by agreement; only the recipient of a pending offer can accept, after both sides have played a move.
 - `declineDraw` clears an offer without finishing; only its recipient can decline.
@@ -72,7 +72,7 @@ if (response.accepted) console.log(response.game.result); // Draw by agreement.
 
 An invalid side, wrong turn, unknown rule (`invalid_claim`), invalid intended move (the existing move rejection reasons), or unmet threshold (`claim_not_available`) rejects without changing state or offers. A rejected claim does not bind the player to the intended move or add a draw offer. Clock penalties and the FIDE claim-as-offer procedure need explicit integration later.
 
-`getMatingPossibility(side)` returns `impossible` only for a proven case, otherwise `not_ruled_out`. Automatic dead-position draws need impossibility for both sides; resignation checks only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-and-resignation) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations. An inconclusive resignation check currently produces a win, so some FIDE draw exceptions may be missed. Do not use this as a complete competition adjudicator.
+`getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation checks only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-and-resignation) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations. An unresolved resignation is rejected unchanged until an adjudication service exists. The [online decision](../../docs/adjudication-design.md) describes that future path.
 
 `createGame()` still starts only from the standard position. The internal FEN fixture factory is not part of the package API and cannot restore repetition history; production restoration will need the complete move history.
 

@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import { matingPossibility } from './mating.js';
+import type { MatingPossibility } from './mating.js';
 
 export type Side = 'white' | 'black';
 export type Promotion = 'q' | 'r' | 'b' | 'n';
@@ -63,6 +64,20 @@ export function createPositionAdapter(startingFen = STANDARD_STARTING_FEN) {
     sideToMove: chess.turn() === 'w' ? 'white' : 'black',
   });
 
+  const proveNoMate = (side: Side): 'impossible' | 'unresolved' => {
+    const pieces = chess.board().flatMap(row => row.flatMap(piece => piece ? [{
+      side: piece.color === 'w' ? 'white' as const : 'black' as const,
+      kind: piece.type, square: piece.square,
+    }] : []));
+    const material = matingPossibility(pieces, side);
+    if (material === 'impossible') return material;
+    if (pieces.every(piece => piece.kind === 'p' || piece.kind === 'k')) {
+      lockedPawnPosition ??= proveLockedPawnPosition(chess.fen());
+      if (lockedPawnPosition) return 'impossible';
+    }
+    return 'unresolved';
+  };
+
   const position: ChessPosition = {
     getPosition,
     getHistory: () => history.map(move => ({ ...move })),
@@ -106,18 +121,15 @@ export function createPositionAdapter(startingFen = STANDARD_STARTING_FEN) {
     // chess.js normalizes en passant to a target with an actually legal capture.
     repetitionKey: () => chess.fen().split(' ').slice(0, 4).join(' '),
     reversiblePlies: () => Number(chess.fen().split(' ')[4]),
-    matingPossibility: (side: Side) => {
-      const pieces = chess.board().flatMap(row => row.flatMap(piece => piece ? [{
-        side: piece.color === 'w' ? 'white' as const : 'black' as const,
-        kind: piece.type, square: piece.square,
-      }] : []));
-      const material = matingPossibility(pieces, side);
-      if (material === 'impossible') return material;
-      if (pieces.every(piece => piece.kind === 'p' || piece.kind === 'k')) {
-        lockedPawnPosition ??= proveLockedPawnPosition(chess.fen());
-        if (lockedPawnPosition) return 'impossible';
-      }
-      return 'not_ruled_out';
+    proveNoMate,
+    matingPossibility: (side: Side): MatingPossibility => {
+      const negative = proveNoMate(side);
+      if (negative === 'impossible') return negative;
+      // An actual legal mate on the next move proves possibility, even with
+      // material that cannot force mate. Absence of one proves nothing.
+      if (getPosition().sideToMove === side && chess.moves({ verbose: true })
+        .some(move => new Chess(move.after).isCheckmate())) return 'possible';
+      return 'unresolved';
     },
     previewMove: (request: MoveRequest) => createPositionAdapter(chess.fen()).position.submitMove(request),
     isCheckmate: () => chess.isCheckmate(),

@@ -234,8 +234,8 @@ describe('mating possibility and dead positions', () => {
 
   it('keeps a blocked pawn position active when a king can eventually capture a pawn', () => {
     const game = createGameFromPosition('7k/8/8/p7/P7/8/8/4K3 w - - 0 1');
-    expect(game.getMatingPossibility('white')).toBe('not_ruled_out');
-    expect(game.getMatingPossibility('black')).toBe('not_ruled_out');
+    expect(game.getMatingPossibility('white')).toBe('unresolved');
+    expect(game.getMatingPossibility('black')).toBe('unresolved');
     expect(game.getState().status).toBe('active');
   });
 
@@ -244,7 +244,7 @@ describe('mating possibility and dead positions', () => {
     { fen: '6nk/8/6KN/8/8/8/8/8 w - - 0 1', move: 'h6f7' },
   ])('permits cooperative mate rather than testing whether mate can be forced: $move', ({ fen, move }) => {
     const game = createGameFromPosition(fen);
-    expect(game.getMatingPossibility('white')).toBe('not_ruled_out');
+    expect(game.getMatingPossibility('white')).toBe('possible');
     expect(game.getState().status).toBe('active');
     play(game, move);
     expect(game.getState().result).toEqual({ outcome: 'win', winner: 'white', reason: 'checkmate' });
@@ -269,7 +269,8 @@ describe('mating possibility and dead positions', () => {
   });
 
   it('allows a resignation win for two knights, which can possibly mate', () => {
-    const game = createGameFromPosition('4k3/8/8/8/8/8/8/1N2K1N1 b - - 0 1');
+    const game = createGameFromPosition('7k/5K2/5N2/4N3/8/8/8/8 w - - 0 1');
+    expect(game.getMatingPossibility('white')).toBe('possible');
     expect(game.resign({ side: 'black' })).toMatchObject({ accepted: true,
       game: { result: { outcome: 'win', winner: 'white', reason: 'resignation' } } });
   });
@@ -282,9 +283,19 @@ describe('mating possibility and dead positions', () => {
     const game = createGameFromPosition(fen);
     expect(game.getState().status).toBe('active');
     expect(game.getMatingPossibility('white')).toBe('impossible');
-    expect(game.getMatingPossibility('black')).toBe('not_ruled_out');
+    expect(game.getMatingPossibility('black')).toBe('unresolved');
     expect(game.resign({ side: 'black' })).toMatchObject({ accepted: true,
       game: { result: { outcome: 'draw', reason: 'resignation_no_mating_possibility' } } });
+  });
+
+  it('requires adjudication for a resignation when neither answer is proven', () => {
+    const game = createGame();
+    expect(game.getMatingPossibility('white')).toBe('unresolved');
+    expect(game.getMatingPossibility('black')).toBe('unresolved');
+    unchanged(game, () => game.resign({ side: 'white' }), 'adjudication_required');
+    unchanged(game, () => game.resign({ side: 'black' }), 'adjudication_required');
+    play(game, 'e2e4');
+    expect(game.getState().status).toBe('active');
   });
 });
 

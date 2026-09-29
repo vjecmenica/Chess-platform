@@ -1,7 +1,7 @@
 import type { Side } from './position.js';
 
-/** A negative proof, not an evaluation of whether a player can force a win. */
-export type MatingPossibility = 'impossible' | 'not_ruled_out';
+/** A proof of either answer, or an explicitly unresolved case. */
+export type MatingPossibility = 'impossible' | 'possible' | 'unresolved';
 
 interface Piece {
   readonly side: Side;
@@ -10,7 +10,7 @@ interface Piece {
 }
 
 // Sound material proofs only. Unknown fortresses must never become automatic draws.
-export function matingPossibility(pieces: readonly Piece[], side: Side): MatingPossibility {
+export function matingPossibility(pieces: readonly Piece[], side: Side): 'impossible' | 'unresolved' {
   const nonKings = pieces.filter(piece => piece.kind !== 'k');
   const own = nonKings.filter(piece => piece.side === side);
   if (own.length === 0) return 'impossible';
@@ -23,5 +23,5 @@ export function matingPossibility(pieces: readonly Piece[], side: Side): MatingP
       (piece.square.charCodeAt(0) - 97 + Number(piece.square[1]) - 1) % 2));
     if (colors.size === 1) return 'impossible';
   }
-  return 'not_ruled_out';
+  return 'unresolved';
 }

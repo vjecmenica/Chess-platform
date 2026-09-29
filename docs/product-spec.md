@@ -19,7 +19,7 @@ These are the product's explicit assignments for all 16 time controls. Do not su
 
 ### Results and draws
 
-The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, and threefold/50-move claims. Intended-move claims do not play the move. Proven dead positions draw automatically, and resignation uses the same conservative mating check intended for timeouts. That detector is incomplete; the [game rules](game-rules.md) define its exact coverage, online adaptations, and remaining clock procedures. A finished game rejects all further commands.
+The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, and threefold/50-move claims. Intended-move claims do not play the move. Proven dead positions draw automatically. Resignation uses a three-answer mating check: proven impossible, proven possible, or unresolved. An unresolved resignation cannot set a final result. The [game rules](game-rules.md) describe current behavior; the [adjudication decision](adjudication-design.md) specifies the server procedure for claims, flags, and unresolved cases. A finished game rejects all further commands.
 
 ### Ratings and matchmaking
 
@@ -84,7 +84,7 @@ Acceptance criteria:
 1. Two separate browser sessions can create and accept a challenge. A third session cannot take an occupied seat or move for either player. Simultaneous attempts to accept the link cannot create an extra participant.
 2. Both players see the same confirmed position and side to move. The server rejects illegal moves and moves from the wrong player. Tests cover castling, castling through check, en passant, promotion, and escaping check.
 3. The server measures elapsed time and adds increment exactly once per accepted move. Illegal or repeated requests cannot pause or reset a clock. Expiry is detected even if no further message arrives. Tests cover moves before, at, and after the deadline under the chosen boundary rule.
-4. Checkmate, resignation, draws, and time expiry produce a saved result and reason under the agreed rules. No moves are accepted after the game ends. Draw claims and time expiry when mate is impossible must be settled before those rules are implemented.
+4. Checkmate, resignation, draws, and time expiry produce a saved result and reason under the agreed rules. No moves are accepted after the game ends. Implement the selected [claim and adjudication procedure](adjudication-design.md) before enabling timed play; unresolved mating possibility cannot produce a final win or draw.
 5. Resending a request cannot produce a second move. After a dropped connection or page refresh, the authorized player receives the current position, version, move history, and clocks. Keeping clocks running through a client disconnect is the proposal, not an approved rule yet.
 6. Every acknowledged move survives a server restart. Failed database writes must not produce successful acknowledgments. A game can finish only once, even when requests race.
 7. A finished game can be reopened after refresh or restart. Start, previous, next, and end controls reconstruct the saved position at each half-move without changing the game.
@@ -98,7 +98,7 @@ Acceptance criteria:
 
 **Identity and access.** Secure guest sessions and a casual 5+3 challenge are chosen for the first playable flow. Session recovery, saved-game visibility, and invitation-link privacy still need design before that flow is implemented. Accounts for rated play remain the suggestion for the later rating step.
 
-**Game rules and time.** Review the [remaining rule procedures](game-rules.md#decisions-required-before-clocks), then set the clock start condition, timeout results when mate is impossible, and the handling of a missing first move, disconnects, server outages, and latency. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game. Record how server processing time counts too. These detailed clock, draw, and outage rules remain open until their implementation steps; they do not block the development environment.
+**Game rules and time.** The [adjudication decision](adjudication-design.md) sets claim penalties, offers, forced intended moves, receipt ordering, and the flag-fall boundary. Implement them with clocks. The clock start condition and handling of a missing first move, disconnects, server outages, and latency still need selection. The starting proposal is to begin when both players confirm readiness, keep clocks running during client disconnects, and omit latency compensation. A server outage needs its own policy: continue charging time, pause it, or abort/void the game.
 
 **Board and access needs.** Choose the board component and piece assets with their licenses, then agree on mobile and keyboard behavior. A responsive board and visible keyboard focus are proposed defaults. English copy is already agreed.
 
