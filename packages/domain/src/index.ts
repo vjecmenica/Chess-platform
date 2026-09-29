@@ -5,11 +5,11 @@ export type {
 export { createGame } from './game.js';
 export type {
   ChessGame, GameSnapshot, GameResult, SideCommand, GameRejection, CommandResult, GameMoveResult,
-  ResignationRuling,
+  ResignationRuling, MateRuling, TimeoutDetails, TimeoutCommand,
 } from './game.js';
 export type { DrawClaim, ClaimResult } from './game.js';
 export type { MatingPossibility } from './mating.js';
-export { findResignationMateWitness } from './mate-search.js';
+export { findResignationMateWitness, findTimeoutMateWitness } from './mate-search.js';
 export type { MateLine, MateSearchBudget, MateSearchResult } from './mate-search.js';
 export { createTimedGame, FIVE_PLUS_THREE } from './timed-game.js';
 export type { TimedGame, TimedGameSnapshot, MonotonicTimeSource, ClockSnapshot, ClockReceipt,

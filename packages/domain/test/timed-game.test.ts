@@ -72,7 +72,9 @@ describe('5+3 clock ownership', () => {
     game.receiveMove('late', { side: 'white', from: 'e2', to: 'e4' });
     time.set(atMs + 100);
     expect(game.processNext()).toMatchObject({ outcome: { accepted: false, reason: 'flag_fell' },
-      game: { status: 'active', position: { sideToMove: 'white' } },
+      game: { status: 'pending_adjudication', pending: {
+        kind: 'timeout', flaggedSide: 'white', deadlineMs: 300000 },
+        position: { sideToMove: 'white' } },
       clock: { phase: 'flagged', flaggedSide: 'white', flaggedAtMs: 300000,
         remainingMs: { white: 0, black: 300000 } } });
     expect(game.getState().game.position.fen).toContain(' w ');
@@ -148,7 +150,8 @@ describe('5+3 clock ownership', () => {
     time.set(300000);
     game.receiveResignation('at-deadline', { side: 'black' });
     expect(game.processNext()).toMatchObject({ outcome: { accepted: false, reason: 'flag_fell' },
-      game: { status: 'active' }, clock: { phase: 'flagged', flaggedAtMs: 300000 } });
+      game: { status: 'pending_adjudication' },
+      clock: { phase: 'flagged', flaggedAtMs: 300000 } });
     expect(game.receiveResignation('bad', { side: 'spectator' as 'white' }))
       .toMatchObject({ status: 'duplicate', resolution: { outcome: { reason: 'invalid_side' } } });
   });
@@ -181,13 +184,97 @@ describe('5+3 clock ownership', () => {
     clock: { phase: 'stopped', remainingMs: { white: 299000, black: 300000 } } });
   });
 
-  it('gives a late callback the original deadline and never awards a timeout result itself', () => {
+  it('gives a late callback the original deadline and freezes an unresolved game once', () => {
     const { time, game } = started();
     time.set(400000);
     expect(game.poll()).toBe('flagged');
-    expect(game.getState()).toMatchObject({ game: { status: 'active', result: null },
+    const flagged = game.getState();
+    expect(flagged).toMatchObject({ game: { status: 'pending_adjudication', result: null,
+      pending: { kind: 'timeout', flaggedSide: 'white', deadlineMs: 300000 } },
       clock: { phase: 'flagged', flaggedSide: 'white', flaggedAtMs: 300000,
         remainingMs: { white: 0, black: 300000 } } });
+    expect(game.poll()).toBe('unchanged');
+    expect(game.getState()).toEqual(flagged);
+    expect(move(game, 'after', 'white', 'e2', 'e4').outcome).toMatchObject({
+      accepted: false, reason: 'flag_fell',
+    });
+    expect(game.getState()).toEqual(flagged);
+    const line = [
+      { from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' },
+      { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' },
+    ];
+    expect(game.resolveTimeout({ verdict: 'mate_possible', mateLine: line })).toMatchObject({
+      accepted: true, game: { status: 'finished', result: {
+        reason: 'timeout', winner: 'black', flaggedSide: 'white', deadlineMs: 300000,
+      } },
+    });
+    expect(game.getState().clock).toEqual(flagged.clock);
+    expect(game.resolveTimeout({ verdict: 'mate_possible', mateLine: line }))
+      .toMatchObject({ accepted: false, reason: 'game_finished' });
+  });
+
+  it('draws a flagged game when the opponent is proven unable to mate', () => {
+    const time = new TestTime();
+    const game = createTimedGame(time, createGameFromPosition('4k3/8/8/8/8/8/8/R3K3 w - - 0 1'));
+    game.markReady('white');
+    game.markReady('black');
+    time.set(300001);
+    expect(game.poll()).toBe('flagged');
+    expect(game.getState()).toMatchObject({ game: { status: 'finished', result: {
+      outcome: 'draw', reason: 'timeout_no_mating_possibility',
+      flaggedSide: 'white', deadlineMs: 300000,
+    } }, clock: { phase: 'flagged', flaggedSide: 'white', flaggedAtMs: 300000 } });
+    expect(game.poll()).toBe('unchanged');
+  });
+
+  it('uses a previously verified witness for a timeout win without live search', () => {
+    const { time, game } = started();
+    const line = [
+      { from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' },
+      { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' },
+    ];
+    expect(game.registerTimeoutMateWitness([{ from: 'e2', to: 'e4' }])).toBe(false);
+    expect(game.registerTimeoutMateWitness(line)).toBe(true);
+    line[0]!.from = 'a2';
+    time.set(300000);
+    expect(game.getState()).toMatchObject({ game: { status: 'finished', result: {
+      outcome: 'win', winner: 'black', reason: 'timeout',
+      flaggedSide: 'white', deadlineMs: 300000,
+    } }, clock: { phase: 'flagged', flaggedAtMs: 300000 } });
+    expect(game.poll()).toBe('unchanged');
+  });
+
+  it('clears a cached witness after an accepted move and resolves a later pending flag', () => {
+    const { time, game } = started();
+    expect(game.registerTimeoutMateWitness([
+      { from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' },
+      { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' },
+    ])).toBe(true);
+    time.set(1000);
+    expect(move(game, 'm1', 'white', 'e2', 'e4').outcome.accepted).toBe(true);
+    time.set(301000);
+    expect(game.poll()).toBe('flagged');
+    expect(game.getState()).toMatchObject({ game: { status: 'pending_adjudication',
+      pending: { kind: 'timeout', flaggedSide: 'black', deadlineMs: 301000 } },
+    clock: { flaggedSide: 'black', flaggedAtMs: 301000 } });
+    expect(game.resolveTimeout({ verdict: 'mate_possible', mateLine: [{ from: 'e7', to: 'e5' }] }))
+      .toMatchObject({ accepted: false, reason: 'invalid_ruling' });
+    expect(game.getState().game.status).toBe('pending_adjudication');
+  });
+
+  it('creates the same single flag when a timer or a late command is first', () => {
+    const fromTimer = started();
+    const fromCommand = started();
+    fromTimer.time.set(400000);
+    expect(fromTimer.game.poll()).toBe('flagged');
+    fromCommand.time.set(400000);
+    fromCommand.game.receiveMove('late', { side: 'white', from: 'e2', to: 'e4' });
+    expect(fromCommand.game.processNext()?.outcome).toMatchObject({ reason: 'flag_fell' });
+    expect(fromCommand.game.getState()).toEqual(fromTimer.game.getState());
+    expect(fromCommand.game.receiveMove('late', { side: 'white', from: 'e2', to: 'e4' }))
+      .toMatchObject({ status: 'duplicate', resolution: { outcome: { reason: 'flag_fell' } } });
+    expect(fromTimer.game.poll()).toBe('unchanged');
+    expect(fromCommand.game.poll()).toBe('unchanged');
   });
 
   it('fails fast if the injected clock moves backwards', () => {

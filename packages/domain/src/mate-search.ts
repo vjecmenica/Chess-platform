@@ -41,7 +41,8 @@ function moveScore(side: Side, winner: Side, move: { san: string; piece: string;
 }
 
 /** Cooperative search: both sides may choose moves that help the nominated winner mate. */
-export function findResignationMateWitness(game: ChessGame, budget: MateSearchBudget = {}): MateSearchResult {
+function findMateWitness(game: ChessGame, kind: 'resignation' | 'timeout',
+  budget: MateSearchBudget = {}): MateSearchResult {
   const maxDepth = budget.maxDepth ?? 7;
   const maxNodes = budget.maxNodes ?? 5000;
   if (!Number.isSafeInteger(maxDepth) || maxDepth < 0 || maxDepth > 8
@@ -49,14 +50,18 @@ export function findResignationMateWitness(game: ChessGame, budget: MateSearchBu
     throw new RangeError('Use maxDepth 0–8 and maxNodes 0–20000.');
   }
   const state = game.getState();
-  if (state.status !== 'pending_adjudication' || state.pending.kind !== 'resignation') {
+  if (state.status !== 'pending_adjudication' || state.pending.kind !== kind) {
     return { status: 'unresolved', reason: 'not_pending', nodesVisited: 0 };
   }
-  const winner: Side = state.pending.resigningSide === 'white' ? 'black' : 'white';
+  const winner: Side = (state.pending.kind === 'resignation' ? state.pending.resigningSide
+    : state.pending.flaggedSide) === 'white' ? 'black' : 'white';
+  const verify = kind === 'resignation'
+    ? (line: MateLine) => game.verifyResignationMateLine(line)
+    : (line: MateLine) => game.verifyTimeoutMateLine(line);
   let nodesVisited = 0;
 
   const seed = openingSuffix(state.position.fen, winner);
-  if (seed && seed.length <= maxDepth && seed.length <= maxNodes && game.verifyResignationMateLine(seed)) {
+  if (seed && seed.length <= maxDepth && seed.length <= maxNodes && verify(seed)) {
     return { status: 'found', mateLine: seed, nodesVisited: seed.length };
   }
 
@@ -81,7 +86,7 @@ export function findResignationMateWitness(game: ChessGame, budget: MateSearchBu
       const candidate = [...line, { from: move.from, to: move.to,
         ...(move.promotion === undefined ? {} : { promotion: move.promotion as Promotion }) }];
       if (child.isCheckmate()) {
-        if (side === winner && game.verifyResignationMateLine(candidate)) return candidate;
+        if (side === winner && verify(candidate)) return candidate;
       } else if (!child.isStalemate() && depth > 1) {
         const found = search(move.after, depth - 1, candidate);
         if (found) return found;
@@ -98,4 +103,12 @@ export function findResignationMateWitness(game: ChessGame, budget: MateSearchBu
   }
   return { status: 'unresolved', reason: budgetExhausted ? 'budget_exhausted' : 'depth_exhausted',
     nodesVisited };
+}
+
+export function findResignationMateWitness(game: ChessGame, budget?: MateSearchBudget): MateSearchResult {
+  return findMateWitness(game, 'resignation', budget);
+}
+
+export function findTimeoutMateWitness(game: ChessGame, budget?: MateSearchBudget): MateSearchResult {
+  return findMateWitness(game, 'timeout', budget);
 }

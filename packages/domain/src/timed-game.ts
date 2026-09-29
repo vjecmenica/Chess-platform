@@ -1,5 +1,5 @@
 import { createGame } from './game.js';
-import type { ChessGame, CommandResult, GameMoveResult, GameSnapshot, SideCommand } from './game.js';
+import type { ChessGame, CommandResult, GameMoveResult, GameSnapshot, MateRuling, SideCommand } from './game.js';
 import type { MoveRequest, Side } from './position.js';
 
 export const FIVE_PLUS_THREE = { initialMs: 300_000, incrementMs: 3_000 } as const;
@@ -53,10 +53,14 @@ export interface ClockCommandResolution extends TimedGameSnapshot {
 export interface TimedGame {
   getState(): TimedGameSnapshot;
   markReady(side: Side): TimedGameSnapshot;
+  /** Register a verified candidate for the current position before its deadline. */
+  registerTimeoutMateWitness(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   receiveMove(commandId: string, move: MoveRequest): ClockEnqueueResult;
   receiveResignation(commandId: string, command: SideCommand): ClockEnqueueResult;
   processNext(): ClockCommandResolution | null;
   poll(): 'commands_pending' | 'unchanged' | 'flagged';
+  /** Worker-side resolution after a pending flag; clocks remain frozen. */
+  resolveTimeout(ruling: MateRuling): CommandResult;
 }
 
 type PendingCommand =
@@ -93,6 +97,7 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
   let turnStartSequence = 0;
   let lastReadMs = -1;
   let nextSequence = 1;
+  let timeoutMateWitness: readonly Omit<MoveRequest, 'side'>[] | null = null;
   const entries = new Map<string, Entry>();
   const queue: Entry[] = [];
 
@@ -126,12 +131,22 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
   function flag(): void {
     const atMs = deadline();
     if (atMs === null || activeSide === null) return;
+    const decision = game.flagTimeout({ flaggedSide: activeSide, deadlineMs: atMs,
+      ...(timeoutMateWitness === null ? {} : { mateLine: timeoutMateWitness }) });
+    if (!decision.accepted) throw new Error(`The clock could not apply its timeout: ${decision.reason}`);
+    timeoutMateWitness = null;
     flaggedSide = activeSide;
     flaggedAtMs = atMs;
     remainingMs[activeSide] = 0;
     phase = 'flagged';
     activeSide = null;
     turnStartedAtMs = null;
+  }
+
+  function flagIfDue(atMs: number): boolean {
+    if (queue.length > 0 || phase !== 'running' || atMs < deadline()!) return false;
+    flag();
+    return true;
   }
 
   function receive(commandId: string, command: PendingCommand): ClockEnqueueResult {
@@ -155,7 +170,21 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
   }
 
   return {
-    getState: () => snapshot(now()),
+    getState() {
+      const atMs = now();
+      flagIfDue(atMs);
+      return snapshot(atMs);
+    },
+    registerTimeoutMateWitness(mateLine) {
+      const atMs = now();
+      if (phase !== 'running' || queue.length > 0) return false;
+      if (flagIfDue(atMs)) return false;
+      const winner = activeSide === 'white' ? 'black' : 'white';
+      if (!game.verifyMateLine(winner, mateLine)) return false;
+      timeoutMateWitness = mateLine.map(move => ({ from: move.from, to: move.to,
+        ...(move.promotion === undefined ? {} : { promotion: move.promotion }) }));
+      return true;
+    },
     markReady(side) {
       const atMs = now();
       if (side !== 'white' && side !== 'black') throw new TypeError('The ready side must be white or black.');
@@ -189,7 +218,7 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
         outcome = game.getState().status === 'finished'
           ? { accepted: false, reason: 'game_finished', message: 'The game has already finished.' }
           : { accepted: false, reason: 'adjudication_pending',
-            message: 'The accepted resignation is awaiting adjudication.' };
+            message: 'The game is awaiting adjudication.' };
       } else if (entry.receipt.sequence <= turnStartSequence
         || entry.receipt.receivedAtMs < turnStartedAtMs!) {
         outcome = rejected('received_before_turn');
@@ -201,6 +230,7 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
         outcome = entry.command.kind === 'move'
           ? game.submitMove(entry.command.payload) : game.resign(entry.command.payload);
         if (outcome.accepted) {
+          timeoutMateWitness = null;
           remainingMs[movingSide] -= entry.receipt.receivedAtMs - turnStartedAtMs!;
           if (entry.command.kind === 'move') remainingMs[movingSide] += FIVE_PLUS_THREE.incrementMs;
           const state = game.getState();
@@ -223,9 +253,11 @@ export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = cre
     poll() {
       const atMs = now();
       if (queue.length > 0) return 'commands_pending';
-      if (phase !== 'running' || atMs < deadline()!) return 'unchanged';
-      flag();
-      return 'flagged';
+      return flagIfDue(atMs) ? 'flagged' : 'unchanged';
+    },
+    resolveTimeout(ruling) {
+      flagIfDue(now());
+      return game.resolveTimeout(ruling);
     },
   };
 }

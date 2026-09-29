@@ -1,10 +1,10 @@
 # Game results and draw policy
 
-The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, and only the first 5+3 clock boundary is implemented; timeout results and claim penalties are not.
+The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, the 5+3 clock and timeout decisions are in memory, and claim penalties are not implemented.
 
 ## Implemented lifecycle
 
-Games start at the standard position. Every player command identifies its acting side; the later server must derive that side from an authorized session. Finished games reject every mutation, including repeated terminal commands. A game with an accepted, unresolved resignation is `pending_adjudication` and also rejects all player commands. Position and history remain available for replay.
+Games start at the standard position. Every player command identifies its acting side; the later server must derive that side from an authorized session. Finished games reject every mutation, including repeated terminal commands. A game with an accepted, unresolved resignation or timeout is `pending_adjudication` and also rejects all player commands. Position and history remain available for replay.
 
 After each accepted move, adjudication checks these conditions in order:
 
@@ -32,9 +32,9 @@ The current domain has separate offer and claim commands. An explicit offer may 
 
 An offer survives the sender's moves. It ends on recipient acceptance, explicit decline, the recipient's accepted move, or any game result. Rejected moves do not decline an offer. This maps physical piece-touching to an accepted online move; selecting a piece has no domain effect. Tournament restrictions and repeated-offer moderation belong to later steps.
 
-## Mating possibility and resignation
+## Mating possibility, resignation, and timeout
 
-Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. The same side-specific check is exposed as `getMatingPossibility(side)` for the future timeout rule. It returns `impossible`, `possible`, or `unresolved`. The synchronous positive proof is a legal checkmate on the next move by that side. An unresolved resignation is accepted into `pending_adjudication`: no further move or result-changing player command can occur. A separately invoked bounded search can find and verify a cooperative mate line from that state. A found line can resolve the resignation to a win; exhaustion cannot resolve it to a draw. The domain has no command to convert an unverified external no-mate claim into a draw. Such cases stay pending until a complete proof can be validated. The [adjudication decision](adjudication-design.md) defines the server responsibility before live play.
+Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. Timeout uses the same side-specific decision. The check is exposed as `getMatingPossibility(side)` and returns `impossible`, `possible`, or `unresolved`. The synchronous positive proof is a legal checkmate on the next move by that side. An unresolved resignation is accepted into `pending_adjudication`: no further move or result-changing player command can occur. A separately invoked bounded search can find and verify a cooperative mate line from that state. A found line can resolve the resignation to a win; exhaustion cannot resolve it to a draw. The domain has no command to convert an unverified external no-mate claim into a draw. Such cases stay pending until a complete proof can be validated. The [adjudication decision](adjudication-design.md) defines the server responsibility before live play.
 
 The detector proves impossibility for:
 
@@ -45,14 +45,16 @@ The detector proves impossibility for:
 
 Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
 
-**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify either a resignation win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation can wait indefinitely at this stage because there is no server reviewer, durable queue, or complete proof engine. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify a win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation or timeout can wait indefinitely at this stage because there is no durable queue, worker, or complete proof engine. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
+
+At flag fall, the clock calls `flagTimeout` once with the side to move and the effective deadline. A sound proof that the opponent cannot mate ends the game as `timeout_no_mating_possibility`; a verified legal mate line ends it as a timeout win. Otherwise the game enters `pending_adjudication` with the flagged side and deadline. The board and history do not change. A precomputed line may be registered with the clock before the deadline; the domain verifies it and the live clock path never searches for one. After a pending flag, `findTimeoutMateWitness` can run separately and a valid line can be passed to `resolveTimeout`. Search exhaustion leaves the game pending. A repeated flag or ruling cannot create a second result.
 
 ## Work remaining for timed play
 
 The requested repetition thresholds and successful-claim behavior are implemented. The [online claim and clock decision](adjudication-design.md#incorrect-claims-online) specifies the remaining procedure:
 
 - Pause a valid claim at server receipt. An incorrect threshold claim adds the applicable time penalty, creates a draw offer, and commits its legal intended move if supplied. The current domain rejects such a claim unchanged because it has no clock or durable command receipt yet.
-- The 5+3 clock wrapper already stamps commands, orders them, charges accepted moves, and freezes at flag fall. Use the same three-answer mating decision for the 6.9 timeout exception; a flag currently has no final result. An unresolved timeout needs adjudication and cannot become a win by default.
+- The 5+3 clock wrapper stamps commands, orders them, charges accepted moves, and applies the three-answer timeout rule at flag fall. An unresolved timeout stays frozen and cannot become a win by default.
 - Make command receipts and clocks durable, then implement the selected claim pause and time bonus. Choose server-outage recovery separately in the [architecture](architecture.md#clocks-and-recovery).
 
 Arbiter intervention, paper notation, and touch-move procedures are not simulated. The clock boundary has an in-memory FIFO queue, but the future server must authorize and serialize commands with durable request receipts. There is no transport or game persistence yet.

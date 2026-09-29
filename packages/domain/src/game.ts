@@ -8,25 +8,42 @@ export interface SideCommand {
 
 export type GameResult =
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'checkmate' | 'resignation' }
+  | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'timeout';
+      readonly flaggedSide: Side; readonly deadlineMs: number }
   | { readonly outcome: 'draw'; readonly reason: 'stalemate' | 'agreement' | 'dead_position' | 'fivefold_repetition'
-      | 'seventy_five_move' | 'threefold_repetition' | 'fifty_move' | 'resignation_no_mating_possibility' };
+      | 'seventy_five_move' | 'threefold_repetition' | 'fifty_move' | 'resignation_no_mating_possibility' }
+  | { readonly outcome: 'draw'; readonly reason: 'timeout_no_mating_possibility';
+      readonly flaggedSide: Side; readonly deadlineMs: number };
+
+export interface TimeoutDetails {
+  readonly flaggedSide: Side;
+  readonly deadlineMs: number;
+}
 
 export type GameSnapshot = { readonly position: PositionSnapshot } & (
   | { readonly status: 'active'; readonly result: null; readonly drawOffer: Side | null }
   | { readonly status: 'pending_adjudication'; readonly result: null; readonly drawOffer: null;
-      readonly pending: { readonly kind: 'resignation'; readonly resigningSide: Side } }
+      readonly pending: { readonly kind: 'resignation'; readonly resigningSide: Side }
+        | ({ readonly kind: 'timeout' } & TimeoutDetails) }
   | { readonly status: 'finished'; readonly result: GameResult; readonly drawOffer: null;
-      readonly adjudication?: ResignationRuling }
+      readonly adjudication?: MateRuling }
 );
 
 export type GameRejection =
   | 'game_finished' | 'invalid_side' | 'draw_too_early'
   | 'draw_offer_pending' | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
-  | 'adjudication_pending' | 'no_pending_resignation' | 'invalid_ruling';
+  | 'adjudication_pending' | 'no_pending_resignation' | 'no_pending_timeout'
+  | 'invalid_ruling' | 'invalid_timeout';
 
-export interface ResignationRuling {
+export interface MateRuling {
   readonly verdict: 'mate_possible';
   readonly mateLine: readonly Omit<MoveRequest, 'side'>[];
+}
+export type ResignationRuling = MateRuling;
+
+export interface TimeoutCommand extends TimeoutDetails {
+  /** A previously found candidate; the game verifies it before awarding a win. */
+  readonly mateLine?: readonly Omit<MoveRequest, 'side'>[];
 }
 
 export interface DrawClaim extends SideCommand {
@@ -53,8 +70,12 @@ export interface ChessGame {
   claimDraw(command: DrawClaim): ClaimResult;
   submitMove(request: MoveRequest): GameMoveResult;
   resign(command: SideCommand): CommandResult;
+  flagTimeout(command: TimeoutCommand): CommandResult;
+  verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   resolveResignation(ruling: ResignationRuling): CommandResult;
+  verifyTimeoutMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
+  resolveTimeout(ruling: MateRuling): CommandResult;
   offerDraw(command: SideCommand): CommandResult;
   acceptDraw(command: SideCommand): CommandResult;
   declineDraw(command: SideCommand): CommandResult;
@@ -66,9 +87,11 @@ const messages: Record<GameRejection, string> = {
   draw_too_early: 'Both sides must make a move before a draw can be agreed.',
   invalid_claim: 'Choose threefold_repetition or fifty_move as the claim rule.',
   claim_not_available: 'The specified position does not meet the claimed draw threshold.',
-  adjudication_pending: 'The accepted resignation is awaiting adjudication.',
+  adjudication_pending: 'The game is awaiting adjudication.',
   no_pending_resignation: 'There is no resignation awaiting adjudication.',
+  no_pending_timeout: 'There is no timeout awaiting adjudication.',
   invalid_ruling: 'Provide a legal mate line ending in checkmate by the opponent.',
+  invalid_timeout: 'The timeout must name the side to move and a nonnegative integer deadline.',
   draw_offer_pending: 'Respond to the pending draw offer before making another.',
   no_draw_offer: 'There is no pending draw offer.',
   own_draw_offer: 'Only the opponent can respond to your draw offer.',
@@ -88,7 +111,8 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   const position = board.position;
   let result: GameResult | null = null;
   let pendingResignation: Side | null = null;
-  let adjudication: ResignationRuling | null = null;
+  let pendingTimeout: TimeoutDetails | null = null;
+  let adjudication: MateRuling | null = null;
   let drawOffer: Side | null = null;
   let ply = 0;
   const occurrences = new Map([[board.repetitionKey(), 1]]);
@@ -101,12 +125,14 @@ export function createGameFromPosition(startingFen: string): ChessGame {
     if (pendingResignation !== null) return { status: 'pending_adjudication', result: null,
       drawOffer: null, pending: { kind: 'resignation', resigningSide: pendingResignation },
       position: position.getPosition() };
+    if (pendingTimeout !== null) return { status: 'pending_adjudication', result: null,
+      drawOffer: null, pending: { kind: 'timeout', ...pendingTimeout }, position: position.getPosition() };
     return { status: 'active', result: null, drawOffer, position: position.getPosition() };
   };
 
   function validate(command: SideCommand): Rejected<GameRejection> | undefined {
     if (result !== null) return reject('game_finished');
-    if (pendingResignation !== null) return reject('adjudication_pending');
+    if (pendingResignation !== null || pendingTimeout !== null) return reject('adjudication_pending');
     if (command.side !== 'white' && command.side !== 'black') return reject('invalid_side');
     return undefined;
   }
@@ -114,6 +140,7 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   function finish(finalResult: GameResult): void {
     result = finalResult;
     pendingResignation = null;
+    pendingTimeout = null;
     drawOffer = null;
   }
 
@@ -138,10 +165,9 @@ export function createGameFromPosition(startingFen: string): ChessGame {
     else if (board.reversiblePlies() >= 150) finish({ outcome: 'draw', reason: 'seventy_five_move' });
   }
 
-  function verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean {
-    if (result !== null || pendingResignation === null || !Array.isArray(mateLine)
+  function verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean {
+    if (result !== null || winner !== 'white' && winner !== 'black' || !Array.isArray(mateLine)
       || mateLine.length === 0 || mateLine.length > 256) return false;
-    const winner = pendingResignation === 'white' ? 'black' : 'white';
     const replay = createGameFromPosition(startingFen);
     for (const move of position.getHistory()) {
       if (!replay.submitMove(move).accepted) return false;
@@ -155,10 +181,28 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       && replayResult.winner === winner;
   }
 
+  function verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean {
+    if (pendingResignation === null) return false;
+    return verifyMateLine(pendingResignation === 'white' ? 'black' : 'white', mateLine);
+  }
+
+  function verifyTimeoutMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean {
+    if (pendingTimeout === null) return false;
+    return verifyMateLine(pendingTimeout.flaggedSide === 'white' ? 'black' : 'white', mateLine);
+  }
+
+  function retainRuling(ruling: MateRuling): void {
+    adjudication = { verdict: 'mate_possible', mateLine: ruling.mateLine.map(move => ({
+      from: move.from, to: move.to, ...(move.promotion === undefined ? {} : { promotion: move.promotion }),
+    })) };
+  }
+
   adjudicate();
   return {
     getState,
+    verifyMateLine,
     verifyResignationMateLine,
+    verifyTimeoutMateLine,
     getMatingPossibility: side => board.matingPossibility(side),
     claimDraw(command) {
       const rejection = validate(command);
@@ -212,6 +256,32 @@ export function createGameFromPosition(startingFen: string): ChessGame {
         : { outcome: 'win', winner, reason: 'resignation' });
       return { accepted: true, game: getState() };
     },
+    flagTimeout(command) {
+      if (result !== null) return reject('game_finished');
+      if (pendingResignation !== null || pendingTimeout !== null) return reject('adjudication_pending');
+      if (!command || (command.flaggedSide !== 'white' && command.flaggedSide !== 'black')
+        || command.flaggedSide !== position.getPosition().sideToMove
+        || !Number.isSafeInteger(command.deadlineMs) || command.deadlineMs < 0) {
+        return reject('invalid_timeout');
+      }
+      const winner = command.flaggedSide === 'white' ? 'black' : 'white';
+      const possibility = board.matingPossibility(winner);
+      if (possibility === 'impossible') {
+        finish({ outcome: 'draw', reason: 'timeout_no_mating_possibility',
+          flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs });
+      } else if (possibility === 'possible' || command.mateLine !== undefined
+        && verifyMateLine(winner, command.mateLine)) {
+        finish({ outcome: 'win', winner, reason: 'timeout',
+          flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs });
+        if (possibility !== 'possible' && command.mateLine !== undefined) {
+          retainRuling({ verdict: 'mate_possible', mateLine: command.mateLine });
+        }
+      } else {
+        pendingTimeout = { flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs };
+        drawOffer = null;
+      }
+      return { accepted: true, game: getState() };
+    },
     resolveResignation(ruling) {
       if (result !== null) return reject('game_finished');
       if (pendingResignation === null) return reject('no_pending_resignation');
@@ -221,9 +291,18 @@ export function createGameFromPosition(startingFen: string): ChessGame {
         return reject('invalid_ruling');
       }
       finish({ outcome: 'win', winner, reason: 'resignation' });
-      adjudication = { verdict: 'mate_possible', mateLine: ruling.mateLine.map(move => ({
-        from: move.from, to: move.to, ...(move.promotion === undefined ? {} : { promotion: move.promotion }),
-      })) };
+      retainRuling(ruling);
+      return { accepted: true, game: getState() };
+    },
+    resolveTimeout(ruling) {
+      if (result !== null) return reject('game_finished');
+      if (pendingTimeout === null) return reject('no_pending_timeout');
+      if (!ruling || typeof ruling !== 'object' || ruling.verdict !== 'mate_possible'
+        || !verifyTimeoutMateLine(ruling.mateLine)) return reject('invalid_ruling');
+      const { flaggedSide, deadlineMs } = pendingTimeout;
+      const winner = flaggedSide === 'white' ? 'black' : 'white';
+      finish({ outcome: 'win', winner, reason: 'timeout', flaggedSide, deadlineMs });
+      retainRuling(ruling);
       return { accepted: true, game: getState() };
     },
     offerDraw(command) {
