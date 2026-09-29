@@ -48,3 +48,17 @@ export function validCsrf(request: FastifyRequest, guest: GuestSession): boolean
   if (typeof supplied !== 'string' || !/^[a-f0-9]{64}$/.test(supplied)) return false;
   return timingSafeEqual(Buffer.from(supplied, 'hex'), Buffer.from(guest.csrfToken, 'hex'));
 }
+
+export async function requireGuest(pool: pg.Pool, request: FastifyRequest,
+  reply: FastifyReply, csrf = false): Promise<GuestSession | null> {
+  const guest = await currentGuest(pool, request);
+  if (guest === null) {
+    reply.code(401).send({ error: 'guest_session_required' });
+    return null;
+  }
+  if (csrf && !validCsrf(request, guest)) {
+    reply.code(403).send({ error: 'invalid_csrf_token' });
+    return null;
+  }
+  return guest;
+}

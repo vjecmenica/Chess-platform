@@ -2,10 +2,11 @@ import Fastify from 'fastify';
 import type pg from 'pg';
 import type { ReadinessResponse } from '@chess/contracts';
 import { registerChallengeRoutes } from './challenge-routes.js';
+import { registerGameRoutes } from './game-routes.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   challenges?: { pool: pg.Pool; secureCookies: boolean }) {
-  const app = Fastify({ logger });
+  const app = Fastify({ logger, ajv: { customOptions: { removeAdditional: false } } });
 
   app.get('/health', async () => ({ status: 'ok' }));
   app.get<{ Reply: ReadinessResponse }>('/health/ready', async (_request, reply) => {
@@ -18,7 +19,10 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
     }
   });
 
-  if (challenges) registerChallengeRoutes(app, challenges.pool, challenges.secureCookies);
+  if (challenges) {
+    registerChallengeRoutes(app, challenges.pool, challenges.secureCookies);
+    registerGameRoutes(app, challenges.pool);
+  }
 
   return app;
 }

@@ -6,9 +6,9 @@ The planned product includes rated and casual games, friend challenges, matchmak
 
 ## Current scope
 
-The server now creates secure guest sessions and stores casual 5+3 challenge links and their two seat owners in PostgreSQL. One guest creates as White; one other guest can accept as Black. The page shows the link and each visitor's seat, but there is no board or live play yet. The domain already validates moves, records replay history, handles results and draws, and owns an in-memory 5+3 clock. No game state is persisted yet. The [result policy](docs/game-rules.md) explains the rules and the limits of mating-possibility detection. Accounts, ratings, matchmaking, analysis, and tournaments remain future work.
+The server creates guest sessions and casual 5+3 challenge links. One guest creates as White; one other accepts as Black. Acceptance creates one standard-start game. Authenticated HTTP endpoints now validate moves through the domain and save each accepted move, position, result, version, and retry receipt in PostgreSQL. The page still only shows the link and seats; there is no board or live transport. **These HTTP moves have no authoritative clock**, so this is not yet a playable 5+3 game. The [result policy](docs/game-rules.md) explains the domain rules and mating-possibility limits. Accounts, ratings, matchmaking, analysis, and tournaments remain future work.
 
-The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and PostgreSQL. The first playable flow uses guest sessions and a casual 5+3 challenge. The [adjudication decision](docs/adjudication-design.md) sets the claim and flag-fall procedure; durable moves, clocks and results, a background adjudication worker, and server-outage handling still need implementation.
+The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and PostgreSQL. The first playable flow uses guest sessions and a casual 5+3 challenge. The [adjudication decision](docs/adjudication-design.md) sets the claim and flag-fall procedure; authoritative clock state, a background adjudication worker, live delivery, and server-outage handling still need integration.
 
 ## Local setup
 
@@ -63,7 +63,7 @@ You also need **PostgreSQL 17**, either installed locally or through Docker with
 
    Open [the web page](http://127.0.0.1:5173). It starts a guest session and can create a challenge link. Stop with Ctrl+C. You can also run `npm run dev:server` and `npm run dev:web` in separate terminals. If you later change shared package code, run `npm run build:packages` before restarting consumers.
 
-The API listens on port 3001. [GET /health](http://127.0.0.1:3001/health) reports process liveness. [GET /health/ready](http://127.0.0.1:3001/health/ready) queries PostgreSQL and returns 200 when connected or 503 if the database becomes unavailable. It checks connectivity, not migration currency. Migrations must be run explicitly. The server refuses to start without a valid `DATABASE_URL`, an initial database connection, or the guest/challenge tables.
+The API listens on port 3001. [GET /health](http://127.0.0.1:3001/health) reports process liveness. [GET /health/ready](http://127.0.0.1:3001/health/ready) queries PostgreSQL and returns 200 when connected or 503 if the database becomes unavailable. It checks connectivity, not migration currency. Migrations must be run explicitly. The server refuses to start without a valid `DATABASE_URL`, an initial database connection, or the guest/challenge/game tables.
 
 Vite forwards `/api/*` to the server during development and preview. Only the server reads database credentials; never put them in a `VITE_*` variable. Changing `.env` requires restarting the development processes.
 
@@ -72,6 +72,8 @@ Vite forwards `/api/*` to the server during development and preview. Only the se
 After `npm run db:migrate` and `npm run dev`, create a challenge at [http://127.0.0.1:5173](http://127.0.0.1:5173). Copy its link into a **different browser profile or private window**. The first browser should show White, and the second should be able to accept as Black. Refresh both pages: the seats should remain occupied by the same guests. A third separate session may view the link while it is open, but cannot read the filled challenge or take a seat after acceptance. Opening the link in another tab of the first browser uses the same guest cookie and cannot accept its own challenge.
 
 The guest identity is an opaque, 30-day HttpOnly cookie; writes also require a CSRF token obtained from `GET /api/guest-session`. Challenge responses expose no guest tokens or guest IDs. The link itself lets another guest claim the open seat, so share it only with the intended opponent. Local loopback HTTP omits the cookie's `Secure` flag; production mode or a non-loopback bind sets it and requires HTTPS. Losing the cookie currently loses access to that seat; guest recovery must be designed before the playable milestone.
+
+After acceptance, `GET /api/games/<challenge-id>` returns the saved position, turn, result, version, and ordered history to either seat owner. `POST /api/games/<challenge-id>/moves` requires the guest cookie, `X-CSRF-Token`, a UUID `Idempotency-Key`, and JSON such as `{"expectedVersion":0,"from":"e2","to":"e4"}`. Promotion adds `"promotion":"q"` (or `r`, `b`, `n`). The server derives White or Black from the cookie; do not send a side. A successful response includes the move and new version. Reusing the same request ID and payload returns its original accepted response; a stale version returns 409. Both endpoints report `clocks: null` and `clockStatus: "not_integrated"` because deadlines and increments are not applied by this HTTP path.
 
 ## Build and check
 
@@ -87,9 +89,9 @@ For real database verification, create a separate disposable database, such as `
 npm run test:db
 ```
 
-The integration suite checks real migrations, rollback, HTTP readiness, guest ownership, concurrent seat acceptance, retries, and unauthorized requests. It fails clearly when configuration or PostgreSQL is missing; it never silently skips. Use a disposable database because the tests leave guest and challenge rows in it.
+The integration suite checks real migrations, rollback, HTTP readiness, guest ownership, concurrent seat and move requests, illegal moves, retries, terminal results, and restart reconstruction. It fails clearly when configuration or PostgreSQL is missing; it never silently skips. Use a disposable database because the tests leave guest, challenge, and game rows in it.
 
-The maintainer confirmed on September 29, 2026 that the Windows setup runs with PostgreSQL and the web page is visible. The challenge integration suite was also run against a disposable PostgreSQL 17 database on Windows.
+The maintainer confirmed on September 29, 2026 that the Windows setup runs with PostgreSQL and the web page is visible. The challenge and game integration suites were run against a disposable PostgreSQL 17 database on Windows.
 
 Individual commands:
 
@@ -106,9 +108,9 @@ Vite preview is a local verification tool, not the production deployment server.
 
 ## Database migrations
 
-SQL files live in `apps/server/migrations`. `001_initial.sql` creates the `chess` schema; `002_guest_challenges.sql` adds guest sessions and challenges. The runner records filenames, checksums, and application times in `public.schema_migrations`.
+SQL files live in `apps/server/migrations`. `001_initial.sql` creates the `chess` schema; `002_guest_challenges.sql` adds guest sessions and challenges; `003_games.sql` adds games, ordered moves, and move receipts. It also creates standard-start games for challenges accepted before this migration. The runner records filenames, checksums, and application times in `public.schema_migrations`.
 
-Add the next numbered file, such as `002_description.sql`, for each change. Never edit or remove an applied migration. The runner rejects changed history and out-of-order versions, takes a transaction-scoped lock to serialize runners, and applies pending files in one transaction. A failed file rolls back that batch. Files must contain transaction-safe SQL and must not include their own `BEGIN`/`COMMIT`. Use a new forward migration to correct an applied change; no destructive reset or down command is provided.
+Add the next numbered file, such as `004_description.sql`, for each change. Never edit or remove an applied migration. The runner rejects changed history and out-of-order versions, takes a transaction-scoped lock to serialize runners, and applies pending files in one transaction. A failed file rolls back that batch. Files must contain transaction-safe SQL and must not include their own `BEGIN`/`COMMIT`. Use a new forward migration to correct an applied change; no destructive reset or down command is provided.
 
 ## Troubleshooting and Windows notes
 
@@ -126,6 +128,6 @@ Add the next numbered file, such as `002_description.sql`, for each change. Neve
 - [Roadmap](docs/roadmap.md): the development setup and later feature order.
 - [Architecture](docs/architecture.md): chosen foundation and proposed game/analysis design.
 
-`apps/web` owns the interface; `apps/server` owns HTTP and database access. `packages/contracts` shares readiness and challenge response types. `packages/domain` wraps chess.js for move validation, replay history, game results, and the in-memory clock, with no browser, server, or database dependency. Its [API guide](packages/domain/README.md) documents position and game APIs, snapshots, and rejection results. Runtime packages build to their own `dist` directories. Migrations stay alongside the server source and must accompany a server deployment.
+`apps/web` owns the interface; `apps/server` owns HTTP and database access. `packages/contracts` shares readiness, challenge, and game response types. `packages/domain` wraps chess.js for move validation, replay history, game results, and the in-memory clock, with no browser, server, or database dependency. Its [API guide](packages/domain/README.md) documents position and game APIs, snapshots, and rejection results. Runtime packages build to their own `dist` directories. Migrations stay alongside the server source and must accompany a server deployment.
 
 **Use English for all repository content**, including documentation, code comments, tests, commit messages, and UI copy. Keep requirements separate from proposals, update affected documents together, and check `git diff --check` before committing. Commit the lockfile and sanitized examples; never commit `.env` or credentials.

@@ -79,7 +79,8 @@ describe('guest challenges against PostgreSQL', () => {
     expect(created.statusCode).toBe(200);
     expect(created.json()).toMatchObject({ status: 'open', yourSeat: 'white',
       seats: { white: 'occupied', black: 'open' },
-      game: { status: 'not_started', rated: false, initialMs: 300000, incrementMs: 3000 } });
+      game: { id: null, status: 'not_created', clocks: 'not_integrated',
+        rated: false, initialMs: 300000, incrementMs: 3000 } });
     const body = created.body;
     expect(body).not.toContain(owner.cookie.split('=')[1]);
     expect(body).not.toContain(owner.csrf);
@@ -110,7 +111,8 @@ describe('guest challenges against PostgreSQL', () => {
     const accepted = await accept(id, joiner);
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({ status: 'accepted', yourSeat: 'black',
-      seats: { white: 'occupied', black: 'occupied' } });
+      seats: { white: 'occupied', black: 'occupied' },
+      game: { id, status: 'active', clocks: 'not_integrated' } });
     expect((await accept(id, joiner)).json()).toEqual(accepted.json());
     expect((await read(id, owner)).json().yourSeat).toBe('white');
     expect((await read(id, joiner)).json().yourSeat).toBe('black');
@@ -121,6 +123,7 @@ describe('guest challenges against PostgreSQL', () => {
       'SELECT creator_guest_id, acceptor_guest_id FROM chess.challenges WHERE id = $1', [id]);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.creator_guest_id).not.toBe(rows[0]!.acceptor_guest_id);
+    expect((await pool.query('SELECT id FROM chess.games WHERE id = $1', [id])).rowCount).toBe(1);
     const restarted = buildApp(() => checkDatabase(pool), false, { pool, secureCookies: true });
     try {
       const afterRestart = await restarted.inject({ url: `/challenges/${id}`,
@@ -145,6 +148,7 @@ describe('guest challenges against PostgreSQL', () => {
     expect((await read(id, winner)).json().yourSeat).toBe('black');
     expect((await read(id, loser)).statusCode).toBe(403);
     expect((await accept(id, winner)).statusCode).toBe(200);
+    expect((await pool.query('SELECT id FROM chess.games WHERE id = $1', [id])).rowCount).toBe(1);
   });
 
   it('deduplicates concurrent create retries per guest without merging other guests', async () => {

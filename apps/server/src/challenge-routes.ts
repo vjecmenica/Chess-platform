@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { ChallengeSummary, GuestSessionResponse } from '@chess/contracts';
-import { createGuest, currentGuest, validCsrf, type GuestSession } from './guest-session.js';
+import { STANDARD_STARTING_FEN } from '@chess/domain';
+import { createGuest, currentGuest, requireGuest } from './guest-session.js';
 
 const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const idParams = { type: 'object', required: ['id'], additionalProperties: false,
@@ -15,6 +16,7 @@ interface ChallengeRow {
   creator_guest_id: string;
   acceptor_guest_id: string | null;
   created_at: Date;
+  game_status: 'active' | 'finished' | null;
 }
 
 function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
@@ -25,31 +27,23 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
     yourSeat: row.creator_guest_id === guestId ? 'white'
       : row.acceptor_guest_id === guestId ? 'black' : null,
     seats: { white: 'occupied', black: row.acceptor_guest_id === null ? 'open' : 'occupied' },
-    game: { status: 'not_started', rated: false, initialMs: 300_000, incrementMs: 3_000 },
+    game: { id: row.game_status === null ? null : row.id,
+      status: row.game_status ?? 'not_created', clocks: 'not_integrated',
+      rated: false, initialMs: 300_000, incrementMs: 3_000 },
     createdAt: row.created_at.toISOString(),
   };
 }
 
-async function findChallenge(pool: pg.Pool, id: string): Promise<ChallengeRow | null> {
-  const { rows } = await pool.query<ChallengeRow>(
-    `SELECT id, creator_guest_id, acceptor_guest_id, created_at
-      FROM chess.challenges WHERE id = $1`, [id],
+async function findChallenge(query: Pick<pg.Pool, 'query'>, id: string): Promise<ChallengeRow | null> {
+  const { rows } = await query.query<ChallengeRow>(
+    `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at, g.status AS game_status
+      FROM chess.challenges c LEFT JOIN chess.games g ON g.id = c.id WHERE c.id = $1`, [id],
   );
-  return rows[0] ?? null;
-}
-
-async function requireGuest(pool: pg.Pool, request: FastifyRequest,
-  reply: FastifyReply, csrf = false): Promise<GuestSession | null> {
-  const guest = await currentGuest(pool, request);
-  if (guest === null) {
-    reply.code(401).send({ error: 'guest_session_required' });
-    return null;
+  const row = rows[0];
+  if (row && row.acceptor_guest_id !== null && row.game_status === null) {
+    throw new Error('An accepted challenge has no game.');
   }
-  if (csrf && !validCsrf(request, guest)) {
-    reply.code(403).send({ error: 'invalid_csrf_token' });
-    return null;
-  }
-  return guest;
+  return row ?? null;
 }
 
 export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, secureCookies: boolean): void {
@@ -74,7 +68,8 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, sec
         RETURNING id, creator_guest_id, acceptor_guest_id, created_at`,
       [randomUUID(), guest.id, requestId],
     );
-    const row = rows[0]!;
+    const row = await findChallenge(pool, rows[0]!.id);
+    if (row === null) throw new Error('The created challenge could not be read.');
     return reply.code(200).send(summary(row, guest.id));
   });
 
@@ -98,13 +93,30 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, sec
       const guest = await requireGuest(pool, request, reply, true);
       if (guest === null) return;
       if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
-      const { rows } = await pool.query<ChallengeRow>(
-        `UPDATE chess.challenges SET acceptor_guest_id = $2, accepted_at = now()
-          WHERE id = $1 AND acceptor_guest_id IS NULL AND creator_guest_id <> $2
-          RETURNING id, creator_guest_id, acceptor_guest_id, created_at`,
-        [request.params.id, guest.id],
-      );
-      const row = rows[0] ?? await findChallenge(pool, request.params.id);
+      const client = await pool.connect();
+      let row: ChallengeRow | null;
+      try {
+        await client.query('BEGIN');
+        const changed = await client.query<{ id: string }>(
+          `UPDATE chess.challenges SET acceptor_guest_id = $2, accepted_at = now()
+            WHERE id = $1 AND acceptor_guest_id IS NULL AND creator_guest_id <> $2
+            RETURNING id`, [request.params.id, guest.id],
+        );
+        if (changed.rowCount === 1) {
+          await client.query(
+            `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status)
+              VALUES ($1, $2, $2, 'white', 'active')`,
+            [request.params.id, STANDARD_STARTING_FEN],
+          );
+        }
+        row = await findChallenge(client, request.params.id);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
       if (row === null) return reply.code(404).send({ error: 'challenge_not_found' });
       if (row.creator_guest_id === guest.id) return reply.code(403).send({ error: 'cannot_accept_own_challenge' });
       if (row.acceptor_guest_id !== guest.id) return reply.code(409).send({ error: 'seat_taken' });
@@ -116,7 +128,8 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT id FROM chess.challenges LIMIT 0');
+    await pool.query('SELECT id FROM chess.games LIMIT 0');
   } catch {
-    throw new Error('The challenge schema is missing or inaccessible. Run npm run db:migrate and check database permissions.');
+    throw new Error('The game schema is missing or inaccessible. Run npm run db:migrate and check database permissions.');
   }
 }
