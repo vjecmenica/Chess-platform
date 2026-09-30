@@ -89,7 +89,7 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
     while (actions[actionIndex]?.after_ply === afterPly) {
       const action = actions[actionIndex]!;
       const replayed = action.kind === 'resign' ? game.resign({ side: action.side })
-        : action.kind === 'offer_draw' ? game.offerDraw({ side: action.side })
+        : action.kind === 'offer_draw' ? game.replayAcceptedDrawOffer({ side: action.side })
           : action.kind === 'accept_draw' ? game.acceptDraw({ side: action.side })
             : game.declineDraw({ side: action.side });
       if (!replayed.accepted) throw new Error('Saved game action cannot be replayed.');
@@ -178,6 +178,7 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
   const state = game.getState();
   return { id: row.id, version: row.version, status: row.status, position: state.position,
     result: row.result, drawOffer: state.drawOffer,
+    drawOfferNextEligiblePly: game.getDrawOfferNextEligiblePly(),
     ...(row.pending === null ? {} : { pending: row.pending }),
     clocks: clockResponse(row, atMs),
     clockStatus: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',

@@ -130,12 +130,17 @@ describe('draw agreement', () => {
     expect(game.getHistory()).toEqual(history);
   });
 
-  it('allows early offers but requires a move from both sides before agreement', () => {
+  it('rejects offers before both players have moved, then permits agreement', () => {
     const game = createGame();
-    expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
-    rejectUnchanged(game, () => game.acceptDraw({ side: 'black' }), 'draw_too_early');
+    rejectUnchanged(game, () => game.offerDraw({ side: 'white' }), 'draw_offer_too_early');
+    rejectUnchanged(game, () => game.offerDraw({ side: 'black' }), 'draw_offer_too_early');
     play(game, 'e2e4');
-    rejectUnchanged(game, () => game.acceptDraw({ side: 'black' }), 'draw_too_early');
+    rejectUnchanged(game, () => game.offerDraw({ side: 'white' }), 'draw_offer_too_early');
+    rejectUnchanged(game, () => game.offerDraw({ side: 'black' }), 'draw_offer_too_early');
+    play(game, 'e7e5');
+    expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
+    expect(game.acceptDraw({ side: 'black' })).toMatchObject({ accepted: true,
+      game: { status: 'finished', result: { reason: 'agreement' } } });
   });
 
   it('rejects responses without an offer, self-responses, and duplicate or crossed offers', () => {

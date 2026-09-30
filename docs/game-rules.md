@@ -28,9 +28,9 @@ In the current domain-only API, invalid claims leave everything unchanged, inclu
 
 ## Offers and agreement
 
-The current domain has separate offer and claim commands. An explicit offer may be sent outside the player's turn, even before both players have moved. Acceptance requires at least one played move by each side. Only the recipient may accept or decline. A second or crossed explicit offer is rejected; the recipient must explicitly accept instead. Offers cannot be withdrawn. The future online procedure also treats an incorrect claim as an offer and will support offers from both sides at once.
+The current domain has separate offer and claim commands. An explicit offer may be sent outside the player's turn, but only after both players have made a move (at least two saved half-moves). After an offer is accepted as a command, that player cannot offer again until **more than 20 further half-moves** have been played: an offer made at ply 2 can next be made at ply 23. Decline and expiry do not reset this count. Each side has its own count, and receipt or game-version changes do not advance it. Acceptance still requires one move from each side. Only the recipient may accept or decline. A second or crossed explicit offer is rejected; the recipient must explicitly accept instead. Offers cannot be withdrawn. These limits are the current guest-game online policy, not a claim that FIDE mandates this cooldown. The future incorrect-claim procedure will need its own offer rules.
 
-An offer survives the sender's moves. It ends on recipient acceptance, explicit decline, the recipient's accepted move, or any game result. Rejected moves do not decline an offer. This maps physical piece-touching to an accepted online move; selecting a piece has no domain effect. Tournament restrictions and repeated-offer moderation belong to later steps.
+An offer survives the sender's moves. It ends on recipient acceptance, explicit decline, the recipient's accepted move, or any game result. Rejected moves do not decline an offer. This maps physical piece-touching to an accepted online move; selecting a piece has no domain effect. A rejected early or cooldown offer creates no offer for the opponent and changes no eligibility state. Tournament-specific restrictions remain open.
 
 ## Mating possibility, resignation, and timeout
 

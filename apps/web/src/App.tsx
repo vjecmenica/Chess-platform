@@ -35,6 +35,8 @@ const errors: Record<string, string> = {
   adjudication_pending: 'The clock flagged and the result is awaiting adjudication.',
   legacy_untimed_game: 'This earlier challenge remains an untimed preview.',
   draw_too_early: 'Both players must make a move before agreeing to a draw.',
+  draw_offer_too_early: 'Both players must make a move before either can offer a draw.',
+  draw_offer_cooldown: 'Wait for more moves before offering another draw. The game will refresh.',
   draw_offer_pending: 'There is already an outstanding draw offer.',
   no_draw_offer: 'The draw offer is no longer available. The position will be refreshed.',
   own_draw_offer: 'Only your opponent can respond to your offer.',
@@ -531,6 +533,8 @@ export function App() {
   const canSelectSquare = analysisOpen && analysis !== null || canMove;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = game?.result;
+  const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
+  const offerPliesRemaining = game === null ? 0 : Math.max(0, offerNextPly - game.history.length);
   const resultText = result === null || result === undefined ? null
     : result.outcome === 'draw' ? `Draw by ${result.reason.replaceAll('_', ' ')}.`
       : `${result.winner === 'white' ? 'White' : 'Black'} won by ${result.reason.replaceAll('_', ' ')}.`;
@@ -682,9 +686,13 @@ export function App() {
                       <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('decline_draw')}>Decline</button>
                     </div>}
-                    {game.drawOffer === null && <button type="button" className="secondary"
-                      disabled={submitting || pending !== null || pendingAction !== null}
-                      onClick={() => beginAction('offer_draw')}>Offer draw</button>}
+                    {game.drawOffer === null && (offerPliesRemaining === 0
+                      ? <button type="button" className="secondary"
+                        disabled={submitting || pending !== null || pendingAction !== null}
+                        onClick={() => beginAction('offer_draw')}>Offer draw</button>
+                      : <p className="draw-offer" role="status">{game.history.length < 2
+                        ? 'Draw offers are available after both players have moved.'
+                        : `You can offer another draw after ${offerPliesRemaining} more half-move${offerPliesRemaining === 1 ? '' : 's'}.`}</p>)}
                     <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
                       onClick={() => beginAction('resign')}>Resign</button>
                   </>}

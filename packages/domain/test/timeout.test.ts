@@ -41,7 +41,7 @@ describe('timeout adjudication', () => {
 
   it('freezes an unresolved flag and accepts only a verified later ruling', () => {
     const game = createGame();
-    expect(game.offerDraw({ side: 'black' }).accepted).toBe(true);
+    expect(game.replayAcceptedDrawOffer({ side: 'black' }).accepted).toBe(true);
     expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 300000,
       mateLine: [{ from: 'e2', to: 'e4' }] })).toMatchObject({
       accepted: true, game: { status: 'pending_adjudication', result: null, drawOffer: null,

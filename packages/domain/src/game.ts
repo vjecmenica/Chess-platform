@@ -31,7 +31,8 @@ export type GameSnapshot = { readonly position: PositionSnapshot } & (
 
 export type GameRejection =
   | 'game_finished' | 'invalid_side' | 'draw_too_early'
-  | 'draw_offer_pending' | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
+  | 'draw_offer_too_early' | 'draw_offer_cooldown' | 'draw_offer_pending'
+  | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
   | 'adjudication_pending' | 'no_pending_resignation' | 'no_pending_timeout'
   | 'invalid_ruling' | 'invalid_timeout';
 
@@ -66,6 +67,7 @@ export type GameMoveResult =
 export interface ChessGame {
   getState(): GameSnapshot;
   getHistory(): readonly MoveRecord[];
+  getDrawOfferNextEligiblePly(): Readonly<Record<Side, number>>;
   getMatingPossibility(side: Side): MatingPossibility;
   claimDraw(command: DrawClaim): ClaimResult;
   submitMove(request: MoveRequest): GameMoveResult;
@@ -77,6 +79,8 @@ export interface ChessGame {
   verifyTimeoutMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   resolveTimeout(ruling: MateRuling): CommandResult;
   offerDraw(command: SideCommand): CommandResult;
+  /** Replays a previously accepted offer; new player commands must use offerDraw. */
+  replayAcceptedDrawOffer(command: SideCommand): CommandResult;
   acceptDraw(command: SideCommand): CommandResult;
   declineDraw(command: SideCommand): CommandResult;
 }
@@ -85,6 +89,8 @@ const messages: Record<GameRejection, string> = {
   game_finished: 'The game has already finished.',
   invalid_side: 'The acting side must be white or black.',
   draw_too_early: 'Both sides must make a move before a draw can be agreed.',
+  draw_offer_too_early: 'Both players must make a move before either can offer a draw.',
+  draw_offer_cooldown: 'More than 20 further half-moves must be played before this player can offer another draw.',
   invalid_claim: 'Choose threefold_repetition or fifty_move as the claim rule.',
   claim_not_available: 'The specified position does not meet the claimed draw threshold.',
   adjudication_pending: 'The game is awaiting adjudication.',
@@ -115,6 +121,7 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   let adjudication: MateRuling | null = null;
   let drawOffer: Side | null = null;
   let ply = 0;
+  const lastOfferPly: Record<Side, number | null> = { white: null, black: null };
   const occurrences = new Map([[board.repetitionKey(), 1]]);
 
   const getState = (): GameSnapshot => {
@@ -142,6 +149,12 @@ export function createGameFromPosition(startingFen: string): ChessGame {
     pendingResignation = null;
     pendingTimeout = null;
     drawOffer = null;
+  }
+
+  function recordDrawOffer(side: Side): CommandResult {
+    drawOffer = side;
+    lastOfferPly[side] = ply;
+    return { accepted: true, game: getState() };
   }
 
   function respondToDraw(command: SideCommand, accept: boolean): CommandResult {
@@ -200,6 +213,10 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   adjudicate();
   return {
     getState,
+    getDrawOfferNextEligiblePly: () => ({
+      white: lastOfferPly.white === null ? 2 : lastOfferPly.white + 21,
+      black: lastOfferPly.black === null ? 2 : lastOfferPly.black + 21,
+    }),
     verifyMateLine,
     verifyResignationMateLine,
     verifyTimeoutMateLine,
@@ -309,8 +326,16 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       const rejection = validate(command);
       if (rejection) return rejection;
       if (drawOffer !== null) return reject('draw_offer_pending');
-      drawOffer = command.side;
-      return { accepted: true, game: getState() };
+      if (ply < 2) return reject('draw_offer_too_early');
+      const previous = lastOfferPly[command.side];
+      if (previous !== null && ply <= previous + 20) return reject('draw_offer_cooldown');
+      return recordDrawOffer(command.side);
+    },
+    replayAcceptedDrawOffer(command) {
+      const rejection = validate(command);
+      if (rejection) return rejection;
+      if (drawOffer !== null) return reject('draw_offer_pending');
+      return recordDrawOffer(command.side);
     },
     acceptDraw: command => respondToDraw(command, true),
     declineDraw: command => respondToDraw(command, false),

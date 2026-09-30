@@ -376,7 +376,7 @@ describe('invalid claims', () => {
     { command: { side: 'white', rule: 'fifty_move', intendedMove: { from: 'e2', to: 'e4' } }, reason: 'claim_not_available' },
   ])('preserves all state, including a pending offer: $reason', ({ command, reason }) => {
     const game = createGame();
-    expect(game.offerDraw({ side: 'black' }).accepted).toBe(true);
+    expect(game.replayAcceptedDrawOffer({ side: 'black' }).accepted).toBe(true);
     unchanged(game, () => game.claimDraw(command as DrawClaim), reason);
   });
 

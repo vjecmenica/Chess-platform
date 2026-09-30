@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
+import { Chess } from 'chess.js';
 import { databaseUrl, loadEnvironment } from '../src/config.js';
 import { checkDatabase, createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
@@ -75,6 +76,19 @@ describe('guest game actions against PostgreSQL', () => {
       payload: { expectedVersion } });
   }
 
+  async function playPawnMovesTo(app: FastifyInstance, id: string, white: Guest,
+    black: Guest, targetPly: number) {
+    for (;;) {
+      const state = (await read(app, id, white)).json();
+      if (state.history.length >= targetPly) return state;
+      const choice = new Chess(state.position.fen).moves({ verbose: true })
+        .find(candidate => candidate.piece === 'p' && candidate.promotion === undefined);
+      if (!choice) throw new Error('Fixture ran out of legal pawn moves.');
+      const actor = state.position.sideToMove === 'white' ? white : black;
+      expect((await move(app, id, actor, state.version, choice.from, choice.to)).statusCode).toBe(200);
+    }
+  }
+
   it('persists offers and responses for both seats, including after a fresh server read', async () => {
     const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
@@ -104,7 +118,7 @@ describe('guest game actions against PostgreSQL', () => {
       result: { reason: 'agreement' }, drawOffer: null });
   });
 
-  it('expires an opponent offer after a move and rejects invalid or competing actions', async () => {
+  it('rejects direct early offers, expires an offer on the opponent move, and keeps sides independent', async () => {
     const { app } = fixture();
     const { id, white, black } = await challenge(app);
     const outsider = await guest(app);
@@ -113,30 +127,48 @@ describe('guest game actions against PostgreSQL', () => {
       headers: { cookie: white.cookie, 'idempotency-key': randomUUID() },
       payload: { expectedVersion: 0 } })).statusCode).toBe(403);
     expect((await action(app, id, white, 'draw-accept', 0)).json().error).toBe('no_draw_offer');
+    expect((await action(app, id, white, 'draw-offer', 0)).json().error).toBe('draw_offer_too_early');
+    expect((await action(app, id, black, 'draw-offer', 0)).json().error).toBe('draw_offer_too_early');
+    expect((await read(app, id, black)).json()).toMatchObject({ version: 0, drawOffer: null,
+      drawOfferNextEligiblePly: { white: 2, black: 2 } });
     expect((await move(app, id, white, 0, 'e2', 'e4')).statusCode).toBe(200);
-    expect((await action(app, id, white, 'draw-offer', 1)).statusCode).toBe(200);
-    expect((await action(app, id, black, 'draw-accept', 2)).json().error).toBe('draw_too_early');
-    const [response, moved] = await Promise.all([
-      action(app, id, black, 'draw-decline', 2), move(app, id, black, 2, 'e7', 'e5'),
-    ]);
-    expect([response.statusCode, moved.statusCode].sort()).toEqual([200, 409]);
-    const state = (await read(app, id, white)).json();
-    if (moved.statusCode === 200) {
-      expect(state.drawOffer).toBeNull();
-      expect(state.history).toHaveLength(2);
-    } else {
-      expect(state.drawOffer).toBeNull();
-      expect(state.history).toHaveLength(1);
-      expect((await move(app, id, black, state.version, 'e7', 'e5')).statusCode).toBe(200);
-    }
-    const current = (await read(app, id, white)).json();
-    expect((await action(app, id, white, 'draw-offer', current.version)).statusCode).toBe(200);
-    const afterOffer = (await read(app, id, white)).json();
-    expect((await move(app, id, white, afterOffer.version, 'g1', 'f3')).statusCode).toBe(200);
+    expect((await action(app, id, black, 'draw-offer', 1)).json().error).toBe('draw_offer_too_early');
+    expect((await read(app, id, white)).json()).toMatchObject({ version: 1, drawOffer: null });
+    expect((await move(app, id, black, 1, 'e7', 'e5')).statusCode).toBe(200);
+    expect((await action(app, id, white, 'draw-offer', 2)).statusCode).toBe(200);
+    expect((await move(app, id, white, 3, 'g1', 'f3')).statusCode).toBe(200);
     expect((await read(app, id, black)).json().drawOffer).toBe('white');
-    const beforeBlackMove = (await read(app, id, black)).json();
-    expect((await move(app, id, black, beforeBlackMove.version, 'b8', 'c6')).statusCode).toBe(200);
-    expect((await read(app, id, white)).json().drawOffer).toBeNull();
+    expect((await move(app, id, black, 4, 'b8', 'c6')).statusCode).toBe(200);
+    expect((await read(app, id, white)).json()).toMatchObject({ version: 5, drawOffer: null,
+      drawOfferNextEligiblePly: { white: 23, black: 2 } });
+    expect((await action(app, id, white, 'draw-offer', 5)).json().error).toBe('draw_offer_cooldown');
+    expect((await action(app, id, black, 'draw-offer', 5)).statusCode).toBe(200);
+    expect((await read(app, id, white)).json().drawOffer).toBe('black');
+  });
+
+  it('uses played plies, not action versions, at the exact cooldown boundary after restart', async () => {
+    const { app, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    expect((await move(app, id, white, 0, 'e2', 'e4')).statusCode).toBe(200);
+    expect((await move(app, id, black, 1, 'e7', 'e5')).statusCode).toBe(200);
+    expect((await action(app, id, white, 'draw-offer', 2)).statusCode).toBe(200);
+    expect((await action(app, id, black, 'draw-decline', 3)).statusCode).toBe(200);
+    const atTwenty = await playPawnMovesTo(app, id, white, black, 22);
+    expect(atTwenty).toMatchObject({ version: 24, drawOffer: null,
+      drawOfferNextEligiblePly: { white: 23, black: 2 } });
+    const { app: restarted } = another(time);
+    const restored = (await read(restarted, id, black)).json();
+    expect(restored.history).toHaveLength(22);
+    expect(restored.drawOfferNextEligiblePly).toEqual({ white: 23, black: 2 });
+    expect((await action(restarted, id, white, 'draw-offer', 24)).json().error)
+      .toBe('draw_offer_cooldown');
+    const atTwentyOne = await playPawnMovesTo(restarted, id, white, black, 23);
+    expect(atTwentyOne.version).toBe(25);
+    const requestId = randomUUID();
+    const accepted = await action(restarted, id, white, 'draw-offer', 25, requestId);
+    expect(accepted.json()).toMatchObject({ accepted: true,
+      game: { version: 26, drawOffer: 'white', drawOfferNextEligiblePly: { white: 44, black: 2 } } });
+    expect((await action(app, id, white, 'draw-offer', 25, requestId)).json()).toEqual(accepted.json());
   });
 
   it('freezes a resignation until a verified ruling, then reconstructs the result', async () => {
@@ -170,13 +202,18 @@ describe('guest game actions against PostgreSQL', () => {
     const { id, white, black } = await challenge(app);
     await pool.query(`UPDATE chess.games SET clock_mode = 'legacy_untimed',
       clock_phase = 'legacy_untimed' WHERE id = $1`, [id]);
-    expect((await action(app, id, white, 'draw-offer', 0)).json()).toMatchObject({
+    expect((await read(app, id, white)).json()).toMatchObject({
+      drawOffer: null, drawOfferNextEligiblePly: { white: 2, black: 2 }, clocks: null });
+    expect((await action(app, id, white, 'draw-offer', 0)).json().error).toBe('draw_offer_too_early');
+    expect((await move(app, id, white, 0, 'e2', 'e4')).statusCode).toBe(200);
+    expect((await move(app, id, black, 1, 'e7', 'e5')).statusCode).toBe(200);
+    expect((await action(app, id, white, 'draw-offer', 2)).json()).toMatchObject({
       accepted: true, game: { drawOffer: 'white', clocks: null } });
     const { app: restarted } = another(time);
     expect((await read(restarted, id, black)).json()).toMatchObject({
-      version: 1, drawOffer: 'white', clocks: null });
-    expect((await action(restarted, id, black, 'draw-decline', 1)).json()).toMatchObject({
-      accepted: true, game: { version: 2, drawOffer: null, clocks: null } });
+      version: 3, drawOffer: 'white', clocks: null });
+    expect((await action(restarted, id, black, 'draw-decline', 3)).json()).toMatchObject({
+      accepted: true, game: { version: 4, drawOffer: null, clocks: null } });
   });
 
   it('orders a pre-deadline response before a late timer and flags an exact-deadline action', async () => {

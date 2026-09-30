@@ -10,7 +10,8 @@ const afterE5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 function game(version = 0): GameReadResponse {
   return { id: 'game', version, status: 'active', yourSeat: 'white',
     position: { fen: version === 0 ? start : afterE4, sideToMove: version === 0 ? 'white' : 'black' },
-    result: null, clocks: null, clockStatus: 'not_integrated',
+    result: null, drawOffer: null, drawOfferNextEligiblePly: { white: 2, black: 2 },
+    clocks: null, clockStatus: 'not_integrated',
     timeControl: { initialMs: 300_000, incrementMs: 3_000 }, rated: false, history: [] };
 }
 
