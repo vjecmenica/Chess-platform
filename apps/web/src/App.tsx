@@ -96,10 +96,12 @@ export function App() {
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [resignConfirmationVersion, setResignConfirmationVersion] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
   const promotionFocus = useRef<HTMLButtonElement | null>(null);
+  const resignFocus = useRef<HTMLButtonElement | null>(null);
   const challengeFetch = useRef<Promise<void> | null>(null);
   const gameFetch = useRef<Promise<boolean> | null>(null);
   const posting = useRef(false);
@@ -113,6 +115,9 @@ export function App() {
   const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
 
   useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
+
+  useEffect(() => { setResignConfirmationVersion(null); },
+    [game?.id, game?.version, game?.status, challenge?.status, analysisOpen]);
 
   useEffect(() => {
     let active = true;
@@ -406,8 +411,16 @@ export function App() {
     const current = gameRef.current;
     if (current === null || current.status !== 'active' || pendingRef.current
       || pendingActionRef.current || posting.current) return;
-    if (kind === 'resign' && !window.confirm('Resign this game? This cannot be undone.')) return;
+    setResignConfirmationVersion(null);
     void submitAction({ requestId: crypto.randomUUID(), expectedVersion: current.version, kind });
+  }
+
+  function confirmResignation() {
+    if (gameRef.current?.version !== resignConfirmationVersion) {
+      setResignConfirmationVersion(null);
+      return;
+    }
+    beginAction('resign');
   }
 
   function inputPosition() {
@@ -686,15 +699,25 @@ export function App() {
                       <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('decline_draw')}>Decline</button>
                     </div>}
-                    {game.drawOffer === null && (offerPliesRemaining === 0
+                    {game.drawOffer === null && game.history.length >= 2 && (offerPliesRemaining === 0
                       ? <button type="button" className="secondary"
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('offer_draw')}>Offer draw</button>
-                      : <p className="draw-offer" role="status">{game.history.length < 2
-                        ? 'Draw offers are available after both players have moved.'
-                        : `You can offer another draw after ${offerPliesRemaining} more half-move${offerPliesRemaining === 1 ? '' : 's'}.`}</p>)}
-                    <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
-                      onClick={() => beginAction('resign')}>Resign</button>
+                      : <p className="draw-offer" role="status">You can offer another draw after {offerPliesRemaining} more half-move{offerPliesRemaining === 1 ? '' : 's'}.</p>)}
+                    {resignConfirmationVersion === game.version
+                      ? <div className="resign-confirmation" role="group" aria-label="Confirm resignation">
+                        <p>Resign this game? This cannot be undone.</p>
+                        <button type="button" className="danger"
+                          disabled={submitting || pending !== null || pendingAction !== null}
+                          autoFocus onClick={confirmResignation}>Confirm resignation</button>
+                        <button type="button" className="secondary" onClick={() => {
+                          setResignConfirmationVersion(null);
+                          requestAnimationFrame(() => resignFocus.current?.focus());
+                        }}>Cancel</button>
+                      </div>
+                      : <button type="button" className="secondary" ref={resignFocus}
+                        disabled={submitting || pending !== null || pendingAction !== null}
+                        onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
                   </>}
                   {game.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
                     onClick={() => {
