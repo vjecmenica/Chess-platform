@@ -27,7 +27,10 @@ export function ClockPanel({ clock }: { clock: ClockState }) {
       className={`clock ${clock.activeSide === side ? 'clock-active' : ''}`}>
       <span>{side === 'white' ? 'White' : 'Black'}</span>
       <strong aria-live="off">{formatClock(displayedMs(clock, side, elapsedMs))}</strong>
-      <small>{clock.ready[side] ? 'Ready' : 'Not ready'}</small>
+      <small>{clock.startMode === 'first_move'
+        ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
+          : clock.activeSide === side ? 'Running' : 'Stopped'
+        : clock.ready[side] ? 'Ready' : 'Not ready'}</small>
     </div>)}
   </div>;
 }

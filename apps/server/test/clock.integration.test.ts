@@ -56,7 +56,7 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
       csrf: response.json().csrfToken as string };
   }
 
-  async function challenge(app: FastifyInstance) {
+  async function challenge(app: FastifyInstance, oldReadiness = false) {
     const white = await guest(app);
     const black = await guest(app);
     const created = await app.inject({ method: 'POST', url: '/challenges',
@@ -67,6 +67,10 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     const accepted = await app.inject({ method: 'POST', url: `/challenges/${id}/accept`,
       headers: { cookie: black.cookie, 'x-csrf-token': black.csrf } });
     expect(accepted.statusCode).toBe(200);
+    if (oldReadiness) {
+      await pool.query(`UPDATE chess.games SET clock_start_mode = 'readiness',
+        status = 'waiting', clock_phase = 'waiting' WHERE id = $1`, [id]);
+    }
     return { id, white, black };
   }
 
@@ -84,16 +88,95 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
         'idempotency-key': requestId }, payload: { expectedVersion, from, to } });
   }
   async function start(app: FastifyInstance) {
-    const players = await challenge(app);
+    const players = await challenge(app, true);
     expect((await ready(app, players.id, players.white)).statusCode).toBe(200);
     const second = await ready(app, players.id, players.black);
     expect(second.statusCode).toBe(200);
     return { ...players, started: second.json() };
   }
 
-  it('authorizes both readiness commands and starts White only after the second seat is ready', async () => {
+  it('waits for White without a deadline, including after restart and a late poll', async () => {
+    const { app, service, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    const initial = (await read(app, id, white)).json();
+    expect(initial).toMatchObject({ version: 0, status: 'active', history: [],
+      clocks: { phase: 'awaiting_first_move', activeSide: null, deadlineMs: null,
+        remainingMs: { white: 300000, black: 300000 } } });
+    expect((await ready(app, id, white)).json().error).toBe('ready_not_required');
+    time.set(time.value + 10_000_000);
+    await service.pollDueGames();
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
+    const { app: restartedApp, service: restarted } = anotherInstance(time);
+    await restarted.pollDueGames();
+    expect((await read(restartedApp, id, black)).json()).toMatchObject({
+      version: 0, status: 'active', history: [],
+      clocks: { phase: 'awaiting_first_move', deadlineMs: null,
+        remainingMs: { white: 300000, black: 300000 } } });
+    expect((await pool.query('SELECT clock_start_mode FROM chess.games WHERE id=$1', [id]))
+      .rows[0].clock_start_mode).toBe('first_move');
+  });
+
+  it('starts Black only after one valid first move, without charging or incrementing White', async () => {
     const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
+    const outsider = await guest(app);
+    expect((await move(app, id, outsider, 0, 'e2', 'e4')).statusCode).toBe(403);
+    expect((await move(app, id, black, 0, 'e7', 'e5')).json().error).toBe('wrong_turn');
+    const invalidId = randomUUID();
+    expect((await move(app, id, white, 0, 'e2', 'e5', invalidId)).json().error).toBe('illegal_move');
+    time.set(time.value + 900_000);
+    expect((await move(app, id, white, 0, 'e2', 'e5', invalidId)).json().error).toBe('illegal_move');
+    expect((await read(app, id, white)).json()).toMatchObject({ version: 0, history: [],
+      clocks: { phase: 'awaiting_first_move', remainingMs: { white: 300000, black: 300000 } } });
+    const firstId = randomUUID();
+    const [a, b] = await Promise.all([
+      move(app, id, white, 0, 'e2', 'e4', firstId),
+      move(app, id, white, 0, 'd2', 'd4'),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    const accepted = a.statusCode === 200 ? a : b;
+    expect(accepted.json()).toMatchObject({ accepted: true, game: { version: 1,
+      clocks: { phase: 'running', activeSide: 'black',
+        remainingMs: { white: 300000, black: 300000 }, deadlineMs: time.value + 300000 } } });
+    if (a.statusCode === 200) {
+      expect((await move(app, id, white, 0, 'e2', 'e4', firstId)).json()).toEqual(a.json());
+    }
+    expect((await pool.query('SELECT count(*)::int AS total FROM chess.game_moves WHERE game_id=$1', [id]))
+      .rows[0].total).toBe(1);
+    time.set(time.value + 1000);
+    expect((await move(app, id, black, 1, 'e7', 'e5')).json()).toMatchObject({
+      accepted: true, game: { version: 2, clocks: {
+        remainingMs: { white: 300000, black: 302000 }, activeSide: 'white' } } });
+  });
+
+  it('recovers the first-move clock handoff after its move transaction commits', async () => {
+    const { app, time } = fixture(2_000_000_000_000,
+      { afterMoveCommit: async () => { throw new Error('Simulated worker failure after commit.'); } });
+    const { id, white, black } = await challenge(app);
+    const requestId = randomUUID();
+    expect((await move(app, id, white, 0, 'e2', 'e4', requestId)).statusCode).toBe(500);
+    expect((await pool.query(`SELECT clock_phase, turn_started_at, deadline_at,
+      white_remaining_ms, black_remaining_ms FROM chess.games WHERE id=$1`, [id]))
+      .rows[0]).toMatchObject({ clock_phase: 'handoff', turn_started_at: null,
+        deadline_at: null, white_remaining_ms: 300000, black_remaining_ms: 300000 });
+    time.set(time.value + 25_000);
+    const { app: recoveryApp, service: recovery } = anotherInstance(time);
+    await recoveryApp.ready();
+    expect(await recovery.pollDueGames()).toBe(0);
+    const response = await move(recoveryApp, id, white, 0, 'e2', 'e4', requestId);
+    expect(response.json()).toMatchObject({ game: { version: 1,
+      clocks: { phase: 'running', activeSide: 'black', deadlineMs: time.value + 300000,
+        remainingMs: { white: 300000, black: 300000 } } } });
+    expect((await read(recoveryApp, id, black)).json()).toMatchObject({
+      history: [{ san: 'e4' }], version: 1,
+      clocks: { phase: 'running', activeSide: 'black' } });
+    expect((await move(recoveryApp, id, white, 0, 'e2', 'e4', requestId)).json()).toEqual(response.json());
+  });
+
+  it('authorizes both readiness commands and starts White only after the second seat is ready', async () => {
+    const { app, time } = fixture();
+    const { id, white, black } = await challenge(app, true);
     const outsider = await guest(app);
     expect((await ready(app, id, outsider)).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: `/games/${id}/ready`,

@@ -11,7 +11,7 @@ export interface MoveBody { expectedVersion: number; from: string; to: string; p
 export interface ServiceResult { status: number; body: unknown }
 
 type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished';
-type ClockPhase = 'legacy_untimed' | 'waiting' | 'running' | 'handoff' | 'stopped' | 'flagged';
+type ClockPhase = 'legacy_untimed' | 'waiting' | 'awaiting_first_move' | 'running' | 'handoff' | 'stopped' | 'flagged';
 interface GameRow {
   id: string;
   creator_guest_id: string;
@@ -25,6 +25,7 @@ interface GameRow {
   timeout_witness: readonly Omit<MoveRequest, 'side'>[] | null;
   version: number;
   clock_mode: 'legacy_untimed' | 'five_plus_three';
+  clock_start_mode: 'readiness' | 'first_move';
   clock_phase: ClockPhase;
   ready_white: boolean;
   ready_black: boolean;
@@ -94,7 +95,9 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
   }
   const state = game.getState();
   const expectedVersion = rows.length + (row.clock_mode === 'five_plus_three'
-    ? Number(row.ready_white) + Number(row.ready_black) + Number(row.flagged_side !== null) : 0);
+    ? (row.clock_start_mode === 'readiness'
+      ? Number(row.ready_white) + Number(row.ready_black) : 0)
+      + Number(row.flagged_side !== null) : 0);
   const expectedStatus = row.status === 'waiting' ? 'active' : row.status;
   if (row.version !== expectedVersion || row.fen !== state.position.fen
     || row.side_to_move !== state.position.sideToMove || expectedStatus !== state.status
@@ -103,9 +106,19 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
     throw new Error('Saved game state does not match its history.');
   }
   if (row.clock_mode === 'five_plus_three') {
-    if (row.status === 'waiting' && (row.clock_phase !== 'waiting' || row.ready_white && row.ready_black)
-      || row.status === 'active' && (row.clock_phase !== 'running' && row.clock_phase !== 'handoff'
-        || !row.ready_white || !row.ready_black
+    const firstMoveWaiting = row.clock_start_mode === 'first_move'
+      && row.clock_phase === 'awaiting_first_move';
+    if (row.clock_start_mode === 'first_move'
+        && (row.ready_white || row.ready_black || row.status === 'waiting')
+      || row.clock_start_mode === 'readiness' && row.clock_phase === 'awaiting_first_move'
+      || firstMoveWaiting && (row.status !== 'active' || rows.length !== 0
+        || row.side_to_move !== 'white' || row.white_remaining_ms !== FIVE_PLUS_THREE.initialMs
+        || row.black_remaining_ms !== FIVE_PLUS_THREE.initialMs
+        || row.turn_started_at !== null || row.deadline_at !== null)
+      || row.status === 'waiting' && (row.clock_phase !== 'waiting' || row.ready_white && row.ready_black)
+      || row.status === 'active' && !firstMoveWaiting && (row.clock_phase !== 'running' && row.clock_phase !== 'handoff'
+        || row.clock_start_mode === 'readiness' && (!row.ready_white || !row.ready_black)
+        || row.clock_start_mode === 'first_move' && rows.length === 0
         || row.clock_phase === 'running' && (row.turn_started_at === null || row.deadline_at === null)
         || row.clock_phase === 'handoff' && (row.turn_started_at !== null || row.deadline_at !== null))
       || row.flagged_side !== null && row.clock_phase !== 'flagged'
@@ -123,7 +136,7 @@ function clockResponse(row: GameRow, atMs: number): ClockState | null {
   if (activeSide !== null && row.turn_started_at !== null) {
     remaining[activeSide] = Math.max(0, remaining[activeSide] - Math.max(0, atMs - row.turn_started_at.getTime()));
   }
-  return { phase: row.clock_phase as ClockState['phase'],
+  return { startMode: row.clock_start_mode, phase: row.clock_phase as ClockState['phase'],
     ready: { white: row.ready_white, black: row.ready_black }, remainingMs: remaining,
     activeSide, deadlineMs: row.deadline_at?.getTime() ?? null,
     flaggedSide: row.flagged_side, flaggedAtMs: row.flagged_at?.getTime() ?? null,
@@ -354,13 +367,17 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         row.timeout_witness = null;
         row.version += 1;
         if (row.clock_mode === 'five_plus_three') {
-          const startedAtMs = row.turn_started_at?.getTime();
-          if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
-          const left = Math.max(0, (yourSeat === 'white'
-            ? row.white_remaining_ms : row.black_remaining_ms) - (receivedAtMs - startedAtMs))
-            + FIVE_PLUS_THREE.incrementMs;
-          if (yourSeat === 'white') row.white_remaining_ms = left;
-          else row.black_remaining_ms = left;
+          const freeFirstMove = row.clock_start_mode === 'first_move'
+            && row.clock_phase === 'awaiting_first_move';
+          if (!freeFirstMove) {
+            const startedAtMs = row.turn_started_at?.getTime();
+            if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
+            const left = Math.max(0, (yourSeat === 'white'
+              ? row.white_remaining_ms : row.black_remaining_ms) - (receivedAtMs - startedAtMs))
+              + FIVE_PLUS_THREE.incrementMs;
+            if (yourSeat === 'white') row.white_remaining_ms = left;
+            else row.black_remaining_ms = left;
+          }
           row.turn_started_at = null;
           row.deadline_at = null;
           row.clock_phase = row.status === 'active' ? 'handoff' : 'stopped';
@@ -450,6 +467,9 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         const game = await reconstruct(client, row);
         if (row.clock_mode !== 'five_plus_three') {
           return { status: 409, body: { error: 'legacy_untimed_game' } };
+        }
+        if (row.clock_start_mode === 'first_move') {
+          return { status: 409, body: { error: 'ready_not_required' } };
         }
         const atMs = now(clock);
         if (row.status === 'waiting' && !(yourSeat === 'white' ? row.ready_white : row.ready_black)) {

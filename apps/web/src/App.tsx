@@ -468,6 +468,8 @@ export function App() {
               {game.clocks !== null && <ClockPanel clock={game.clocks} />}
               <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
                 ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
+                : game.clocks?.phase === 'awaiting_first_move'
+                  ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
                 : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
                   : canMove ? `Your turn (${game.yourSeat}).`
                     : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>

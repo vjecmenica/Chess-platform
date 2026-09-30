@@ -108,8 +108,9 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, sec
         if (changed.rowCount === 1) {
           await client.query(
             `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status,
-                clock_mode, clock_phase)
-              VALUES ($1, $2, $2, 'white', 'waiting', 'five_plus_three', 'waiting')`,
+                clock_mode, clock_phase, clock_start_mode)
+              VALUES ($1, $2, $2, 'white', 'active', 'five_plus_three',
+                'awaiting_first_move', 'first_move')`,
             [request.params.id, STANDARD_STARTING_FEN],
           );
         }
@@ -132,7 +133,7 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT id FROM chess.challenges LIMIT 0');
-    await pool.query('SELECT id, clock_mode, deadline_at FROM chess.games LIMIT 0');
+    await pool.query('SELECT id, clock_mode, clock_start_mode, deadline_at FROM chess.games LIMIT 0');
     await pool.query('SELECT admission_id, applied FROM chess.game_move_receipts LIMIT 0');
     await pool.query('SELECT instance_id FROM chess.clock_ingress_watermarks LIMIT 0');
   } catch {
