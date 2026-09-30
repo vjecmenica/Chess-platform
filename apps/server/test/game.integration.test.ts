@@ -121,7 +121,7 @@ describe('earlier untimed guest games against PostgreSQL', () => {
       position: { sideToMove: 'white' }, history: [{ ply: 1 }, { ply: 2, uci: 'e7e5' }] });
     expect((await pool.query('SELECT ply FROM chess.game_moves WHERE game_id = $1', [id])).rowCount).toBe(2);
     expect((await pool.query('SELECT request_id FROM chess.game_move_receipts WHERE game_id = $1', [id])).rowCount)
-      .toBe(2);
+      .toBe(4);
   });
 
   it('reconstructs after a new server instance and detects a stored-position mismatch', async () => {

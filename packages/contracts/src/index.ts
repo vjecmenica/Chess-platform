@@ -21,7 +21,7 @@ export interface ChallengeSummary {
 
 export type GameSide = 'white' | 'black';
 export interface ClockState {
-  readonly phase: 'waiting' | 'running' | 'stopped' | 'flagged';
+  readonly phase: 'waiting' | 'running' | 'handoff' | 'stopped' | 'flagged';
   readonly ready: Readonly<Record<GameSide, boolean>>;
   readonly remainingMs: Readonly<Record<GameSide, number>>;
   readonly activeSide: GameSide | null;

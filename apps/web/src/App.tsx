@@ -373,7 +373,8 @@ export function App() {
       {challenge?.status === 'accepted' && challenge.yourSeat !== null && <section className="game-area" aria-labelledby="game-title">
         <div className="preview-warning" role="note">{challenge.game.clocks === 'not_integrated'
           ? <><strong>No clocks are running.</strong> This earlier challenge remains an untimed preview.</>
-          : <><strong>5+3 server clock.</strong> Time continues during disconnects and server outages.
+          : <><strong>5+3 server clock.</strong> Running clocks continue during disconnects and server outages.
+            After a saved move, the next clock starts when the server confirms the turn.
             The displayed countdown is an estimate; the server decides the deadline and result.</>}</div>
         <div className="game-heading">
           <h2 id="game-title">Saved game</h2>

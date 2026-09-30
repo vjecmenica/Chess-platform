@@ -12,13 +12,14 @@ async function main() {
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
-  app.addHook('onClose', async () => pool.end());
+  app.addHook('onClose', async () => { await gameService.stop(); await pool.end(); });
   let timer: ReturnType<typeof setInterval> | null = null;
   app.addHook('onClose', async () => { if (timer !== null) clearInterval(timer); });
 
   try {
     await checkDatabase(pool);
     await checkChallengeSchema(pool);
+    await gameService.start();
   } catch (error) {
     await app.close();
     throw error;

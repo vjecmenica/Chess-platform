@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
@@ -10,7 +11,7 @@ export interface MoveBody { expectedVersion: number; from: string; to: string; p
 export interface ServiceResult { status: number; body: unknown }
 
 type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished';
-type ClockPhase = 'legacy_untimed' | 'waiting' | 'running' | 'stopped' | 'flagged';
+type ClockPhase = 'legacy_untimed' | 'waiting' | 'running' | 'handoff' | 'stopped' | 'flagged';
 interface GameRow {
   id: string;
   creator_guest_id: string;
@@ -35,7 +36,16 @@ interface GameRow {
   flagged_at: Date | null;
 }
 interface StoredMove { ply: number; record: MoveRecord }
-interface Receipt { payload: MoveBody; response: unknown; status_code: number }
+interface Receipt {
+  admission_id: string;
+  guest_id: string;
+  request_id: string;
+  payload: MoveBody;
+  response: unknown | null;
+  status_code: number | null;
+  received_at: Date;
+  applied: boolean;
+}
 
 function now(clock: WallClock): number {
   const value = clock.nowMs();
@@ -94,8 +104,10 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
   }
   if (row.clock_mode === 'five_plus_three') {
     if (row.status === 'waiting' && (row.clock_phase !== 'waiting' || row.ready_white && row.ready_black)
-      || row.status === 'active' && (row.clock_phase !== 'running' || !row.ready_white || !row.ready_black
-        || row.turn_started_at === null || row.deadline_at === null)
+      || row.status === 'active' && (row.clock_phase !== 'running' && row.clock_phase !== 'handoff'
+        || !row.ready_white || !row.ready_black
+        || row.clock_phase === 'running' && (row.turn_started_at === null || row.deadline_at === null)
+        || row.clock_phase === 'handoff' && (row.turn_started_at !== null || row.deadline_at !== null))
       || row.flagged_side !== null && row.clock_phase !== 'flagged'
       || row.status === 'finished' && row.flagged_side === null && row.clock_phase !== 'stopped') {
       throw new Error('Saved clock state is inconsistent.');
@@ -173,18 +185,80 @@ async function expireIfDue(client: pg.PoolClient, row: GameRow, game: ChessGame,
   return true;
 }
 
+export interface Arrival {
+  readonly receivedAtMs: number;
+  release(): Promise<void>;
+}
+
 export interface GameService {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  heartbeat(): Promise<void>;
+  beginReceipt(): Arrival;
   read(id: string, guestId: string): Promise<ServiceResult>;
   ready(id: string, guestId: string): Promise<ServiceResult>;
-  move(id: string, guestId: string, requestId: string, body: MoveBody, receivedAtMs: number): Promise<ServiceResult>;
+  move(id: string, guestId: string, requestId: string, body: MoveBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
-  receiptTime(): number;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
 
-export function createGameService(pool: pg.Pool, clock: WallClock = systemClock): GameService {
+export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
+  hooks: { afterMoveCommit?: () => Promise<void> } = {}): GameService {
+  const instanceId = randomUUID();
+  const arrivals = new Map<symbol, number>();
   const queues = new Map<string, Promise<unknown>>();
+  let started: Promise<void> | null = null;
+  let pulse: ReturnType<typeof setInterval> | null = null;
+  let stopped = false;
+  let registered = false;
+
+  function safeThrough(): number {
+    let safe = now(clock);
+    for (const receivedAtMs of arrivals.values()) safe = Math.min(safe, receivedAtMs - 1);
+    return Math.max(0, safe);
+  }
+
+  async function start(): Promise<void> {
+    started ??= (async () => {
+      await pool.query(`INSERT INTO chess.clock_ingress_watermarks
+        (instance_id, safe_through_ms, lease_until)
+        VALUES ($1, $2, clock_timestamp() + interval '30 seconds')`, [instanceId, safeThrough()]);
+      registered = true;
+      pulse = setInterval(() => { void heartbeat().catch(() => {
+        console.error('Could not publish the game-command ingress watermark.');
+      }); }, 250);
+    })();
+    try { await started; }
+    catch (error) { started = null; throw error; }
+  }
+
+  async function heartbeat(): Promise<void> {
+    await start();
+    await pool.query(`UPDATE chess.clock_ingress_watermarks
+      SET safe_through_ms = $2, lease_until = clock_timestamp() + interval '30 seconds'
+      WHERE instance_id = $1`, [instanceId, safeThrough()]);
+  }
+
+  async function stop(): Promise<void> {
+    if (stopped) return;
+    stopped = true;
+    if (pulse !== null) clearInterval(pulse);
+    if (started !== null) await started.catch(() => undefined);
+    if (registered) {
+      await pool.query('DELETE FROM chess.clock_ingress_watermarks WHERE instance_id = $1', [instanceId]);
+    }
+  }
+
+  function beginReceipt(): Arrival {
+    const ticket = Symbol('move arrival');
+    const receivedAtMs = now(clock);
+    arrivals.set(ticket, receivedAtMs);
+    return { receivedAtMs, async release() {
+      if (arrivals.delete(ticket)) await heartbeat();
+    } };
+  }
+
   function serialize<T>(id: string, action: () => Promise<T>): Promise<T> {
     const previous = queues.get(id) ?? Promise.resolve();
     const work = previous.catch(() => undefined).then(action);
@@ -209,24 +283,165 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock)
     }
   }
 
+  async function safeToDecide(client: pg.PoolClient, throughMs: number): Promise<boolean> {
+    const { rows } = await client.query<{ blocked: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM chess.clock_ingress_watermarks
+        WHERE lease_until > clock_timestamp() AND safe_through_ms < $1) AS blocked`,
+      [throughMs],
+    );
+    return !rows[0]!.blocked;
+  }
+
+  async function completeReceipt(client: pg.PoolClient, receipt: Receipt,
+    result: ServiceResult): Promise<void> {
+    await client.query(`UPDATE chess.game_move_receipts
+      SET response = $2::jsonb, status_code = $3 WHERE admission_id = $1`,
+    [receipt.admission_id, JSON.stringify(result.body), result.status]);
+  }
+
+  async function finishHandoff(client: pg.PoolClient, row: GameRow, game: ChessGame): Promise<void> {
+    const { rows } = await client.query<Receipt>(`SELECT * FROM chess.game_move_receipts
+      WHERE game_id = $1 AND response IS NULL AND applied = true`, [row.id]);
+    if (rows.length !== 1) throw new Error('Saved clock handoff has no unique applied move.');
+    const receipt = rows[0]!;
+    const yourSeat = seat(row, receipt.guest_id);
+    if (yourSeat === null) throw new Error('Saved move has no owning seat.');
+    const atMs = Math.max(now(clock), receipt.received_at.getTime());
+    row.clock_phase = 'running';
+    row.turn_started_at = new Date(atMs);
+    row.deadline_at = new Date(atMs + (row.side_to_move === 'white'
+      ? row.white_remaining_ms : row.black_remaining_ms));
+    await saveGame(client, row);
+    const move = game.getHistory().at(-1);
+    if (!move) throw new Error('Saved handoff has no accepted move.');
+    const response: MoveAcceptedResponse = { accepted: true, move,
+      game: gameState(row, game, yourSeat, atMs) };
+    await completeReceipt(client, receipt, { status: 200, body: response });
+  }
+
+  async function applyReceipt(client: pg.PoolClient, row: GameRow, game: ChessGame,
+    receipt: Receipt): Promise<boolean> {
+    const receivedAtMs = receipt.received_at.getTime();
+    const yourSeat = seat(row, receipt.guest_id);
+    if (yourSeat === null) throw new Error('Admitted move has no owning seat.');
+    const body = receipt.payload;
+    let result: ServiceResult;
+    if (row.flagged_at !== null && receivedAtMs >= row.flagged_at.getTime()) {
+      result = { status: 409, body: { error: 'flag_fell', currentVersion: row.version } };
+    } else if (row.status === 'waiting') {
+      result = { status: 409, body: { error: 'clock_not_started' } };
+    } else if (body.expectedVersion !== row.version) {
+      result = { status: 409, body: { error: 'stale_version', currentVersion: row.version } };
+    } else if (row.status !== 'active') {
+      result = { status: 409, body: { error: row.status === 'finished'
+        ? 'game_finished' : 'adjudication_pending' } };
+    } else if (row.clock_mode === 'five_plus_three' && row.turn_started_at !== null
+      && receivedAtMs < row.turn_started_at.getTime()) {
+      result = { status: 409, body: { error: 'received_before_turn' } };
+    } else {
+      const submitted = game.submitMove({ side: yourSeat, from: body.from, to: body.to,
+        ...(body.promotion === undefined ? {} : { promotion: body.promotion }) });
+      if (!submitted.accepted) {
+        result = { status: submitted.reason === 'wrong_turn' ? 409 : 422,
+          body: { error: submitted.reason, message: submitted.message } };
+      } else {
+        const state = game.getState();
+        if (state.status === 'pending_adjudication') throw new Error('Unexpected pending move result.');
+        row.fen = state.position.fen;
+        row.side_to_move = state.position.sideToMove;
+        row.status = state.status;
+        row.result = state.result;
+        row.timeout_witness = null;
+        row.version += 1;
+        if (row.clock_mode === 'five_plus_three') {
+          const startedAtMs = row.turn_started_at?.getTime();
+          if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
+          const left = Math.max(0, (yourSeat === 'white'
+            ? row.white_remaining_ms : row.black_remaining_ms) - (receivedAtMs - startedAtMs))
+            + FIVE_PLUS_THREE.incrementMs;
+          if (yourSeat === 'white') row.white_remaining_ms = left;
+          else row.black_remaining_ms = left;
+          row.turn_started_at = null;
+          row.deadline_at = null;
+          row.clock_phase = row.status === 'active' ? 'handoff' : 'stopped';
+        }
+        await client.query('INSERT INTO chess.game_moves (game_id, ply, record) VALUES ($1, $2, $3::jsonb)',
+          [row.id, submitted.move.ply, JSON.stringify(submitted.move)]);
+        await saveGame(client, row);
+        if (row.clock_phase === 'handoff') {
+          await client.query('UPDATE chess.game_move_receipts SET applied = true WHERE admission_id = $1',
+            [receipt.admission_id]);
+          return true;
+        }
+        const response: MoveAcceptedResponse = { accepted: true, move: submitted.move,
+          game: gameState(row, game, yourSeat, Math.max(receivedAtMs, now(clock))) };
+        result = { status: 200, body: response };
+      }
+    }
+    await completeReceipt(client, receipt, result);
+    return false;
+  }
+
+  async function advanceGame(id: string): Promise<number> {
+    return serialize(id, async () => {
+      let flags = 0;
+      for (;;) {
+        const step = await transaction(async client => {
+          const row = await loadGame(client, id);
+          if (row === null) return 'idle';
+          const game = await reconstruct(client, row);
+          if (row.clock_phase === 'handoff') {
+            await finishHandoff(client, row, game);
+            return 'progress';
+          }
+          const { rows } = await client.query<Receipt>(`SELECT * FROM chess.game_move_receipts
+            WHERE game_id = $1 AND response IS NULL
+            ORDER BY received_at, admission_id LIMIT 1`, [id]);
+          const receipt = rows[0];
+          if (receipt) {
+            const receiptMs = receipt.received_at.getTime();
+            if (!await safeToDecide(client, receiptMs)) return 'blocked';
+            if (row.clock_phase === 'running' && row.deadline_at !== null
+              && receiptMs >= row.deadline_at.getTime()) {
+              if (!await safeToDecide(client, row.deadline_at.getTime() - 1)) return 'blocked';
+              if (await expireIfDue(client, row, game, Math.max(now(clock), receiptMs))) return 'flag';
+            }
+            return await applyReceipt(client, row, game, receipt) ? 'handoff' : 'progress';
+          }
+          if (row.clock_phase === 'running' && row.deadline_at !== null
+            && now(clock) >= row.deadline_at.getTime()
+            && await safeToDecide(client, row.deadline_at.getTime() - 1)
+            && await expireIfDue(client, row, game, now(clock))) return 'flag';
+          return 'idle';
+        });
+        if (step === 'handoff') await hooks.afterMoveCommit?.();
+        if (step === 'flag') flags += 1;
+        if (step === 'idle' || step === 'blocked') return flags;
+      }
+    });
+  }
+
   const notFound: ServiceResult = { status: 404, body: { error: 'game_not_found' } };
   const notParticipant: ServiceResult = { status: 403, body: { error: 'not_a_participant' } };
 
   return {
-    receiptTime: () => now(clock),
-    read(id, guestId) {
-      return serialize(id, () => transaction(async client => {
+    start, stop, heartbeat, beginReceipt,
+    async read(id, guestId) {
+      await start();
+      await advanceGame(id);
+      return transaction(async client => {
         const row = await loadGame(client, id);
         if (row === null) return notFound;
         const yourSeat = seat(row, guestId);
         if (yourSeat === null) return notParticipant;
         const game = await reconstruct(client, row);
         const atMs = now(clock);
-        await expireIfDue(client, row, game, atMs);
         return { status: 200, body: gameRead(row, game, yourSeat, atMs) };
-      }));
+      });
     },
-    ready(id, guestId) {
+    async ready(id, guestId) {
+      await start();
+      await advanceGame(id);
       return serialize(id, () => transaction(async client => {
         const row = await loadGame(client, id);
         if (row === null) return notFound;
@@ -237,7 +452,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock)
           return { status: 409, body: { error: 'legacy_untimed_game' } };
         }
         const atMs = now(clock);
-        await expireIfDue(client, row, game, atMs);
         if (row.status === 'waiting' && !(yourSeat === 'white' ? row.ready_white : row.ready_black)) {
           if (yourSeat === 'white') row.ready_white = true;
           else row.ready_black = true;
@@ -253,118 +467,50 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock)
         return { status: 200, body: gameRead(row, game, yourSeat, atMs) };
       }));
     },
-    move(id, guestId, requestId, body, receivedAtMs) {
-      return serialize(id, () => transaction(async client => {
-        const row = await loadGame(client, id);
-        if (row === null) return notFound;
-        const yourSeat = seat(row, guestId);
-        if (yourSeat === null) return notParticipant;
-        const game = await reconstruct(client, row);
-        const payload = { expectedVersion: body.expectedVersion, from: body.from, to: body.to,
-          ...(body.promotion === undefined ? {} : { promotion: body.promotion }) };
-        const { rows: receipts } = await client.query<Receipt>(
-          `SELECT payload, response, status_code FROM chess.game_move_receipts
-            WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId],
-        );
-        const receipt = receipts[0];
-        if (receipt) return isDeepStrictEqual(receipt.payload, payload)
-          ? { status: receipt.status_code, body: receipt.response }
-          : { status: 409, body: { error: 'request_id_conflict' } };
-
-        let result: ServiceResult;
-        if (row.clock_mode === 'five_plus_three' && row.clock_phase === 'running'
-          && row.deadline_at !== null && receivedAtMs >= row.deadline_at.getTime()) {
-          await expireIfDue(client, row, game, receivedAtMs);
-          result = { status: 409, body: { error: 'flag_fell', currentVersion: row.version } };
-        } else if (row.status === 'waiting') {
-          result = { status: 409, body: { error: 'clock_not_started' } };
-        } else if (body.expectedVersion !== row.version) {
-          result = { status: 409, body: { error: 'stale_version', currentVersion: row.version } };
-        } else if (row.status !== 'active') {
-          result = { status: 409, body: { error: row.status === 'finished'
-            ? 'game_finished' : 'adjudication_pending' } };
-        } else if (row.clock_mode === 'five_plus_three' && row.turn_started_at !== null
-          && receivedAtMs < row.turn_started_at.getTime()) {
-          result = { status: 409, body: { error: 'received_before_turn' } };
-        } else {
-          const submitted = game.submitMove({ side: yourSeat, from: body.from, to: body.to,
-            ...(body.promotion === undefined ? {} : { promotion: body.promotion }) });
-          if (!submitted.accepted) {
-            result = { status: submitted.reason === 'wrong_turn' ? 409 : 422,
-              body: { error: submitted.reason, message: submitted.message } };
-          } else {
-            const state = game.getState();
-            if (state.status === 'pending_adjudication') throw new Error('Unexpected pending move result.');
-            row.fen = state.position.fen;
-            row.side_to_move = state.position.sideToMove;
-            row.status = state.status;
-            row.result = state.result;
-            row.timeout_witness = null;
-            row.version += 1;
-            if (row.clock_mode === 'five_plus_three') {
-              const movingSide = yourSeat;
-              const startedAtMs = row.turn_started_at?.getTime();
-              if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
-              const left = Math.max(0, (movingSide === 'white'
-                ? row.white_remaining_ms : row.black_remaining_ms) - (receivedAtMs - startedAtMs))
-                + FIVE_PLUS_THREE.incrementMs;
-              if (movingSide === 'white') row.white_remaining_ms = left;
-              else row.black_remaining_ms = left;
-            }
-            await client.query(
-              'INSERT INTO chess.game_moves (game_id, ply, record) VALUES ($1, $2, $3::jsonb)',
-              [id, submitted.move.ply, JSON.stringify(submitted.move)],
-            );
-            const confirmedAtMs = Math.max(receivedAtMs, now(clock));
-            if (row.clock_mode === 'five_plus_three') {
-              if (row.status === 'active') {
-                row.clock_phase = 'running';
-                row.turn_started_at = new Date(confirmedAtMs);
-                row.deadline_at = new Date(confirmedAtMs + (row.side_to_move === 'white'
-                  ? row.white_remaining_ms : row.black_remaining_ms));
-              } else {
-                row.clock_phase = 'stopped';
-                row.turn_started_at = null;
-                row.deadline_at = null;
-              }
-            }
-            await saveGame(client, row);
-            const response: MoveAcceptedResponse = { accepted: true, move: submitted.move,
-              game: gameState(row, game, yourSeat, confirmedAtMs) };
-            result = { status: 200, body: response };
-          }
+    async move(id, guestId, requestId, body, arrival) {
+      await start();
+      const { rows: seats } = await pool.query<{ allowed: boolean }>(
+        `SELECT (c.creator_guest_id = $2 OR c.acceptor_guest_id = $2) AS allowed
+          FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1`, [id, guestId]);
+      if (!seats[0]) return notFound;
+      if (!seats[0].allowed) return notParticipant;
+      const payload = { expectedVersion: body.expectedVersion, from: body.from, to: body.to,
+        ...(body.promotion === undefined ? {} : { promotion: body.promotion }) };
+      await pool.query(`INSERT INTO chess.game_move_receipts
+        (game_id, guest_id, request_id, payload, response, status_code, received_at)
+        VALUES ($1, $2, $3, $4::jsonb, NULL, NULL, $5)
+        ON CONFLICT (game_id, guest_id, request_id) DO NOTHING`,
+      [id, guestId, requestId, JSON.stringify(payload), new Date(arrival.receivedAtMs)]);
+      await arrival.release();
+      const waitUntil = Date.now() + 1_000;
+      for (;;) {
+        await advanceGame(id);
+        const { rows } = await pool.query<Receipt>(`SELECT * FROM chess.game_move_receipts
+          WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId]);
+        const receipt = rows[0];
+        if (!receipt) throw new Error('Admitted move receipt was not saved.');
+        if (!isDeepStrictEqual(receipt.payload, payload)) {
+          return { status: 409, body: { error: 'request_id_conflict' } };
         }
-        if (row.clock_mode === 'five_plus_three' || result.status === 200) {
-          await client.query(
-            `INSERT INTO chess.game_move_receipts
-              (game_id, guest_id, request_id, payload, response, status_code, received_at)
-              VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)`,
-            [id, guestId, requestId, JSON.stringify(payload), JSON.stringify(result.body),
-              result.status, new Date(receivedAtMs)],
-          );
-        }
-        return result;
-      }));
+        if (receipt.status_code !== null) return { status: receipt.status_code, body: receipt.response };
+        if (Date.now() >= waitUntil) return { status: 503, body: { error: 'receipt_pending' } };
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
     },
     async pollDueGames() {
-      const atMs = now(clock);
-      const { rows } = await pool.query<{ id: string }>(
-        `SELECT id FROM chess.games WHERE clock_mode = 'five_plus_three'
-          AND clock_phase = 'running' AND deadline_at <= $1`, [new Date(atMs)],
-      );
-      let changed = 0;
-      for (const { id } of rows) {
-        const flagged = await serialize(id, () => transaction(async client => {
-          const row = await loadGame(client, id);
-          if (row === null) return false;
-          const game = await reconstruct(client, row);
-          return expireIfDue(client, row, game, now(clock));
-        }));
-        if (flagged) changed += 1;
-      }
-      return changed;
+      await heartbeat();
+      const { rows } = await pool.query<{ id: string }>(`SELECT id FROM chess.games
+        WHERE clock_phase = 'handoff'
+          OR (clock_mode = 'five_plus_three' AND clock_phase = 'running' AND deadline_at <= $1)
+          OR EXISTS (SELECT 1 FROM chess.game_move_receipts r
+            WHERE r.game_id = games.id AND r.response IS NULL)`, [new Date(now(clock))]);
+      let flags = 0;
+      for (const { id } of rows) flags += await advanceGame(id);
+      return flags;
     },
-    registerTimeoutWitness(id, line) {
+    async registerTimeoutWitness(id, line) {
+      await start();
+      await advanceGame(id);
       return serialize(id, () => transaction(async client => {
         const row = await loadGame(client, id);
         if (row === null || row.clock_phase !== 'running' || row.deadline_at === null

@@ -23,13 +23,30 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
   afterEach(async () => { for (const app of apps.splice(0)) await app.close(); });
   afterAll(async () => { if (pool) await pool.end(); });
 
-  function fixture(start = 2_000_000_000_000) {
+  function fixture(start = 2_000_000_000_000,
+    hooks: { afterMoveCommit?: () => Promise<void> } = {}) {
     const time = { value: start, nowMs() { return this.value; }, set(value: number) { this.value = value; } };
-    const service = createGameService(pool, time);
+    const service = createGameService(pool, time, hooks);
     const app = buildApp(() => checkDatabase(pool), false,
       { pool, secureCookies: true, gameService: service });
     apps.push(app);
     return { app, service, time };
+  }
+
+  function anotherInstance(time: { nowMs(): number }) {
+    const service = createGameService(pool, time);
+    const app = buildApp(() => checkDatabase(pool), false,
+      { pool, secureCookies: true, gameService: service });
+    apps.push(app);
+    return { app, service };
+  }
+
+  async function until(check: () => Promise<boolean>): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error('The controlled database barrier was not reached.');
   }
 
   async function guest(app: FastifyInstance): Promise<Guest> {
@@ -151,9 +168,11 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     expect((await move(app, first.id, first.white, 2, 'e2', 'e4')).statusCode).toBe(200);
     const second = await start(app);
     const deadline = second.started.clocks.deadlineMs as number;
+    const { app: otherApp } = anotherInstance(time);
+    await otherApp.ready();
     time.set(deadline);
     const requestId = randomUUID();
-    const exact = await move(app, second.id, second.white, 2, 'e2', 'e4', requestId);
+    const exact = await move(otherApp, second.id, second.white, 2, 'e2', 'e4', requestId);
     expect(exact.json()).toMatchObject({ error: 'flag_fell', currentVersion: 3 });
     expect((await read(app, second.id, second.white)).json()).toMatchObject({
       version: 3, status: 'pending_adjudication', history: [],
@@ -164,7 +183,7 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     time.set(deadline + 1000);
     expect((await move(app, second.id, second.white, 2, 'e2', 'e4', requestId)).json()).toEqual(exact.json());
     expect((await move(app, second.id, second.white, 3, 'e2', 'e4')).json().error)
-      .toBe('adjudication_pending');
+      .toBe('flag_fell');
   });
 
   it('flags without a move at the saved deadline and reconstructs after restart', async () => {
@@ -172,6 +191,8 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     const { id, white, started } = await start(app);
     const deadline = started.clocks.deadlineMs as number;
     time.set(deadline - 298500);
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
     const restarted = createGameService(pool, time);
     const restartedApp = buildApp(() => checkDatabase(pool), false,
       { pool, secureCookies: true, gameService: restarted });
@@ -206,5 +227,131 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
       result: { outcome: 'win', reason: 'timeout', winner: 'black',
         flaggedSide: 'white', deadlineMs: deadline },
       clocks: { phase: 'flagged', flaggedAtMs: deadline } });
+  });
+
+  it('keeps an HTTP arrival ahead of a timer while authentication is delayed on another instance', async () => {
+    const { app, time } = fixture();
+    const { service: timer } = anotherInstance(time);
+    let entered!: () => void;
+    let release!: () => void;
+    const atBarrier = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    app.addHook('preHandler', async request => {
+      if (request.url.endsWith('/moves')) { entered(); await held; }
+    });
+    const { id, white, started } = await start(app);
+    await timer.start();
+    const deadline = started.clocks.deadlineMs as number;
+    time.set(deadline - 1);
+    const submitted = move(app, id, white, 2, 'e2', 'e4');
+    await atBarrier;
+    time.set(deadline + 5_000);
+    await timer.heartbeat();
+    expect(await timer.pollDueGames()).toBe(0);
+    release();
+    const response = await submitted;
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ accepted: true,
+      game: { status: 'active', clocks: { activeSide: 'black',
+        remainingMs: { white: 3001, black: 300000 } } } });
+    expect(await timer.pollDueGames()).toBe(0);
+  });
+
+  it('drains a pre-deadline receipt even when another instance queued its timer for the row first', async () => {
+    const { app, service, time } = fixture();
+    const { app: timerApp, service: timer } = anotherInstance(time);
+    const { id, white, started } = await start(app);
+    await timer.start();
+    const { rows } = await pool.query<{ creator_guest_id: string }>(
+      'SELECT creator_guest_id FROM chess.challenges WHERE id = $1', [id]);
+    const guestId = rows[0]!.creator_guest_id;
+    const deadline = started.clocks.deadlineMs as number;
+    time.set(deadline - 1);
+    const arrival = service.beginReceipt();
+    const requestId = randomUUID();
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM chess.games WHERE id = $1 FOR UPDATE', [id]);
+      time.set(deadline + 5_000);
+      const polling = timer.pollDueGames();
+      await until(async () => (await pool.query<{ count: string }>(
+        `SELECT count(*) FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE OF g%'`,
+      )).rows[0]!.count !== '0');
+      const submitted = service.move(id, guestId, requestId,
+        { expectedVersion: 2, from: 'e2', to: 'e4' }, arrival);
+      await holder.query('COMMIT');
+      expect(await polling).toBe(0);
+      expect(await submitted).toMatchObject({ status: 200,
+        body: { accepted: true, game: { version: 3, clocks: {
+          remainingMs: { white: 3001, black: 300000 }, activeSide: 'black' } } } });
+      const retry = await move(timerApp, id, white, 2, 'e2', 'e4', requestId);
+      expect(retry.statusCode).toBe(200);
+      expect((await pool.query<{ count: string }>(
+        'SELECT count(*) FROM chess.game_moves WHERE game_id = $1', [id])).rows[0]!.count).toBe('1');
+    } finally {
+      await holder.query('ROLLBACK');
+      holder.release();
+      await arrival.release();
+    }
+  });
+
+  it('replays a durably admitted move before an overdue flag after a server restart', async () => {
+    const { app, time } = fixture();
+    const { id, white, started } = await start(app);
+    const deadline = started.clocks.deadlineMs as number;
+    const requestId = randomUUID();
+    await pool.query(`INSERT INTO chess.game_move_receipts
+      (game_id, guest_id, request_id, payload, response, status_code, received_at)
+      SELECT $1, creator_guest_id, $2, $3::jsonb, NULL, NULL, $4
+      FROM chess.challenges WHERE id = $1`,
+    [id, requestId, JSON.stringify({ expectedVersion: 2, from: 'e2', to: 'e4' }),
+      new Date(deadline - 1)]);
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
+    time.set(deadline + 9_000);
+    const { app: restartedApp, service: restarted } = anotherInstance(time);
+    await restartedApp.ready();
+    expect(await restarted.pollDueGames()).toBe(0);
+    expect((await read(restartedApp, id, white)).json()).toMatchObject({
+      status: 'active', version: 3, history: [{ san: 'e4' }],
+      clocks: { phase: 'running', activeSide: 'black', remainingMs: {
+        white: 3001, black: 300000 } },
+    });
+    expect((await move(restartedApp, id, white, 2, 'e2', 'e4', requestId)).statusCode).toBe(200);
+  });
+
+  it('starts the opponent only after the move commit and recovers a committed handoff', async () => {
+    let committed!: () => void;
+    let release!: () => void;
+    const atCommit = new Promise<void>(resolve => { committed = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const { app, time } = fixture(2_000_000_000_000,
+      { afterMoveCommit: async () => { committed(); await held; } });
+    const { id, white, started } = await start(app);
+    const turnStart = started.clocks.serverNowMs as number;
+    time.set(turnStart + 1000);
+    const submitted = move(app, id, white, 2, 'e2', 'e4');
+    await atCommit;
+    const { rows } = await pool.query<{ clock_phase: string; turn_started_at: Date | null;
+      deadline_at: Date | null; white_remaining_ms: number; black_remaining_ms: number }>(
+      `SELECT clock_phase, turn_started_at, deadline_at, white_remaining_ms, black_remaining_ms
+        FROM chess.games WHERE id = $1`, [id]);
+    expect(rows[0]).toMatchObject({ clock_phase: 'handoff', turn_started_at: null,
+      deadline_at: null, white_remaining_ms: 302000, black_remaining_ms: 300000 });
+    expect((await pool.query<{ applied: boolean; response: unknown }>(
+      'SELECT applied, response FROM chess.game_move_receipts WHERE game_id = $1', [id]))
+      .rows[0]).toMatchObject({ applied: true, response: null });
+    time.set(turnStart + 16_000);
+    const { app: recoveryApp, service: recovery } = anotherInstance(time);
+    await recoveryApp.ready();
+    expect(await recovery.pollDueGames()).toBe(0);
+    release();
+    const response = await submitted;
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ game: { clocks: {
+      activeSide: 'black', remainingMs: { white: 302000, black: 300000 },
+      deadlineMs: time.value + 300000 } } });
   });
 });
