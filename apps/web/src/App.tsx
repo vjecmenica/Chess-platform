@@ -405,13 +405,15 @@ export function App() {
 
   return (
     <main className={challengeId === null ? 'home-page' : 'challenge-page'}>
-      <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span></header>
+      <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
+        {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
+      </header>
       {challengeId === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
         <h1>Challenge a friend.</h1>
         <p className="description">Create a challenge and share its link with a second guest.</p>
       </section>}
-      <section className={`notice ${challenge?.status === 'accepted' ? 'challenge-compact' : ''}`}
+      {challenge?.status !== 'accepted' && <section className="notice"
         aria-labelledby="challenge-title">
         <div className="section-heading">
           <h2 id="challenge-title">{challengeId === null ? 'Create a challenge' : 'Challenge'}</h2>
@@ -424,11 +426,9 @@ export function App() {
             {busy ? 'Creating…' : 'Create challenge'}
           </button>
         )}
-        {challenge !== null && <details className="challenge-details" open={challenge.status === 'open'}>
-          <summary>{challenge.status === 'accepted'
-            ? `You are ${challenge.yourSeat === 'white' ? 'White' : 'Black'} · Show challenge link and seats`
-            : 'Challenge details'}</summary>
-          <p className="status">{challenge.status === 'open' ? 'Waiting for a second guest' : 'Both seats are filled'}</p>
+        {challenge !== null && <details className="challenge-details" open>
+          <summary>Challenge details</summary>
+          <p className="status">Waiting for a second guest</p>
           <div className="seats">
             <p>White <strong>{challenge.yourSeat === 'white' ? 'You' : 'Occupied'}</strong></p>
             <p>Black <strong>{challenge.yourSeat === 'black' ? 'You' : challenge.seats.black === 'open' ? 'Open' : 'Occupied'}</strong></p>
@@ -442,44 +442,15 @@ export function App() {
               {busy ? 'Joining…' : 'Accept challenge as Black'}
             </button>}
         </details>}
-      </section>
+      </section>}
 
       {challenge?.status === 'accepted' && challenge.yourSeat !== null && <section className="game-area" aria-labelledby="game-title">
-        <div className="game-heading">
-          <h2 id="game-title">Saved game</h2>
-          <div className="game-actions">
-            {game?.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
-              onClick={() => {
-                if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
-                else if (analysis !== null && selectedReplayPly !== null)
-                  setAnalysis(selectMain(analysis, game, selectedReplayPly));
-                setAnalysisOpen(!analysisOpen);
-                setSelected(null); setPromotion(null); setAnalysisError(null);
-              }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
-            <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
-          </div>
-        </div>
+        <h1 id="game-title" className="visually-hidden">Chess game</h1>
         {game === null && gameError === null && <p role="status">Loading the confirmed position…</p>}
-        {gameError !== null && <p className="error" role="alert">{gameError}</p>}
-        {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
+        {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
           <div className="game-layout">
             <div className="play-column">
-              {game.clocks !== null && <ClockPanel clock={game.clocks} />}
-              <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
-                ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
-                : game.clocks?.phase === 'awaiting_first_move'
-                  ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
-                : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
-                  : canMove ? `Your turn (${game.yourSeat}).`
-                    : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
-              {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
-                <p>{game.clocks.ready[game.yourSeat]
-                  ? 'You are ready. Waiting for the other guest.'
-                  : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
-                {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
-                  onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
-              </div>}
               <div className="board" role="group" aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
                 {rows.flat().map(({ square, piece, dark }) =>
                   <button key={square} type="button"
@@ -502,67 +473,106 @@ export function App() {
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
             </div>
-            <div className="move-panel">
-              {replaying && <div className="replay" aria-label="Saved game replay">
-                <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
-                  ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
-                  : displayedPly === 0 ? 'Starting position'
-                    : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
-                <div className="replay-controls">
-                  <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
-                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                      else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
-                  <button type="button" className="secondary"
-                    disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
-                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
-                      else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
-                    aria-label="Previous move">Previous</button>
-                  <button type="button" className="secondary"
-                    disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
-                      : displayedPly === game.history.length}
-                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
-                      else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
-                    aria-label="Next move">Next</button>
-                  <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
-                    onClick={() => { if (analysisOpen && analysis !== null)
-                      setAnalysis(selectMain(analysis, game, game.history.length));
-                    else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                    aria-label="Final position">End</button>
+            <aside className="game-sidebar" aria-label="Game controls and moves">
+              <ClockPanel clock={game.clocks} side={game.yourSeat === 'white' ? 'black' : 'white'} isYou={false} />
+              <div className="move-panel">
+                {replaying && <div className="replay" aria-label="Saved game replay">
+                  <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
+                    ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
+                    : displayedPly === 0 ? 'Starting position'
+                      : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
+                  <div className="replay-controls">
+                    <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
+                        else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
+                    <button type="button" className="secondary"
+                      disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
+                        else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
+                      aria-label="Previous move">Previous</button>
+                    <button type="button" className="secondary"
+                      disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
+                        : displayedPly === game.history.length}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
+                        else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
+                      aria-label="Next move">Next</button>
+                    <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
+                      onClick={() => { if (analysisOpen && analysis !== null)
+                        setAnalysis(selectMain(analysis, game, game.history.length));
+                      else setSelectedReplayPly(game.history.length); setSelected(null); }}
+                      aria-label="Final position">End</button>
+                  </div>
+                  {analysisOpen && <p className="analysis-local">Variations are saved only in this browser.
+                    The game and clocks never change.</p>}
+                  {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
+                </div>}
+                {replaying && <p className="move-legend">Saved line{analysisOpen ? ' · Indented moves are local variations' : ''}</p>}
+                {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
+                <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
+                  selected={analysisOpen && analysis !== null ? analysis.cursor
+                    : { kind: 'main', ply: displayedPly }}
+                  onSelect={selectMove} onDelete={removeVariation} />
+              </div>
+              <div className="game-controls">
+                {gameError !== null && <p className="error" role="alert">{gameError}</p>}
+                {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
+                <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
+                  ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
+                  : game.clocks?.phase === 'awaiting_first_move'
+                    ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
+                  : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
+                    : canMove ? `Your turn (${game.yourSeat}).`
+                      : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
+                {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
+                  <p>{game.clocks.ready[game.yourSeat]
+                    ? 'You are ready. Waiting for the other guest.'
+                    : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
+                  {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
+                    onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
+                </div>}
+                <div className="game-actions">
+                  {game.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
+                    onClick={() => {
+                      if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
+                      else if (analysis !== null && selectedReplayPly !== null)
+                        setAnalysis(selectMain(analysis, game, selectedReplayPly));
+                      setAnalysisOpen(!analysisOpen);
+                      setSelected(null); setPromotion(null); setAnalysisError(null);
+                    }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
+                  <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
                 </div>
-                {analysisOpen && <p className="analysis-local">Variations are saved only in this browser.
-                  The game and clocks never change.</p>}
-                {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
-              </div>}
-              {replaying && <p className="move-legend">Saved line{analysisOpen ? ' · Indented moves are local variations' : ''}</p>}
-              {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
-              <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
-                selected={analysisOpen && analysis !== null ? analysis.cursor
-                  : { kind: 'main', ply: displayedPly }}
-                onSelect={selectMove} onDelete={removeVariation} />
-            </div>
+                {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
+                  <p>Promote your pawn to:</p>
+                  <div>{([['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']] as const).map(([piece, name]) =>
+                    <button key={piece} ref={piece === 'q' ? promotionFocus : undefined} type="button" onClick={() => {
+                      const current = gameRef.current;
+                      setPromotion(null);
+                      setSelected(null);
+                      if (analysisOpen && analysis !== null && current)
+                        submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
+                      else if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+                        from: promotion.from, to: promotion.to, promotion: piece });
+                    }}>{name}</button>)}</div>
+                  <button type="button" className="secondary" onClick={() => setPromotion(null)}>Cancel</button>
+                </div>}
+                {pending !== null && !submitting && <div className="retry">
+                  <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>
+                  <button type="button" onClick={() => void submitMove(pending, true)}>Retry move</button>
+                </div>}
+                {submitting && <p role="status">Waiting for server confirmation…</p>}
+                <details className="share-menu">
+                  <summary>Challenge link</summary>
+                  <label htmlFor="challenge-link">Shareable link</label>
+                  <input id="challenge-link" readOnly value={link}
+                    onFocus={event => event.currentTarget.select()} />
+                </details>
+              </div>
+              <ClockPanel clock={game.clocks} side={game.yourSeat} isYou />
+            </aside>
           </div>
-          {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
-            <p>Promote your pawn to:</p>
-            <div>{([['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']] as const).map(([piece, name]) =>
-              <button key={piece} ref={piece === 'q' ? promotionFocus : undefined} type="button" onClick={() => {
-                const current = gameRef.current;
-                setPromotion(null);
-                setSelected(null);
-                if (analysisOpen && analysis !== null && current)
-                  submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
-                else if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
-                  from: promotion.from, to: promotion.to, promotion: piece });
-              }}>{name}</button>)}</div>
-            <button type="button" className="secondary" onClick={() => setPromotion(null)}>Cancel</button>
-          </div>}
-          {pending !== null && !submitting && <div className="retry">
-            <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>
-            <button type="button" onClick={() => void submitMove(pending, true)}>Retry move</button>
-          </div>}
-          {submitting && <p role="status">Waiting for server confirmation…</p>}
         </>}
       </section>}
-      <footer>Play with focus. Learn from every game.</footer>
+      {challenge?.status !== 'accepted' && <footer>Play with focus. Learn from every game.</footer>}
     </main>
   );
 }

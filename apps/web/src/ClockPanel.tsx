@@ -12,25 +12,27 @@ export function formatClock(milliseconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function ClockPanel({ clock }: { clock: ClockState }) {
+export function ClockPanel({ clock, side, isYou }: {
+  clock: ClockState | null;
+  side: GameSide;
+  isYou: boolean;
+}) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
     const observedAt = performance.now();
     setElapsedMs(0);
-    if (clock.phase !== 'running') return;
+    if (clock?.phase !== 'running' || clock.activeSide !== side) return;
     const timer = window.setInterval(() => setElapsedMs(performance.now() - observedAt), 250);
     return () => window.clearInterval(timer);
-  }, [clock]);
+  }, [clock, side]);
 
-  return <div className="clocks" aria-label="Server-authoritative chess clocks">
-    {(['white', 'black'] as const).map(side => <div key={side}
-      className={`clock ${clock.activeSide === side ? 'clock-active' : ''}`}>
-      <span>{side === 'white' ? 'White' : 'Black'}</span>
-      <strong aria-live="off">{formatClock(displayedMs(clock, side, elapsedMs))}</strong>
-      <small>{clock.startMode === 'first_move'
+  return <div className={`clock ${clock?.activeSide === side ? 'clock-active' : ''}`}
+    aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
+      <span className="player-label">{isYou ? 'You' : 'Opponent'} <b>{side === 'white' ? 'White' : 'Black'}</b></span>
+      <strong aria-live="off">{clock === null ? 'Untimed' : formatClock(displayedMs(clock, side, elapsedMs))}</strong>
+      <small>{clock === null ? 'Earlier untimed game' : clock.startMode === 'first_move'
         ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
           : clock.activeSide === side ? 'Running' : 'Stopped'
         : clock.ready[side] ? 'Ready' : 'Not ready'}</small>
-    </div>)}
   </div>;
 }

@@ -30,9 +30,22 @@ describe('display clocks', () => {
       ...running, startMode: 'first_move', phase: 'awaiting_first_move',
       ready: { white: false, black: false }, activeSide: null, deadlineMs: null,
       remainingMs: { white: 300_000, black: 300_000 },
-    } }));
-    expect(html.match(/05:00/g)).toHaveLength(2);
-    expect(html.match(/Clock paused/g)).toHaveLength(2);
+    }, side: 'white', isYou: true }));
+    expect(html).toContain('You');
+    expect(html).toContain('White');
+    expect(html).toContain('05:00');
+    expect(html).toContain('Clock paused');
     expect(html).not.toContain('Not ready');
+  });
+
+  it('labels the opponent and the player by side', () => {
+    const opponent = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: running, side: 'white', isYou: false }));
+    const player = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: running, side: 'black', isYou: true }));
+    expect(opponent).toContain("Opponent&#x27;s white clock");
+    expect(opponent).toContain('clock-active');
+    expect(player).toContain('Your black clock');
+    expect(player).not.toContain('clock-active');
   });
 });
