@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
-  MoveAcceptedResponse } from '@chess/contracts';
-import { applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
+  GameActionAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
+import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { boardMove, pieceAt, pieceImage } from './board-interaction';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
@@ -34,6 +34,10 @@ const errors: Record<string, string> = {
   flag_fell: 'The server recorded a flag at the clock deadline. The position will be refreshed.',
   adjudication_pending: 'The clock flagged and the result is awaiting adjudication.',
   legacy_untimed_game: 'This earlier challenge remains an untimed preview.',
+  draw_too_early: 'Both players must make a move before agreeing to a draw.',
+  draw_offer_pending: 'There is already an outstanding draw offer.',
+  no_draw_offer: 'The draw offer is no longer available. The position will be refreshed.',
+  own_draw_offer: 'Only your opponent can respond to your offer.',
 };
 
 class ApiError extends Error {
@@ -67,6 +71,11 @@ interface PendingMove {
   to: Square;
   promotion?: 'q' | 'r' | 'b' | 'n';
 }
+type GameAction = 'resign' | 'offer_draw' | 'accept_draw' | 'decline_draw';
+interface PendingAction { requestId: string; expectedVersion: number; kind: GameAction }
+const actionPaths: Record<GameAction, string> = {
+  resign: 'resign', offer_draw: 'draw-offer', accept_draw: 'draw-accept', decline_draw: 'draw-decline',
+};
 
 export function App() {
   const [session, setSession] = useState<GuestSessionResponse | null>(null);
@@ -84,6 +93,7 @@ export function App() {
   const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
@@ -93,6 +103,7 @@ export function App() {
   const posting = useRef(false);
   const gameRef = useRef<GameReadResponse | null>(null);
   const pendingRef = useRef<PendingMove | null>(null);
+  const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
     moved: boolean } | null>(null);
@@ -274,7 +285,8 @@ export function App() {
   }
 
   async function submitMove(command: PendingMove, retry = false) {
-    if (session === null || challengeId === null || posting.current || (!retry && pendingRef.current)) return;
+    if (session === null || challengeId === null || posting.current || pendingActionRef.current
+      || (!retry && pendingRef.current)) return;
     pendingRef.current = command;
     setPending(command);
     setSubmitting(true);
@@ -334,10 +346,73 @@ export function App() {
       : 'The position changed before your move was accepted. Use Refresh position to reload the confirmed game.');
   }
 
+  function clearPendingAction() {
+    pendingActionRef.current = null;
+    setPendingAction(null);
+  }
+
+  async function submitAction(command: PendingAction, retry = false) {
+    if (session === null || challengeId === null || posting.current || pendingRef.current
+      || (!retry && pendingActionRef.current)) return;
+    pendingActionRef.current = command;
+    setPendingAction(command);
+    setSubmitting(true);
+    setGameError(null);
+    setGameInfo(null);
+    posting.current = true;
+    if (gameFetch.current !== null) await gameFetch.current;
+    if (!retry && (gameRef.current?.version !== command.expectedVersion
+      || gameRef.current.status !== 'active')) {
+      clearPendingAction();
+      posting.current = false;
+      setSubmitting(false);
+      setGameInfo('The game changed before your action was sent. Review the confirmed state.');
+      void refreshGame();
+      return;
+    }
+    let shouldRefresh = false;
+    try {
+      const accepted = await responseBody<GameActionAcceptedResponse>(await fetch(
+        `/api/games/${challengeId}/${actionPaths[command.kind]}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken,
+            'Idempotency-Key': command.requestId },
+          body: JSON.stringify({ expectedVersion: command.expectedVersion }),
+        },
+      ));
+      const confirmed = applyAcceptedAction(gameRef.current, accepted);
+      if (confirmed !== null && confirmed !== gameRef.current) {
+        gameRef.current = confirmed;
+        setGame(confirmed);
+      }
+      clearPendingAction();
+      shouldRefresh = true;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status < 500) {
+        clearPendingAction();
+        setGameError(cause.message);
+        shouldRefresh = cause.status === 409;
+      } else setGameError('The action was not confirmed. Retry it with the same request ID.');
+    } finally {
+      posting.current = false;
+      setSubmitting(false);
+    }
+    if (shouldRefresh) void refreshGame();
+  }
+
+  function beginAction(kind: GameAction) {
+    const current = gameRef.current;
+    if (current === null || current.status !== 'active' || pendingRef.current
+      || pendingActionRef.current || posting.current) return;
+    if (kind === 'resign' && !window.confirm('Resign this game? This cannot be undone.')) return;
+    void submitAction({ requestId: crypto.randomUUID(), expectedVersion: current.version, kind });
+  }
+
   function inputPosition() {
     const current = gameRef.current;
     if (current === null || promotion !== null
-      || (!analysisOpen && (pendingRef.current !== null || posting.current))) return null;
+      || (!analysisOpen && (pendingRef.current !== null || pendingActionRef.current !== null
+        || posting.current))) return null;
     if (!analysisOpen && (current.status !== 'active'
       || current.position.sideToMove !== current.yourSeat)) return null;
     if (analysisOpen && (current.status !== 'finished' || analysis === null)) return null;
@@ -445,7 +520,7 @@ export function App() {
 
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
   const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
-    && pending === null && !submitting;
+    && pending === null && pendingAction === null && !submitting;
   const replaying = game?.status === 'finished';
   const displayedPly = game === null ? 0 : replayPly(
     analysisOpen && analysis !== null ? mainAncestorPly(analysis)
@@ -581,7 +656,9 @@ export function App() {
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
-                  ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
+                  ? game.pending?.kind === 'resignation'
+                    ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. The game is frozen while mating possibility is adjudicated.`
+                    : 'A clock flagged. The game is frozen while its result awaits adjudication.'
                   : game.clocks?.phase === 'awaiting_first_move'
                     ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
                   : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
@@ -595,6 +672,22 @@ export function App() {
                     onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
                 </div>}
                 <div className="game-actions">
+                  {game.status === 'active' && <>
+                    {game.drawOffer === game.yourSeat && <p className="draw-offer" role="status">Your draw offer is awaiting a response.</p>}
+                    {game.drawOffer !== null && game.drawOffer !== game.yourSeat && <div className="draw-offer">
+                      <p>Your opponent offered a draw.</p>
+                      {game.history.length < 2 && <p>Both players must make a move before a draw can be agreed.</p>}
+                      <button type="button" disabled={submitting || pending !== null || pendingAction !== null || game.history.length < 2}
+                        onClick={() => beginAction('accept_draw')}>Accept draw</button>
+                      <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
+                        onClick={() => beginAction('decline_draw')}>Decline</button>
+                    </div>}
+                    {game.drawOffer === null && <button type="button" className="secondary"
+                      disabled={submitting || pending !== null || pendingAction !== null}
+                      onClick={() => beginAction('offer_draw')}>Offer draw</button>}
+                    <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
+                      onClick={() => beginAction('resign')}>Resign</button>
+                  </>}
                   {game.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
                     onClick={() => {
                       if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
@@ -622,6 +715,10 @@ export function App() {
                 {pending !== null && !submitting && <div className="retry">
                   <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>
                   <button type="button" onClick={() => void submitMove(pending, true)}>Retry move</button>
+                </div>}
+                {pendingAction !== null && !submitting && <div className="retry">
+                  <p>The action has not been confirmed. Retry the same request to learn whether it was saved.</p>
+                  <button type="button" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
                 <details className="share-menu">

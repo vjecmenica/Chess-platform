@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
-import type { ClockState, GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
+import type { ClockState, GameActionAcceptedResponse, GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
 
 export interface WallClock { nowMs(): number }
 export const systemClock: WallClock = { nowMs: () => Date.now() };
 export interface MoveBody { expectedVersion: number; from: string; to: string; promotion?: Promotion }
+export type GameAction = 'resign' | 'offer_draw' | 'accept_draw' | 'decline_draw';
+export interface ActionBody { expectedVersion: number }
 export interface ServiceResult { status: number; body: unknown }
 
 type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished';
@@ -21,7 +23,10 @@ interface GameRow {
   side_to_move: Side;
   status: Status;
   result: GameResult | null;
-  pending: { kind: 'timeout'; flaggedSide: Side; deadlineMs: number } | null;
+  pending: { kind: 'timeout'; flaggedSide: Side; deadlineMs: number }
+    | { kind: 'resignation'; resigningSide: Side } | null;
+  draw_offer: Side | null;
+  resignation_witness: readonly Omit<MoveRequest, 'side'>[] | null;
   timeout_witness: readonly Omit<MoveRequest, 'side'>[] | null;
   version: number;
   clock_mode: 'legacy_untimed' | 'five_plus_three';
@@ -37,11 +42,13 @@ interface GameRow {
   flagged_at: Date | null;
 }
 interface StoredMove { ply: number; record: MoveRecord }
+interface StoredAction { version: number; after_ply: number; side: Side; kind: GameAction }
 interface Receipt {
   admission_id: string;
   guest_id: string;
   request_id: string;
-  payload: MoveBody;
+  kind: 'move' | GameAction;
+  payload: MoveBody | ActionBody;
   response: unknown | null;
   status_code: number | null;
   received_at: Date;
@@ -75,6 +82,21 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
   const { rows } = await client.query<StoredMove>(
     'SELECT ply, record FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [row.id],
   );
+  const { rows: actions } = await client.query<StoredAction>(
+    'SELECT version, after_ply, side, kind FROM chess.game_actions WHERE game_id = $1 ORDER BY version', [row.id]);
+  let actionIndex = 0;
+  function replayActions(afterPly: number) {
+    while (actions[actionIndex]?.after_ply === afterPly) {
+      const action = actions[actionIndex]!;
+      const replayed = action.kind === 'resign' ? game.resign({ side: action.side })
+        : action.kind === 'offer_draw' ? game.offerDraw({ side: action.side })
+          : action.kind === 'accept_draw' ? game.acceptDraw({ side: action.side })
+            : game.declineDraw({ side: action.side });
+      if (!replayed.accepted) throw new Error('Saved game action cannot be replayed.');
+      actionIndex += 1;
+    }
+  }
+  replayActions(0);
   for (const [index, stored] of rows.entries()) {
     if (stored.ply !== index + 1 || !stored.record || typeof stored.record !== 'object') {
       throw new Error('Saved move history is incomplete.');
@@ -85,7 +107,9 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
     if (!replayed.accepted || !isDeepStrictEqual(replayed.move, move)) {
       throw new Error('Saved move history does not replay.');
     }
+    replayActions(index + 1);
   }
+  if (actionIndex !== actions.length) throw new Error('Saved game actions are out of order.');
   if (row.flagged_side !== null) {
     if (row.flagged_at === null) throw new Error('Saved flag has no deadline.');
     const flagged = game.flagTimeout({ flaggedSide: row.flagged_side,
@@ -93,15 +117,21 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       ...(row.timeout_witness === null ? {} : { mateLine: row.timeout_witness }) });
     if (!flagged.accepted) throw new Error('Saved flag cannot be replayed.');
   }
+  if (row.resignation_witness !== null) {
+    const resolved = game.resolveResignation({ verdict: 'mate_possible', mateLine: row.resignation_witness });
+    if (!resolved.accepted) throw new Error('Saved resignation ruling cannot be replayed.');
+  }
   const state = game.getState();
   const expectedVersion = rows.length + (row.clock_mode === 'five_plus_three'
     ? (row.clock_start_mode === 'readiness'
       ? Number(row.ready_white) + Number(row.ready_black) : 0)
-      + Number(row.flagged_side !== null) : 0);
+      + Number(row.flagged_side !== null) : 0) + actions.length
+    + Number(row.resignation_witness !== null);
   const expectedStatus = row.status === 'waiting' ? 'active' : row.status;
   if (row.version !== expectedVersion || row.fen !== state.position.fen
     || row.side_to_move !== state.position.sideToMove || expectedStatus !== state.status
     || !isDeepStrictEqual(row.result, state.result)
+    || row.draw_offer !== state.drawOffer
     || !isDeepStrictEqual(row.pending, state.status === 'pending_adjudication' ? state.pending : null)) {
     throw new Error('Saved game state does not match its history.');
   }
@@ -122,7 +152,8 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
         || row.clock_phase === 'running' && (row.turn_started_at === null || row.deadline_at === null)
         || row.clock_phase === 'handoff' && (row.turn_started_at !== null || row.deadline_at !== null))
       || row.flagged_side !== null && row.clock_phase !== 'flagged'
-      || row.status === 'finished' && row.flagged_side === null && row.clock_phase !== 'stopped') {
+      || (row.status === 'finished' || row.pending?.kind === 'resignation')
+        && row.flagged_side === null && row.clock_phase !== 'stopped') {
       throw new Error('Saved clock state is inconsistent.');
     }
   }
@@ -146,7 +177,8 @@ function clockResponse(row: GameRow, atMs: number): ClockState | null {
 function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number): GameState {
   const state = game.getState();
   return { id: row.id, version: row.version, status: row.status, position: state.position,
-    result: row.result, ...(row.pending === null ? {} : { pending: row.pending }),
+    result: row.result, drawOffer: state.drawOffer,
+    ...(row.pending === null ? {} : { pending: row.pending }),
     clocks: clockResponse(row, atMs),
     clockStatus: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
     timeControl: { initialMs: FIVE_PLUS_THREE.initialMs, incrementMs: FIVE_PLUS_THREE.incrementMs },
@@ -163,13 +195,15 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       pending = $6::jsonb, version = $7, clock_phase = $8, ready_white = $9, ready_black = $10,
       white_remaining_ms = $11, black_remaining_ms = $12, turn_started_at = $13,
       deadline_at = $14, flagged_side = $15, flagged_at = $16, timeout_witness = $17::jsonb,
+      draw_offer = $18, resignation_witness = $19::jsonb,
       updated_at = now() WHERE id = $1`,
     [row.id, row.fen, row.side_to_move, row.status,
       row.result === null ? null : JSON.stringify(row.result),
       row.pending === null ? null : JSON.stringify(row.pending), row.version, row.clock_phase,
       row.ready_white, row.ready_black, row.white_remaining_ms, row.black_remaining_ms,
       row.turn_started_at, row.deadline_at, row.flagged_side, row.flagged_at,
-      row.timeout_witness === null ? null : JSON.stringify(row.timeout_witness)],
+      row.timeout_witness === null ? null : JSON.stringify(row.timeout_witness), row.draw_offer,
+      row.resignation_witness === null ? null : JSON.stringify(row.resignation_witness)],
   );
 }
 
@@ -184,6 +218,7 @@ async function expireIfDue(client: pg.PoolClient, row: GameRow, game: ChessGame,
   const state = game.getState();
   row.status = state.status;
   row.result = state.result;
+  row.draw_offer = state.drawOffer;
   row.pending = state.status === 'pending_adjudication' && state.pending.kind === 'timeout'
     ? state.pending : null;
   if (row.side_to_move === 'white') row.white_remaining_ms = 0;
@@ -211,9 +246,13 @@ export interface GameService {
   read(id: string, guestId: string): Promise<ServiceResult>;
   ready(id: string, guestId: string): Promise<ServiceResult>;
   move(id: string, guestId: string, requestId: string, body: MoveBody, arrival: Arrival): Promise<ServiceResult>;
+  action(id: string, guestId: string, requestId: string, kind: GameAction,
+    body: ActionBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
+  /** A background worker may persist only a domain-verified mate witness. */
+  resolveResignation(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
 
 export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
@@ -349,9 +388,10 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       result = { status: 409, body: { error: row.status === 'finished'
         ? 'game_finished' : 'adjudication_pending' } };
     } else if (row.clock_mode === 'five_plus_three' && row.turn_started_at !== null
-      && receivedAtMs < row.turn_started_at.getTime()) {
+      && receipt.kind === 'move' && receivedAtMs < row.turn_started_at.getTime()) {
       result = { status: 409, body: { error: 'received_before_turn' } };
-    } else {
+    } else if (receipt.kind === 'move') {
+      const body = receipt.payload as MoveBody;
       const submitted = game.submitMove({ side: yourSeat, from: body.from, to: body.to,
         ...(body.promotion === undefined ? {} : { promotion: body.promotion }) });
       if (!submitted.accepted) {
@@ -364,6 +404,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         row.side_to_move = state.position.sideToMove;
         row.status = state.status;
         row.result = state.result;
+        row.draw_offer = state.drawOffer;
         row.timeout_witness = null;
         row.version += 1;
         if (row.clock_mode === 'five_plus_three') {
@@ -391,6 +432,38 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           return true;
         }
         const response: MoveAcceptedResponse = { accepted: true, move: submitted.move,
+          game: gameState(row, game, yourSeat, Math.max(receivedAtMs, now(clock))) };
+        result = { status: 200, body: response };
+      }
+    } else {
+      const command = receipt.kind === 'resign' ? game.resign({ side: yourSeat })
+        : receipt.kind === 'offer_draw' ? game.offerDraw({ side: yourSeat })
+          : receipt.kind === 'accept_draw' ? game.acceptDraw({ side: yourSeat })
+            : game.declineDraw({ side: yourSeat });
+      if (!command.accepted) {
+        result = { status: 409, body: { error: command.reason, message: command.message } };
+      } else {
+        const state = game.getState();
+        row.status = state.status;
+        row.result = state.result;
+        row.pending = state.status === 'pending_adjudication' ? state.pending : null;
+        row.draw_offer = state.drawOffer;
+        row.version += 1;
+        if (row.clock_mode === 'five_plus_three' && row.status !== 'active') {
+          if (row.clock_phase === 'running' && row.turn_started_at !== null) {
+            const elapsed = Math.max(0, receivedAtMs - row.turn_started_at.getTime());
+            if (row.side_to_move === 'white') row.white_remaining_ms = Math.max(0, row.white_remaining_ms - elapsed);
+            else row.black_remaining_ms = Math.max(0, row.black_remaining_ms - elapsed);
+          }
+          row.clock_phase = 'stopped';
+          row.turn_started_at = null;
+          row.deadline_at = null;
+        }
+        await client.query(`INSERT INTO chess.game_actions (game_id, version, after_ply, side, kind)
+          VALUES ($1, $2, $3, $4, $5)`, [row.id, row.version, game.getHistory().length,
+          yourSeat, receipt.kind]);
+        await saveGame(client, row);
+        const response: GameActionAcceptedResponse = { accepted: true,
           game: gameState(row, game, yourSeat, Math.max(receivedAtMs, now(clock))) };
         result = { status: 200, body: response };
       }
@@ -441,6 +514,36 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   const notFound: ServiceResult = { status: 404, body: { error: 'game_not_found' } };
   const notParticipant: ServiceResult = { status: 403, body: { error: 'not_a_participant' } };
 
+  async function submitCommand(id: string, guestId: string, requestId: string,
+    kind: 'move' | GameAction, payload: MoveBody | ActionBody, arrival: Arrival): Promise<ServiceResult> {
+    await start();
+    const { rows: seats } = await pool.query<{ allowed: boolean }>(
+      `SELECT (c.creator_guest_id = $2 OR c.acceptor_guest_id = $2) AS allowed
+        FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1`, [id, guestId]);
+    if (!seats[0]) return notFound;
+    if (!seats[0].allowed) return notParticipant;
+    await pool.query(`INSERT INTO chess.game_move_receipts
+      (game_id, guest_id, request_id, kind, payload, response, status_code, received_at)
+      VALUES ($1, $2, $3, $4, $5::jsonb, NULL, NULL, $6)
+      ON CONFLICT (game_id, guest_id, request_id) DO NOTHING`,
+    [id, guestId, requestId, kind, JSON.stringify(payload), new Date(arrival.receivedAtMs)]);
+    await arrival.release();
+    const waitUntil = Date.now() + 1_000;
+    for (;;) {
+      await advanceGame(id);
+      const { rows } = await pool.query<Receipt>(`SELECT * FROM chess.game_move_receipts
+        WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId]);
+      const receipt = rows[0];
+      if (!receipt) throw new Error('Admitted game-command receipt was not saved.');
+      if (receipt.kind !== kind || !isDeepStrictEqual(receipt.payload, payload)) {
+        return { status: 409, body: { error: 'request_id_conflict' } };
+      }
+      if (receipt.status_code !== null) return { status: receipt.status_code, body: receipt.response };
+      if (Date.now() >= waitUntil) return { status: 503, body: { error: 'receipt_pending' } };
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+
   return {
     start, stop, heartbeat, beginReceipt,
     async read(id, guestId) {
@@ -488,34 +591,12 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       }));
     },
     async move(id, guestId, requestId, body, arrival) {
-      await start();
-      const { rows: seats } = await pool.query<{ allowed: boolean }>(
-        `SELECT (c.creator_guest_id = $2 OR c.acceptor_guest_id = $2) AS allowed
-          FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1`, [id, guestId]);
-      if (!seats[0]) return notFound;
-      if (!seats[0].allowed) return notParticipant;
       const payload = { expectedVersion: body.expectedVersion, from: body.from, to: body.to,
         ...(body.promotion === undefined ? {} : { promotion: body.promotion }) };
-      await pool.query(`INSERT INTO chess.game_move_receipts
-        (game_id, guest_id, request_id, payload, response, status_code, received_at)
-        VALUES ($1, $2, $3, $4::jsonb, NULL, NULL, $5)
-        ON CONFLICT (game_id, guest_id, request_id) DO NOTHING`,
-      [id, guestId, requestId, JSON.stringify(payload), new Date(arrival.receivedAtMs)]);
-      await arrival.release();
-      const waitUntil = Date.now() + 1_000;
-      for (;;) {
-        await advanceGame(id);
-        const { rows } = await pool.query<Receipt>(`SELECT * FROM chess.game_move_receipts
-          WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId]);
-        const receipt = rows[0];
-        if (!receipt) throw new Error('Admitted move receipt was not saved.');
-        if (!isDeepStrictEqual(receipt.payload, payload)) {
-          return { status: 409, body: { error: 'request_id_conflict' } };
-        }
-        if (receipt.status_code !== null) return { status: receipt.status_code, body: receipt.response };
-        if (Date.now() >= waitUntil) return { status: 503, body: { error: 'receipt_pending' } };
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
+      return submitCommand(id, guestId, requestId, 'move', payload, arrival);
+    },
+    action(id, guestId, requestId, kind, body, arrival) {
+      return submitCommand(id, guestId, requestId, kind, { expectedVersion: body.expectedVersion }, arrival);
     },
     async pollDueGames() {
       await heartbeat();
@@ -540,6 +621,26 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         if (!game.verifyMateLine(winner, line)) return false;
         row.timeout_witness = line.map(move => ({ from: move.from, to: move.to,
           ...(move.promotion === undefined ? {} : { promotion: move.promotion }) }));
+        await saveGame(client, row);
+        return true;
+      }));
+    },
+    async resolveResignation(id, line) {
+      await start();
+      await advanceGame(id);
+      return serialize(id, () => transaction(async client => {
+        const row = await loadGame(client, id);
+        if (row === null || row.pending?.kind !== 'resignation') return false;
+        const game = await reconstruct(client, row);
+        const ruling = game.resolveResignation({ verdict: 'mate_possible', mateLine: line });
+        if (!ruling.accepted) return false;
+        const state = game.getState();
+        row.status = state.status;
+        row.result = state.result;
+        row.pending = null;
+        row.resignation_witness = line.map(move => ({ from: move.from, to: move.to,
+          ...(move.promotion === undefined ? {} : { promotion: move.promotion }) }));
+        row.version += 1;
         await saveGame(client, row);
         return true;
       }));

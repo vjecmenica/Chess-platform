@@ -51,8 +51,9 @@ export interface GameState {
   readonly position: { readonly fen: string; readonly sideToMove: GameSide };
   readonly result: { readonly outcome: 'win' | 'draw'; readonly reason: string;
     readonly winner?: GameSide; readonly flaggedSide?: GameSide; readonly deadlineMs?: number } | null;
+  readonly drawOffer: GameSide | null;
   readonly pending?: { readonly kind: 'timeout'; readonly flaggedSide: GameSide;
-    readonly deadlineMs: number };
+    readonly deadlineMs: number } | { readonly kind: 'resignation'; readonly resigningSide: GameSide };
   readonly clocks: ClockState | null;
   readonly clockStatus: 'not_integrated' | 'authoritative';
   readonly timeControl: { readonly initialMs: 300_000; readonly incrementMs: 3_000 };
@@ -67,5 +68,10 @@ export interface GameReadResponse extends GameState {
 export interface MoveAcceptedResponse {
   readonly accepted: true;
   readonly move: SavedMove;
+  readonly game: GameState;
+}
+
+export interface GameActionAcceptedResponse {
+  readonly accepted: true;
   readonly game: GameState;
 }

@@ -1,4 +1,5 @@
-import type { GameReadResponse, GameSide, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
+import type { GameActionAcceptedResponse, GameReadResponse, GameSide, MoveAcceptedResponse,
+  SavedMove } from '@chess/contracts';
 
 export type Square = `${'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'}${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`;
 export type Piece = 'p' | 'n' | 'b' | 'r' | 'q' | 'k' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K';
@@ -68,4 +69,11 @@ export function applyAcceptedMove(current: GameReadResponse | null,
     || response.move.ply !== current.history.length + 1) return current;
   const history: SavedMove[] = [...current.history, response.move];
   return { ...response.game, history };
+}
+
+export function applyAcceptedAction(current: GameReadResponse | null,
+  response: GameActionAcceptedResponse): GameReadResponse | null {
+  if (current === null || response.game.version !== current.version + 1
+    || response.game.position.fen !== current.position.fen) return current;
+  return { ...response.game, history: current.history };
 }

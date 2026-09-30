@@ -77,7 +77,7 @@ The board is the main element. Keep clocks, the side to move, the result, and co
 
 ## First playable milestone
 
-Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, polling, saved history, authoritative clocks with durable deadlines, and replay controls. It lacks live push, resignation and draw commands, and a worker for pending timeout adjudication, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
+Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, explicit draw offers and resignation, polling, saved history, authoritative clocks with durable deadlines, and replay controls. It lacks live push, draw claims, and a worker for pending mating-possibility adjudication, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
 
 Acceptance criteria:
 

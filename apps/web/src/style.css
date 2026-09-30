@@ -116,6 +116,10 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .turn { font-size: 14px; font-weight: 650; line-height: 1.35; }
 .game-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .game-actions button { padding: 7px 10px; }
+.draw-offer { flex-basis: 100%; margin: 0; padding: 8px 10px; border-radius: 6px;
+  background: #f4efe2; color: #463928; }
+.draw-offer p { margin: 0 0 6px; }
+.draw-offer button + button { margin-left: 6px; }
 .readiness { margin: 7px 0; padding: 8px; border: 1px solid #b8c7b5; border-radius: 8px; font-size: 13px; }
 .readiness p { margin: 0 0 6px; }
 .share-menu { margin-top: 7px; font-size: 13px; }

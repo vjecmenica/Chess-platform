@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameReadResponse, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
-import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
+import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
   pieceBelongsTo } from '../src/board-model';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -65,6 +65,16 @@ describe('confirmed game state', () => {
     const waitingForMove = { ...ready, version: 2 };
     const timedReply = { ...accepted, game: { ...accepted.game, version: 3 } };
     expect(applyAcceptedMove(waitingForMove, timedReply)?.history).toEqual([move]);
+  });
+
+  it('updates a confirmed draw offer without changing saved moves or accepting a stale action', () => {
+    const current = game(0);
+    const offered = applyAcceptedAction(current, { accepted: true,
+      game: { ...game(1), position: current.position, drawOffer: 'white' } });
+    expect(offered).toMatchObject({ version: 1, drawOffer: 'white', history: [] });
+    expect(current.history).toEqual([]);
+    expect(applyAcceptedAction(offered, { accepted: true,
+      game: { ...game(1), drawOffer: null } })).toBe(offered);
   });
 });
 
