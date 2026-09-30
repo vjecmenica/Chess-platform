@@ -1,4 +1,4 @@
-export { createPosition, STANDARD_STARTING_FEN } from './position.js';
+export { createPosition, createPositionFromFen, STANDARD_STARTING_FEN } from './position.js';
 export type {
   Side, Promotion, MoveRequest, PositionSnapshot, MoveRecord, MoveRejection, MoveResult, ChessPosition,
 } from './position.js';

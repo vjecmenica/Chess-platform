@@ -3,6 +3,8 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
+import { analysisFen, analysisSideToMove, navigateAnalysis, playAnalysisMove, startAnalysis,
+  type AnalysisLine } from './analysis-model';
 import { ClockPanel } from './ClockPanel';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -74,6 +76,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisLine | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
@@ -306,21 +310,34 @@ export function App() {
 
   function chooseSquare(square: Square) {
     const current = gameRef.current;
-    if (current === null || current.status !== 'active' || current.position.sideToMove !== current.yourSeat
-      || pendingRef.current !== null || posting.current || promotion !== null) return;
-    const rows = boardRows(current.position.fen, current.yourSeat);
+    if (current === null || pendingRef.current !== null || posting.current || promotion !== null) return;
+    if (analysis === null && (current.status !== 'active'
+      || current.position.sideToMove !== current.yourSeat)) return;
+    const positionFen = analysis === null ? current.position.fen : analysisFen(analysis);
+    const sideToMove = analysis === null ? current.position.sideToMove : analysisSideToMove(analysis);
+    const rows = boardRows(positionFen, current.yourSeat);
     const piece = rows.flat().find(item => item.square === square)?.piece ?? null;
     if (selected === null) {
-      if (pieceBelongsTo(piece, current.yourSeat)) setSelected(square);
+      if (pieceBelongsTo(piece, sideToMove)) setSelected(square);
       return;
     }
     if (selected === square) { setSelected(null); return; }
-    if (pieceBelongsTo(piece, current.yourSeat)) { setSelected(square); return; }
+    if (pieceBelongsTo(piece, sideToMove)) { setSelected(square); return; }
     const selectedPiece = rows.flat().find(item => item.square === selected)?.piece ?? null;
     if (needsPromotion(selectedPiece, square)) { setPromotion({ from: selected, to: square }); return; }
     setSelected(null);
-    void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+    if (analysis !== null) submitAnalysisMove(analysis, selected, square);
+    else void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
       from: selected, to: square });
+  }
+
+  function submitAnalysisMove(line: AnalysisLine, from: Square, to: Square,
+    promotionPiece?: 'q' | 'r' | 'b' | 'n') {
+    const result = playAnalysisMove(line, from, to, promotionPiece);
+    if (result.accepted) {
+      setAnalysis(result.line);
+      setAnalysisError(null);
+    } else setAnalysisError(result.result.message);
   }
 
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
@@ -330,7 +347,9 @@ export function App() {
   const displayedPly = game === null ? 0 : replayPly(
     selectedReplayPly ?? game.history.length, game.history.length);
   const rows = game === null ? null : boardRows(
-    replaying ? replayFen(game, displayedPly) : game.position.fen, game.yourSeat);
+    analysis !== null ? analysisFen(analysis)
+      : replaying ? replayFen(game, displayedPly) : game.position.fen, game.yourSeat);
+  const canSelectSquare = analysis !== null || canMove;
   const result = game?.result;
   const resultText = result === null || result === undefined ? null
     : result.outcome === 'draw' ? `Draw by ${result.reason.replaceAll('_', ' ')}.`
@@ -407,15 +426,23 @@ export function App() {
               ? 'Starting position'
               : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
             <div className="replay-controls">
-              <button type="button" className="secondary" disabled={displayedPly === 0}
+              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === 0}
                 onClick={() => setSelectedReplayPly(0)} aria-label="Starting position">Start</button>
-              <button type="button" className="secondary" disabled={displayedPly === 0}
+              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === 0}
                 onClick={() => setSelectedReplayPly(displayedPly - 1)} aria-label="Previous move">Previous</button>
-              <button type="button" className="secondary" disabled={displayedPly === game.history.length}
+              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === game.history.length}
                 onClick={() => setSelectedReplayPly(displayedPly + 1)} aria-label="Next move">Next</button>
-              <button type="button" className="secondary" disabled={displayedPly === game.history.length}
+              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === game.history.length}
                 onClick={() => setSelectedReplayPly(game.history.length)} aria-label="Final position">End</button>
             </div>
+            {analysis === null
+              ? <button type="button" className="analysis-entry" disabled={pending !== null}
+                  onClick={() => { setAnalysis(startAnalysis(game, displayedPly)); setAnalysisError(null);
+                    setSelected(null); }}>Explore from this position</button>
+              : <p className="analysis-exit">Exploring locally from this saved position. To choose a different saved move,
+                  discard this variation first. <button type="button" className="secondary"
+                    onClick={() => { setAnalysis(null); setAnalysisError(null); setSelected(null);
+                      setPromotion(null); }}>Discard variation and return to saved game</button></p>}
           </div>}
           <div className="game-layout">
             <div>
@@ -425,31 +452,65 @@ export function App() {
                     className={`square ${dark ? 'dark' : 'light'} ${selected === square ? 'selected' : ''}`}
                     aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
                     aria-pressed={selected === square}
-                    disabled={!canMove || promotion !== null}
+                    disabled={!canSelectSquare || promotion !== null}
                     onClick={() => chooseSquare(square)}>
                     <span className={`piece ${piece !== null && piece === piece.toUpperCase() ? 'white-piece' : ''}`}
                       aria-hidden="true">{piece === null ? '' : glyphs[piece]}</span>
                     <span className="coordinate" aria-hidden="true">{square}</span>
                   </button>)}
               </div>
-              <p className="board-hint">{canMove ? 'Select one of your pieces, then its destination.'
-                : game.status === 'finished' ? 'Replay is read-only.' : 'Move input is available on your turn.'}</p>
+              <p className="board-hint">{analysis !== null
+                ? 'Select a piece for the side to move, then its destination. These moves are local to this browser.'
+                : canMove ? 'Select one of your pieces, then its destination.'
+                  : game.status === 'finished' ? 'Saved replay is read-only. Explore a position to try moves.'
+                    : 'Move input is available on your turn.'}</p>
             </div>
             <aside className="moves" aria-label="Confirmed move list">
-              <h3>Moves</h3>
+              <h3>Saved moves</h3>
               {game.history.length === 0 ? <p>No confirmed moves yet.</p>
                 : <ol>{Array.from({ length: Math.ceil(game.history.length / 2) }, (_, index) =>
                   <li key={index}><span>{index + 1}.</span>{[index * 2, index * 2 + 1].map(moveIndex => {
                     const move = game.history[moveIndex];
                     if (move === undefined) return <span key={moveIndex}>…</span>;
                     return replaying
-                      ? <button key={moveIndex} type="button" className="move-link"
+                      ? <button key={moveIndex} type="button" className="move-link" disabled={analysis !== null}
                           aria-current={displayedPly === move.ply ? 'step' : undefined}
                           onClick={() => setSelectedReplayPly(move.ply)}
                           aria-label={`Show position after ${move.ply % 2 === 1 ? 'White' : 'Black'} ${move.san}`}>
                           {move.san}</button>
                       : <span key={moveIndex}>{move.san}</span>;
                   })}</li>)}</ol>}
+              {analysis !== null && <div className="variation" aria-label="Explored variation">
+                <h3>Explored variation</h3>
+                <p className="variation-position" aria-live="polite">{analysis.cursor === 0
+                  ? 'Starting replay position'
+                  : `After explored move ${analysis.cursor}: ${analysis.moves[analysis.cursor - 1]?.san}`}
+                  {' · '}{analysisSideToMove(analysis) === 'white' ? 'White' : 'Black'} to move</p>
+                <div className="replay-controls">
+                  <button type="button" className="secondary" disabled={analysis.cursor === 0}
+                    onClick={() => { setAnalysis(navigateAnalysis(analysis, 0)); setSelected(null);
+                      setAnalysisError(null); }}>Variation start</button>
+                  <button type="button" className="secondary" disabled={analysis.cursor === 0}
+                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.cursor - 1));
+                      setSelected(null); setAnalysisError(null); }}>Previous</button>
+                  <button type="button" className="secondary" disabled={analysis.cursor === analysis.moves.length}
+                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.cursor + 1));
+                      setSelected(null); setAnalysisError(null); }}>Next</button>
+                  <button type="button" className="secondary" disabled={analysis.cursor === analysis.moves.length}
+                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.moves.length));
+                      setSelected(null); setAnalysisError(null); }}>Variation end</button>
+                </div>
+                <p className="variation-note">Moves here stay in this browser. Playing from an earlier explored position
+                  replaces the continuation after it.</p>
+                {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
+                {analysis.moves.length === 0 ? <p>No explored moves yet.</p>
+                  : <ol className="variation-moves">{analysis.moves.map(move =>
+                      <li key={move.ply}><button type="button" className="move-link"
+                        aria-current={analysis.cursor === move.ply ? 'step' : undefined}
+                        onClick={() => { setAnalysis(navigateAnalysis(analysis, move.ply));
+                          setSelected(null); setAnalysisError(null); }}>
+                        {move.ply}. {move.san}</button></li>)}</ol>}
+              </div>}
             </aside>
           </div>
           {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
@@ -459,7 +520,8 @@ export function App() {
                 const current = gameRef.current;
                 setPromotion(null);
                 setSelected(null);
-                if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+                if (analysis !== null) submitAnalysisMove(analysis, promotion.from, promotion.to, piece);
+                else if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
                   from: promotion.from, to: promotion.to, promotion: piece });
               }}>{name}</button>)}</div>
             <button type="button" className="secondary" onClick={() => setPromotion(null)}>Cancel</button>

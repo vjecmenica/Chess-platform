@@ -54,6 +54,10 @@ export function createPosition(): ChessPosition {
   return createPositionAdapter().position;
 }
 
+export function createPositionFromFen(fen: string): ChessPosition {
+  return createPositionAdapter(fen).position;
+}
+
 // Internal adapter: only the game owner may inspect terminal board conditions.
 export function createPositionAdapter(startingFen = STANDARD_STARTING_FEN) {
   const chess = new Chess(startingFen);
