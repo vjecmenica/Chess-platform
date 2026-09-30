@@ -5,8 +5,9 @@ import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, repla
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
-  selectBranch, selectMain, serializeAnalysis, type AnalysisTree } from './analysis-model';
+  selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
 import { ClockPanel } from './ClockPanel';
+import { MoveTree } from './MoveTree';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -367,6 +368,24 @@ export function App() {
     } else setAnalysisError(result.result.message);
   }
 
+  function selectMove(cursor: AnalysisCursor) {
+    if (cursor.kind === 'branch') {
+      if (analysis !== null) setAnalysis(selectBranch(analysis, cursor.id));
+    } else if (analysisOpen && analysis !== null && game !== null) {
+      setAnalysis(selectMain(analysis, game, cursor.ply));
+    } else setSelectedReplayPly(cursor.ply);
+    setSelected(null);
+    setAnalysisError(null);
+  }
+
+  function removeVariation(id: number, notation: string) {
+    if (analysis !== null && window.confirm(`Delete ${notation} and all moves after it in this branch?`)) {
+      setAnalysis(deleteVariation(analysis, id));
+      setSelected(null);
+      setAnalysisError(null);
+    }
+  }
+
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
   const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
     && pending === null && !submitting;
@@ -385,16 +404,15 @@ export function App() {
       : `${result.winner === 'white' ? 'White' : 'Black'} won by ${result.reason.replaceAll('_', ' ')}.`;
 
   return (
-    <main>
+    <main className={challengeId === null ? 'home-page' : 'challenge-page'}>
       <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span></header>
-      <section className="intro">
+      {challengeId === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
-        <h1>{challengeId === null ? 'Challenge a friend.' : 'Your challenge.'}</h1>
-        <p className="description">{challengeId === null
-          ? 'Create a challenge and share its link with a second guest.'
-          : 'The server confirms moves and controls the clock. This is still a development preview.'}</p>
-      </section>
-      <section className="notice" aria-labelledby="challenge-title">
+        <h1>Challenge a friend.</h1>
+        <p className="description">Create a challenge and share its link with a second guest.</p>
+      </section>}
+      <section className={`notice ${challenge?.status === 'accepted' ? 'challenge-compact' : ''}`}
+        aria-labelledby="challenge-title">
         <div className="section-heading">
           <h2 id="challenge-title">{challengeId === null ? 'Create a challenge' : 'Challenge'}</h2>
           {challengeId !== null && <a href="/">Create another challenge</a>}
@@ -406,7 +424,10 @@ export function App() {
             {busy ? 'Creating…' : 'Create challenge'}
           </button>
         )}
-        {challenge !== null && <>
+        {challenge !== null && <details className="challenge-details" open={challenge.status === 'open'}>
+          <summary>{challenge.status === 'accepted'
+            ? `You are ${challenge.yourSeat === 'white' ? 'White' : 'Black'} · Show challenge link and seats`
+            : 'Challenge details'}</summary>
           <p className="status">{challenge.status === 'open' ? 'Waiting for a second guest' : 'Both seats are filled'}</p>
           <div className="seats">
             <p>White <strong>{challenge.yourSeat === 'white' ? 'You' : 'Occupied'}</strong></p>
@@ -420,15 +441,10 @@ export function App() {
             <button type="button" disabled={busy} onClick={() => void acceptChallenge()}>
               {busy ? 'Joining…' : 'Accept challenge as Black'}
             </button>}
-        </>}
+        </details>}
       </section>
 
       {challenge?.status === 'accepted' && challenge.yourSeat !== null && <section className="game-area" aria-labelledby="game-title">
-        <div className="preview-warning" role="note">{challenge.game.clocks === 'not_integrated'
-          ? <><strong>No clocks are running.</strong> This earlier challenge remains an untimed preview.</>
-          : <><strong>5+3 server clock.</strong> Running clocks continue during disconnects and server outages.
-            After a saved move, the next clock starts when the server confirms the turn.
-            The displayed countdown is an estimate; the server decides the deadline and result.</>}</div>
         <div className="game-heading">
           <h2 id="game-title">Saved game</h2>
           <div className="game-actions">
@@ -447,51 +463,21 @@ export function App() {
         {gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
         {game !== null && rows !== null && <>
-          {game.clocks !== null && <ClockPanel clock={game.clocks} />}
-          {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
-            <p>{game.clocks.ready[game.yourSeat]
-              ? 'You are ready. Waiting for the other guest.'
-              : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
-            {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
-              onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
-          </div>}
-          <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
-            ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
-            : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
-              : canMove ? `Your turn (${game.yourSeat}).`
-                : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
-          {replaying && <div className="replay" aria-label="Saved game replay">
-            <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
-              ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
-              : displayedPly === 0 ? 'Starting position'
-                : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
-            <div className="replay-controls">
-              <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
-                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                  else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
-              <button type="button" className="secondary"
-                disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
-                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
-                  else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
-                aria-label="Previous move">Previous</button>
-              <button type="button" className="secondary"
-                disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
-                  : displayedPly === game.history.length}
-                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
-                  else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
-                aria-label="Next move">Next</button>
-              <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
-                onClick={() => { if (analysisOpen && analysis !== null)
-                  setAnalysis(selectMain(analysis, game, game.history.length));
-                else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                aria-label="Final position">End</button>
-            </div>
-            {analysisOpen && <p className="analysis-local">Analysis branches are saved only in this browser.
-              Saved moves, result, and clocks never change.</p>}
-            {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
-          </div>}
           <div className="game-layout">
-            <div>
+            <div className="play-column">
+              {game.clocks !== null && <ClockPanel clock={game.clocks} />}
+              <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
+                ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
+                : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
+                  : canMove ? `Your turn (${game.yourSeat}).`
+                    : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
+              {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
+                <p>{game.clocks.ready[game.yourSeat]
+                  ? 'You are ready. Waiting for the other guest.'
+                  : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
+                {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
+                  onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
+              </div>}
               <div className="board" role="group" aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
                 {rows.flat().map(({ square, piece, dark }) =>
                   <button key={square} type="button"
@@ -510,52 +496,48 @@ export function App() {
                 : canMove ? 'Select one of your pieces, then its destination.'
                   : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
                     : 'Move input is available on your turn.'}</p>
+              <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
+                ? 'This earlier challenge is untimed.'
+                : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
             </div>
-            <aside className="moves" aria-label="Confirmed move list">
-              <h3>Saved moves</h3>
-              {game.history.length === 0 ? <p>No confirmed moves yet.</p>
-                : <ol>{Array.from({ length: Math.ceil(game.history.length / 2) }, (_, index) =>
-                  <li key={index}><span>{index + 1}.</span>{[index * 2, index * 2 + 1].map(moveIndex => {
-                    const move = game.history[moveIndex];
-                    if (move === undefined) return <span key={moveIndex}>…</span>;
-                    return replaying
-                      ? <button key={moveIndex} type="button" className="move-link"
-                          aria-current={(analysisOpen ? analysis?.cursor.kind === 'main'
-                            && analysis.cursor.ply === move.ply : displayedPly === move.ply) ? 'step' : undefined}
-                          onClick={() => { if (analysisOpen && analysis !== null)
-                            setAnalysis(selectMain(analysis, game, move.ply));
-                          else setSelectedReplayPly(move.ply); setSelected(null); }}
-                          aria-label={`Show position after ${move.ply % 2 === 1 ? 'White' : 'Black'} ${move.san}`}>
-                          {move.san}</button>
-                      : <span key={moveIndex}>{move.san}</span>;
-                  })}</li>)}</ol>}
-              {analysisOpen && analysis !== null && <div className="variation" aria-label="Local variations">
-                <h3>Local variations</h3>
-                {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
-                {analysis.nodes.length === 0 ? <p>Play a different legal move to add a branch.</p>
-                  : <ol className="variation-tree">{analysis.nodes.map(item => {
-                      const parent = item.parent.kind === 'main'
-                        ? item.parent.ply === 0 ? 'saved start' : `saved move ${item.parent.ply}`
-                        : `branch #${item.parent.id}`;
-                      return <li key={item.id}>
-                        <button type="button" className="move-link"
-                          aria-current={analysis.cursor.kind === 'branch'
-                            && analysis.cursor.id === item.id ? 'step' : undefined}
-                          onClick={() => { setAnalysis(selectBranch(analysis, item.id));
-                            setSelected(null); setAnalysisError(null); }}>
-                          #{item.id} {item.san} <small>from {parent}</small></button>
-                        <button type="button" className="delete-variation"
-                          aria-label={`Delete variation ${item.id} ${item.san}`}
-                          onClick={() => {
-                            if (window.confirm(`Delete ${item.san} and every branch after it?`)) {
-                              setAnalysis(deleteVariation(analysis, item.id));
-                              setSelected(null); setAnalysisError(null);
-                            }
-                          }}>Delete</button>
-                      </li>;
-                    })}</ol>}
+            <div className="move-panel">
+              {replaying && <div className="replay" aria-label="Saved game replay">
+                <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
+                  ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
+                  : displayedPly === 0 ? 'Starting position'
+                    : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
+                <div className="replay-controls">
+                  <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
+                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
+                      else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
+                  <button type="button" className="secondary"
+                    disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
+                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
+                      else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
+                    aria-label="Previous move">Previous</button>
+                  <button type="button" className="secondary"
+                    disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
+                      : displayedPly === game.history.length}
+                    onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
+                      else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
+                    aria-label="Next move">Next</button>
+                  <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
+                    onClick={() => { if (analysisOpen && analysis !== null)
+                      setAnalysis(selectMain(analysis, game, game.history.length));
+                    else setSelectedReplayPly(game.history.length); setSelected(null); }}
+                    aria-label="Final position">End</button>
+                </div>
+                {analysisOpen && <p className="analysis-local">Variations are saved only in this browser.
+                  The game and clocks never change.</p>}
+                {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
               </div>}
-            </aside>
+              {replaying && <p className="move-legend">Saved line{analysisOpen ? ' · Indented moves are local variations' : ''}</p>}
+              {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
+              <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
+                selected={analysisOpen && analysis !== null ? analysis.cursor
+                  : { kind: 'main', ply: displayedPly }}
+                onSelect={selectMove} onDelete={removeVariation} />
+            </div>
           </div>
           {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
             <p>Promote your pawn to:</p>
