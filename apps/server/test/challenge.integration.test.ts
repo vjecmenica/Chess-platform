@@ -112,7 +112,7 @@ describe('guest challenges against PostgreSQL', () => {
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({ status: 'accepted', yourSeat: 'black',
       seats: { white: 'occupied', black: 'occupied' },
-      game: { id, status: 'active', clocks: 'not_integrated' } });
+      game: { id, status: 'waiting', clocks: 'authoritative' } });
     expect((await accept(id, joiner)).json()).toEqual(accepted.json());
     expect((await read(id, owner)).json().yourSeat).toBe('white');
     expect((await read(id, joiner)).json().yourSeat).toBe('black');

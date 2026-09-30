@@ -3,9 +3,10 @@ import type pg from 'pg';
 import type { ReadinessResponse } from '@chess/contracts';
 import { registerChallengeRoutes } from './challenge-routes.js';
 import { registerGameRoutes } from './game-routes.js';
+import type { GameService } from './game-service.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
-  challenges?: { pool: pg.Pool; secureCookies: boolean }) {
+  challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService }) {
   const app = Fastify({ logger, ajv: { customOptions: { removeAdditional: false } } });
 
   app.get('/health', async () => ({ status: 'ok' }));
@@ -21,7 +22,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
 
   if (challenges) {
     registerChallengeRoutes(app, challenges.pool, challenges.secureCookies);
-    registerGameRoutes(app, challenges.pool);
+    registerGameRoutes(app, challenges.pool, challenges.gameService);
   }
 
   return app;

@@ -1,6 +1,6 @@
 # Game results and draw policy
 
-The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. It does not claim full FIDE compliance: mating-possibility detection is conservative, the 5+3 clock and timeout decisions are in memory, and claim penalties are not implemented.
+The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially articles 5.1.2, 5.2, 6.9, and 9.1–9.6. The domain implements the rules below with explicit online adaptations. The guest HTTP game now persists 5+3 clocks and timeout decisions. It does not claim full FIDE compliance: mating-possibility detection is conservative, and the HTTP game still lacks resignation, draw claims, and claim penalties.
 
 ## Implemented lifecycle
 
@@ -45,7 +45,7 @@ The detector proves impossibility for:
 
 Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
 
-**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify a win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation or timeout can wait indefinitely at this stage because there is no durable queue, worker, or complete proof engine. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify a win or a draw. The game may miss an automatic dead position until a complete proof is available. A pending resignation or timeout can wait indefinitely at this stage because there is no durable queue, worker, or complete proof engine. The HTTP game persists a pending timeout but does not resolve it automatically. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
 
 At flag fall, the clock calls `flagTimeout` once with the side to move and the effective deadline. A sound proof that the opponent cannot mate ends the game as `timeout_no_mating_possibility`; a verified legal mate line ends it as a timeout win. Otherwise the game enters `pending_adjudication` with the flagged side and deadline. The board and history do not change. A precomputed line may be registered with the clock before the deadline; the domain verifies it and the live clock path never searches for one. After a pending flag, `findTimeoutMateWitness` can run separately and a valid line can be passed to `resolveTimeout`. Search exhaustion leaves the game pending. A repeated flag or ruling cannot create a second result.
 
@@ -54,7 +54,7 @@ At flag fall, the clock calls `flagTimeout` once with the side to move and the e
 The requested repetition thresholds and successful-claim behavior are implemented. The [online claim and clock decision](adjudication-design.md#incorrect-claims-online) specifies the remaining procedure:
 
 - Pause a valid claim at server receipt. An incorrect threshold claim adds the applicable time penalty, creates a draw offer, and commits its legal intended move if supplied. The current domain rejects such a claim unchanged because it has no clock or durable command receipt yet.
-- The 5+3 clock wrapper stamps commands, orders them, charges accepted moves, and applies the three-answer timeout rule at flag fall. An unresolved timeout stays frozen and cannot become a win by default.
-- Make command receipts and clocks durable, then implement the selected claim pause and time bonus. Choose server-outage recovery separately in the [architecture](architecture.md#clocks-and-recovery).
+- The transport-free 5+3 clock wrapper stamps commands, orders them, charges accepted moves, and applies the three-answer timeout rule at flag fall. The guest server now persists that rule for readiness, moves, and flags, using UTC deadlines that continue through outages. An unresolved timeout stays frozen and cannot become a win by default.
+- Add authenticated resignation, draw claims, claim pause and time bonus, and durable adjudication jobs. Extend serialized receipts to those commands.
 
-Arbiter intervention, paper notation, and touch-move procedures are not simulated. The clock boundary has an in-memory FIFO queue, but the future server must authorize and serialize commands with durable request receipts. There is no transport or game persistence yet.
+Arbiter intervention, paper notation, and touch-move procedures are not simulated. The current guest server authorizes and serializes timed moves with durable receipts in one process, but has no live transport. Before multiple server instances or public competitive play, define cross-process command ordering and system-clock correction.

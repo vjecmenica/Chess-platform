@@ -16,7 +16,8 @@ interface ChallengeRow {
   creator_guest_id: string;
   acceptor_guest_id: string | null;
   created_at: Date;
-  game_status: 'active' | 'finished' | null;
+  game_status: 'waiting' | 'active' | 'pending_adjudication' | 'finished' | null;
+  clock_mode: 'legacy_untimed' | 'five_plus_three' | null;
 }
 
 function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
@@ -28,7 +29,8 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
       : row.acceptor_guest_id === guestId ? 'black' : null,
     seats: { white: 'occupied', black: row.acceptor_guest_id === null ? 'open' : 'occupied' },
     game: { id: row.game_status === null ? null : row.id,
-      status: row.game_status ?? 'not_created', clocks: 'not_integrated',
+      status: row.game_status ?? 'not_created',
+      clocks: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
       rated: false, initialMs: 300_000, incrementMs: 3_000 },
     createdAt: row.created_at.toISOString(),
   };
@@ -36,7 +38,8 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
 
 async function findChallenge(query: Pick<pg.Pool, 'query'>, id: string): Promise<ChallengeRow | null> {
   const { rows } = await query.query<ChallengeRow>(
-    `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at, g.status AS game_status
+    `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at,
+      g.status AS game_status, g.clock_mode
       FROM chess.challenges c LEFT JOIN chess.games g ON g.id = c.id WHERE c.id = $1`, [id],
   );
   const row = rows[0];
@@ -104,8 +107,9 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, sec
         );
         if (changed.rowCount === 1) {
           await client.query(
-            `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status)
-              VALUES ($1, $2, $2, 'white', 'active')`,
+            `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status,
+                clock_mode, clock_phase)
+              VALUES ($1, $2, $2, 'white', 'waiting', 'five_plus_three', 'waiting')`,
             [request.params.id, STANDARD_STARTING_FEN],
           );
         }
@@ -128,7 +132,7 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT id FROM chess.challenges LIMIT 0');
-    await pool.query('SELECT id FROM chess.games LIMIT 0');
+    await pool.query('SELECT id, clock_mode, deadline_at FROM chess.games LIMIT 0');
   } catch {
     throw new Error('The game schema is missing or inaccessible. Run npm run db:migrate and check database permissions.');
   }

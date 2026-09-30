@@ -10,7 +10,7 @@ import { buildApp } from '../src/app.js';
 
 interface Guest { cookie: string; csrf: string }
 
-describe('saved guest games against PostgreSQL', () => {
+describe('earlier untimed guest games against PostgreSQL', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
 
@@ -45,6 +45,9 @@ describe('saved guest games against PostgreSQL', () => {
     const accepted = await app.inject({ method: 'POST', url: `/challenges/${id}/accept`,
       headers: { cookie: black.cookie, 'x-csrf-token': black.csrf } });
     expect(accepted.statusCode).toBe(200);
+    // Exercise the migration's compatibility mode for games created before durable clocks.
+    await pool.query(`UPDATE chess.games SET clock_mode = 'legacy_untimed',
+      clock_phase = 'legacy_untimed', status = 'active' WHERE id = $1`, [id]);
     return { id, white, black };
   }
 

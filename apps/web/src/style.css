@@ -28,6 +28,13 @@ button:focus-visible { outline: 3px solid #a47a37; outline-offset: 4px; }
 .secondary { background: transparent; color: #143d30; }
 .game-area { margin-top: 24px; }
 .preview-warning { border: 1px solid #ac7f37; border-radius: 8px; background: #fff0ce; padding: 14px 16px; line-height: 1.5; margin-bottom: 24px; }
+.clocks { display: flex; gap: 12px; margin-top: 18px; }
+.clock { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 12px 16px; border: 1px solid #b8c7b5; border-radius: 8px; background: #f4f6ef; }
+.clock-active { border-color: #143d30; background: #e4eddf; }
+.clock strong { font-variant-numeric: tabular-nums; font-size: 28px; line-height: 1.1; }
+.clock small { color: #526157; }
+.readiness { margin-top: 18px; padding: 14px 16px; border: 1px solid #b8c7b5; border-radius: 8px; }
+.readiness p { margin: 0 0 8px; }
 .game-heading { align-items: center; }
 .turn { font-size: 18px; font-weight: 650; margin: 12px 0 20px; }
 .game-layout { display: grid; grid-template-columns: minmax(0, 560px) minmax(180px, 1fr); gap: 28px; align-items: start; }

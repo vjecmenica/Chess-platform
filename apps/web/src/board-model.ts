@@ -49,7 +49,7 @@ export function mergeConfirmedGame(current: GameReadResponse | null,
 export function applyAcceptedMove(current: GameReadResponse | null,
   response: MoveAcceptedResponse): GameReadResponse | null {
   if (current === null || response.game.version !== current.version + 1
-    || response.move.ply !== response.game.version) return current;
+    || response.move.ply !== current.history.length + 1) return current;
   const history: SavedMove[] = [...current.history, response.move];
   return { ...response.game, history };
 }

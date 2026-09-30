@@ -58,4 +58,11 @@ describe('confirmed game state', () => {
     expect(applyAcceptedMove(confirmed, accepted)).toBe(confirmed);
     expect(mergeConfirmedGame(game(), confirmed)).toBe(confirmed);
   });
+
+  it('appends a timed move when readiness has advanced the state version', () => {
+    const ready = game(0);
+    const waitingForMove = { ...ready, version: 2 };
+    const timedReply = { ...accepted, game: { ...accepted.game, version: 3 } };
+    expect(applyAcceptedMove(waitingForMove, timedReply)?.history).toEqual([move]);
+  });
 });

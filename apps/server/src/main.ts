@@ -2,15 +2,19 @@ import { buildApp } from './app.js';
 import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
 import { checkChallengeSchema } from './challenge-routes.js';
+import { createGameService } from './game-service.js';
 
 async function main() {
   loadEnvironment();
   const config = readConfig();
   const pool = createPool(config.connectionString);
+  const gameService = createGameService(pool);
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
-  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies });
+  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
   app.addHook('onClose', async () => pool.end());
+  let timer: ReturnType<typeof setInterval> | null = null;
+  app.addHook('onClose', async () => { if (timer !== null) clearInterval(timer); });
 
   try {
     await checkDatabase(pool);
@@ -25,6 +29,17 @@ async function main() {
     await app.close();
     throw new Error('Cannot start the HTTP server. Check HOST and PORT and whether the port is already in use.');
   }
+
+  let polling = false;
+  const poll = async () => {
+    if (polling) return;
+    polling = true;
+    try { await gameService.pollDueGames(); }
+    catch { console.error('Could not check due game clocks; the next poll will retry.'); }
+    finally { polling = false; }
+  };
+  timer = setInterval(() => { void poll(); }, 500);
+  void poll();
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

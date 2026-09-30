@@ -3,6 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion,
   pieceBelongsTo, type Piece, type Square } from './board-model';
+import { ClockPanel } from './ClockPanel';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -27,6 +28,11 @@ const errors: Record<string, string> = {
   promotion_required: 'Choose a promotion piece before moving.',
   game_finished: 'The game has finished. The position will be refreshed.',
   request_id_conflict: 'This retry ID was used for a different move. Refresh the page.',
+  clock_not_started: 'Both guests must press Ready before White’s clock starts.',
+  received_before_turn: 'This move arrived before your turn began. The position will be refreshed.',
+  flag_fell: 'The server recorded a flag at the clock deadline. The position will be refreshed.',
+  adjudication_pending: 'The clock flagged and the result is awaiting adjudication.',
+  legacy_untimed_game: 'This earlier challenge remains an untimed preview.',
 };
 
 class ApiError extends Error {
@@ -73,6 +79,7 @@ export function App() {
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
   const promotionFocus = useRef<HTMLButtonElement | null>(null);
   const challengeFetch = useRef<Promise<void> | null>(null);
@@ -205,6 +212,31 @@ export function App() {
     }
   }
 
+  async function markReady() {
+    if (session === null || challengeId === null || posting.current) return;
+    posting.current = true;
+    setReadyBusy(true);
+    setGameError(null);
+    if (gameFetch.current !== null) await gameFetch.current;
+    try {
+      const confirmed = await responseBody<GameReadResponse>(await fetch(
+        `/api/games/${challengeId}/ready`, {
+          method: 'POST', headers: { 'X-CSRF-Token': session.csrfToken },
+        },
+      ));
+      const merged = mergeConfirmedGame(gameRef.current, confirmed);
+      gameRef.current = merged;
+      setGame(merged);
+      setSelected(null);
+    } catch (cause) {
+      setGameError(cause instanceof Error ? cause.message : 'Could not mark you ready. Try again.');
+    } finally {
+      posting.current = false;
+      setReadyBusy(false);
+    }
+    void refreshGame();
+  }
+
   function clearPending() {
     pendingRef.current = null;
     setPending(null);
@@ -255,7 +287,8 @@ export function App() {
       if (cause instanceof ApiError && cause.status < 500) {
         clearPending();
         stale = cause.code === 'stale_version';
-        shouldRefresh = stale || cause.code === 'wrong_turn' || cause.code === 'game_finished';
+        shouldRefresh = stale || ['wrong_turn', 'game_finished', 'flag_fell',
+          'clock_not_started', 'received_before_turn', 'adjudication_pending'].includes(cause.code);
         if (!stale) setGameError(cause.message);
       } else {
         setGameError('The move was not confirmed. Retry it with the same request ID; the board has not changed.');
@@ -302,11 +335,11 @@ export function App() {
     <main>
       <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span></header>
       <section className="intro">
-        <p className="eyebrow">Untimed development preview</p>
+        <p className="eyebrow">Guest challenge preview</p>
         <h1>{challengeId === null ? 'Challenge a friend.' : 'Your challenge.'}</h1>
         <p className="description">{challengeId === null
           ? 'Create a challenge and share its link with a second guest.'
-          : 'The board shows moves confirmed and saved by the server. Clocks are not running yet.'}</p>
+          : 'The server confirms moves and controls the clock. This is still a development preview.'}</p>
       </section>
       <section className="notice" aria-labelledby="challenge-title">
         <div className="section-heading">
@@ -338,9 +371,10 @@ export function App() {
       </section>
 
       {challenge?.status === 'accepted' && challenge.yourSeat !== null && <section className="game-area" aria-labelledby="game-title">
-        <div className="preview-warning" role="note">
-          <strong>No clocks are running.</strong> This is an untimed development preview of the planned casual 5+3 game.
-        </div>
+        <div className="preview-warning" role="note">{challenge.game.clocks === 'not_integrated'
+          ? <><strong>No clocks are running.</strong> This earlier challenge remains an untimed preview.</>
+          : <><strong>5+3 server clock.</strong> Time continues during disconnects and server outages.
+            The displayed countdown is an estimate; the server decides the deadline and result.</>}</div>
         <div className="game-heading">
           <h2 id="game-title">Saved game</h2>
           <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
@@ -349,8 +383,19 @@ export function App() {
         {gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
         {game !== null && rows !== null && <>
-          <p className="turn" role="status">{resultText ?? (canMove ? `Your turn (${game.yourSeat}).`
-            : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
+          {game.clocks !== null && <ClockPanel clock={game.clocks} />}
+          {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
+            <p>{game.clocks.ready[game.yourSeat]
+              ? 'You are ready. Waiting for the other guest.'
+              : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
+            {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
+              onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
+          </div>}
+          <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
+            ? 'A clock flagged. The game is frozen while its result awaits adjudication.'
+            : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
+              : canMove ? `Your turn (${game.yourSeat}).`
+                : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
           <div className="game-layout">
             <div>
               <div className="board" role="group" aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
