@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   MoveAcceptedResponse } from '@chess/contracts';
-import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
+import { applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
+import { boardMove, pieceAt, pieceImage } from './board-interaction';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
   selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
@@ -11,10 +12,6 @@ import { MoveTree } from './MoveTree';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
-const glyphs: Record<Piece, string> = {
-  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
-  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
-};
 const pieceNames: Record<string, string> = {
   k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn',
 };
@@ -96,6 +93,11 @@ export function App() {
   const posting = useRef(false);
   const gameRef = useRef<GameReadResponse | null>(null);
   const pendingRef = useRef<PendingMove | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
+    moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
 
   useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
 
@@ -332,31 +334,86 @@ export function App() {
       : 'The position changed before your move was accepted. Use Refresh position to reload the confirmed game.');
   }
 
-  function chooseSquare(square: Square) {
+  function inputPosition() {
     const current = gameRef.current;
     if (current === null || promotion !== null
-      || (!analysisOpen && (pendingRef.current !== null || posting.current))) return;
+      || (!analysisOpen && (pendingRef.current !== null || posting.current))) return null;
     if (!analysisOpen && (current.status !== 'active'
-      || current.position.sideToMove !== current.yourSeat)) return;
-    if (analysisOpen && (current.status !== 'finished' || analysis === null)) return;
+      || current.position.sideToMove !== current.yourSeat)) return null;
+    if (analysisOpen && (current.status !== 'finished' || analysis === null)) return null;
     const positionFen = analysisOpen && analysis !== null ? cursorFen(analysis, current)
       : current.position.fen;
     const sideToMove = analysisOpen && analysis !== null ? cursorSide(analysis, current)
       : current.position.sideToMove;
-    const rows = boardRows(positionFen, current.yourSeat);
-    const piece = rows.flat().find(item => item.square === square)?.piece ?? null;
+    return { current, positionFen, sideToMove };
+  }
+
+  function attemptBoardMove(from: Square, target: Square | null) {
+    const input = inputPosition();
+    if (input === null) return;
+    const move = boardMove(input.positionFen, input.sideToMove, from, target);
+    setSelected(null);
+    if (move.kind === 'invalid') return;
+    if (move.kind === 'promotion') { setPromotion({ from: move.from, to: move.to }); return; }
+    if (analysisOpen && analysis !== null) submitAnalysisMove(analysis, input.current, move.from, move.to);
+    else void submitMove({ requestId: crypto.randomUUID(), expectedVersion: input.current.version,
+      from: move.from, to: move.to });
+  }
+
+  function chooseSquare(square: Square) {
+    if (suppressClick.current) return;
+    const input = inputPosition();
+    if (input === null) return;
+    const piece = pieceAt(input.positionFen, square);
     if (selected === null) {
-      if (pieceBelongsTo(piece, sideToMove)) setSelected(square);
+      if (pieceBelongsTo(piece, input.sideToMove)) setSelected(square);
       return;
     }
     if (selected === square) { setSelected(null); return; }
-    if (pieceBelongsTo(piece, sideToMove)) { setSelected(square); return; }
-    const selectedPiece = rows.flat().find(item => item.square === selected)?.piece ?? null;
-    if (needsPromotion(selectedPiece, square)) { setPromotion({ from: selected, to: square }); return; }
-    setSelected(null);
-    if (analysisOpen && analysis !== null) submitAnalysisMove(analysis, current, selected, square);
-    else void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
-      from: selected, to: square });
+    if (pieceBelongsTo(piece, input.sideToMove)
+      && boardMove(input.positionFen, input.sideToMove, selected, square).kind === 'invalid') {
+      setSelected(square);
+      return;
+    }
+    attemptBoardMove(selected, square);
+  }
+
+  function beginDrag(event: React.PointerEvent<HTMLButtonElement>, square: Square, piece: Piece | null) {
+    const input = inputPosition();
+    if (event.button !== 0 || input === null || !pieceBelongsTo(piece, input.sideToMove)) return;
+    pointer.current = { id: event.pointerId, from: square, piece: piece!,
+      x: event.clientX, y: event.clientY, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const active = pointer.current;
+    if (active === null || active.id !== event.pointerId) return;
+    if (!active.moved && Math.hypot(event.clientX - active.x, event.clientY - active.y) < 6) return;
+    active.moved = true;
+    setDrag({ from: active.from, piece: active.piece, x: event.clientX, y: event.clientY });
+  }
+
+  function endDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const active = pointer.current;
+    if (active === null || active.id !== event.pointerId) return;
+    pointer.current = null;
+    setDrag(null);
+    if (!active.moved) return;
+    suppressClick.current = true;
+    window.setTimeout(() => { suppressClick.current = false; }, 0);
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const target = element?.closest<HTMLElement>('[data-square]');
+    if (target === null || target === undefined || !boardRef.current?.contains(target)) {
+      attemptBoardMove(active.from, null);
+      return;
+    }
+    attemptBoardMove(active.from, target.dataset.square as Square);
+  }
+
+  function cancelDrag() {
+    pointer.current = null;
+    setDrag(null);
   }
 
   function submitAnalysisMove(tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,
@@ -451,22 +508,29 @@ export function App() {
         {game !== null && rows !== null && <>
           <div className="game-layout">
             <div className="play-column">
-              <div className="board" role="group" aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
+              <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
                 {rows.flat().map(({ square, piece, dark }) =>
                   <button key={square} type="button"
-                    className={`square ${dark ? 'dark' : 'light'} ${selected === square ? 'selected' : ''}`}
+                    className={`square ${dark ? 'dark' : 'light'} ${selected === square ? 'selected' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
+                    data-square={square}
                     aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
                     aria-pressed={selected === square}
                     disabled={!canSelectSquare || promotion !== null}
+                    onPointerDown={event => beginDrag(event, square, piece)}
+                    onPointerMove={moveDrag}
+                    onPointerUp={endDrag}
+                    onPointerCancel={cancelDrag}
                     onClick={() => chooseSquare(square)}>
-                    <span className={`piece ${piece !== null && piece === piece.toUpperCase() ? 'white-piece' : ''}`}
-                      aria-hidden="true">{piece === null ? '' : glyphs[piece]}</span>
+                    {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
                     <span className="coordinate" aria-hidden="true">{square}</span>
                   </button>)}
               </div>
+              {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
+                style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
+                  height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
               <p className="board-hint">{analysisOpen
-                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select a piece and destination.`
-                : canMove ? 'Select one of your pieces, then its destination.'
+                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select or drag a piece.`
+                : canMove ? 'Select or drag one of your pieces.'
                   : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
                     : 'Move input is available on your turn.'}</p>
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
