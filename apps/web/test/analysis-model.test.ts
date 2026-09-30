@@ -1,106 +1,122 @@
 import { describe, expect, it } from 'vitest';
-import type { GameReadResponse } from '@chess/contracts';
+import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { analysisFen, analysisSideToMove, navigateAnalysis, playAnalysisMove,
-  startAnalysis } from '../src/analysis-model';
+import { analysisStorageKey, createAnalysisTree, cursorFen, deleteVariation,
+  mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
+  selectBranch, selectMain, serializeAnalysis } from '../src/analysis-model';
 
-function finishedAt(fen: string): GameReadResponse {
-  return { id: 'saved', version: 7, status: 'finished', yourSeat: 'white',
+const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+function finishedAt(fen: string, history: readonly SavedMove[] = []): GameReadResponse {
+  return { id: 'saved-game', version: 7, status: 'finished', yourSeat: 'white',
     position: { fen, sideToMove: fen.split(' ')[1] === 'w' ? 'white' : 'black' },
-    result: { outcome: 'draw', reason: 'agreement' }, history: [], clocks: null,
+    result: { outcome: 'draw', reason: 'agreement' }, history, clocks: null,
     clockStatus: 'not_integrated', timeControl: { initialMs: 300_000, incrementMs: 3_000 },
     rated: false };
 }
+const savedE4: SavedMove = { ply: 1, side: 'white', from: 'e2', to: 'e4', san: 'e4',
+  uci: 'e2e4', beforeFen: STANDARD_STARTING_FEN, afterFen: afterE4 };
 
-describe('local analysis line', () => {
-  it('cannot enter analysis from an active game', () => {
-    expect(() => startAnalysis({ ...finishedAt(STANDARD_STARTING_FEN), status: 'active' }, 0))
-      .toThrow('finished game');
+function play(game: GameReadResponse, tree: ReturnType<typeof createAnalysisTree>,
+  from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') {
+  const result = playAnalysisMove(tree, game, from, to, promotion);
+  if (!result.accepted) throw new Error(`Expected ${from}${to} to be legal: ${result.result.message}`);
+  return result.tree;
+}
+
+describe('finished-game analysis tree', () => {
+  it('keeps the saved continuation and sibling variations when branching', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const initial = selectMain(createAnalysisTree(game), game, 0);
+    const saved = play(game, initial, 'e2', 'e4');
+    expect(saved.cursor).toEqual({ kind: 'main', ply: 1 });
+    expect(saved.nodes).toEqual([]);
+    const d4 = play(game, initial, 'd2', 'd4');
+    const c4 = play(game, initial, 'c2', 'c4');
+    expect(d4.nodes).toHaveLength(1);
+    const both = play(game, selectMain(d4, game, 0), 'c2', 'c4');
+    expect(both.nodes.map(node => node.san)).toEqual(['d4', 'c4']);
+    expect(play(game, selectMain(both, game, 0), 'd2', 'd4').nodes).toHaveLength(2);
+    expect(selectMain(both, game, 1).cursor).toEqual({ kind: 'main', ply: 1 });
+    const blackAlternative = play(game, selectMain(both, game, 1), 'e7', 'e5');
+    expect(blackAlternative.nodes[2]).toMatchObject({ parent: { kind: 'main', ply: 1 }, san: 'e5' });
+    expect(game.history).toEqual([savedE4]);
+    expect(game.position.fen).toBe(afterE4);
+    expect(c4.nodes[0]?.san).toBe('c4');
   });
 
-  it('accepts legal moves for either side without changing the saved game', () => {
-    const saved = finishedAt(STANDARD_STARTING_FEN);
-    const first = playAnalysisMove(startAnalysis(saved, 0), 'e2', 'e4');
-    expect(first.accepted).toBe(true);
-    if (!first.accepted) return;
-    expect(first.move.san).toBe('e4');
-    expect(analysisSideToMove(first.line)).toBe('black');
-    const second = playAnalysisMove(first.line, 'e7', 'e5');
-    expect(second.accepted).toBe(true);
-    if (!second.accepted) return;
-    expect(second.line.moves.map(move => move.san)).toEqual(['e4', 'e5']);
-    expect(second.line.moves.map(move => move.ply)).toEqual([1, 2]);
-    expect(saved.position.fen).toBe(STANDARD_STARTING_FEN);
-    expect(saved.history).toEqual([]);
-    expect(saved.result).toEqual({ outcome: 'draw', reason: 'agreement' });
-    expect(saved.version).toBe(7);
+  it('navigates main and nested branches without removing either line', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
+    const reply = play(game, d4, 'd7', 'd5');
+    expect(reply.nodes.map(node => node.san)).toEqual(['d4', 'd5']);
+    expect(mainAncestorPly(reply)).toBe(0);
+    expect(previousPosition(reply).cursor).toEqual({ kind: 'branch', id: 1 });
+    expect(nextPosition(previousPosition(reply), game).cursor).toEqual({ kind: 'branch', id: 2 });
+    expect(cursorFen(selectBranch(reply, 1), game)).toBe(reply.nodes[0]?.fen);
+    expect(nextPosition(selectMain(reply, game, 0), game).cursor).toEqual({ kind: 'main', ply: 1 });
+    expect(previousPosition(selectMain(reply, game, 0)).cursor).toEqual({ kind: 'main', ply: 0 });
+    expect(game.history).toHaveLength(1);
   });
 
-  it('rejects illegal moves without changing position or variation', () => {
-    const line = startAnalysis(finishedAt(STANDARD_STARTING_FEN), 0);
-    const bad = playAnalysisMove(line, 'e2', 'e5');
-    expect(bad).toMatchObject({ accepted: false, result: { reason: 'illegal_move' } });
-    expect(analysisFen(line)).toBe(STANDARD_STARTING_FEN);
-    expect(line.moves).toEqual([]);
-    const good = playAnalysisMove(line, 'e2', 'e4');
-    expect(good.accepted).toBe(true);
-    if (!good.accepted) return;
-    expect(playAnalysisMove(good.line, 'd2', 'd4'))
+  it('deletes only a chosen subtree and moves the cursor to its parent', () => {
+    const game = finishedAt(STANDARD_STARTING_FEN);
+    const d4 = play(game, createAnalysisTree(game), 'd2', 'd4');
+    const d5 = play(game, d4, 'd7', 'd5');
+    const siblings = play(game, selectMain(d5, game, 0), 'e2', 'e4');
+    const deleted = deleteVariation(selectBranch(siblings, 2), 1);
+    expect(deleted.nodes.map(node => node.san)).toEqual(['e4']);
+    expect(deleted.cursor).toEqual({ kind: 'main', ply: 0 });
+    expect(game.position.fen).toBe(STANDARD_STARTING_FEN);
+  });
+
+  it('restores a branch tree after refresh and rejects older or altered storage', () => {
+    const game = finishedAt(STANDARD_STARTING_FEN);
+    const first = play(game, createAnalysisTree(game), 'e2', 'e4');
+    const second = play(game, first, 'e7', 'e5');
+    const withSibling = play(game, selectMain(second, game, 0), 'd2', 'd4');
+    const saved = serializeAnalysis(withSibling);
+    const freshRead = JSON.parse(JSON.stringify(game)) as GameReadResponse;
+    expect(analysisStorageKey(game.id)).toBe('chess.analysis.v1.saved-game');
+    expect(restoreAnalysis(freshRead, saved)).toEqual(withSibling);
+    expect(restoreAnalysis(game, JSON.stringify({ ...JSON.parse(saved), version: 0 }))).toBeNull();
+    const altered = JSON.parse(saved);
+    altered.nodes[1].to = 'e4';
+    expect(restoreAnalysis(game, JSON.stringify(altered))).toBeNull();
+    expect(restoreAnalysis(game, '{bad json')).toBeNull();
+    expect(restoreAnalysis({ ...game, id: 'different' }, saved)).toBeNull();
+    expect(game.result).toEqual({ outcome: 'draw', reason: 'agreement' });
+  });
+
+  it('restores after deleting a branch, keeping unique future IDs', () => {
+    const game = finishedAt(STANDARD_STARTING_FEN);
+    const first = play(game, createAnalysisTree(game), 'd2', 'd4');
+    const sibling = play(game, selectMain(first, game, 0), 'e2', 'e4');
+    const pruned = deleteVariation(sibling, 1);
+    const restored = restoreAnalysis(game, serializeAnalysis(pruned));
+    expect(restored).toEqual(pruned);
+    expect(play(game, selectMain(restored!, game, 0), 'c2', 'c4').nodes.map(node => node.id))
+      .toEqual([2, 3]);
+  });
+
+  it('uses domain legality for invalid moves, castling, en passant, and promotion', () => {
+    const start = finishedAt(STANDARD_STARTING_FEN);
+    const tree = createAnalysisTree(start);
+    expect(playAnalysisMove(tree, start, 'e2', 'e5'))
       .toMatchObject({ accepted: false, result: { reason: 'illegal_move' } });
-    expect(good.line.moves).toHaveLength(1);
-  });
-
-  it('navigates within boundaries and replaces only a local continuation', () => {
-    const first = playAnalysisMove(startAnalysis(finishedAt(STANDARD_STARTING_FEN), 0), 'e2', 'e4');
-    if (!first.accepted) throw new Error('Expected e4 to be legal.');
-    const second = playAnalysisMove(first.line, 'e7', 'e5');
-    if (!second.accepted) throw new Error('Expected e5 to be legal.');
-    expect(navigateAnalysis(second.line, -1).cursor).toBe(0);
-    expect(navigateAnalysis(second.line, 99).cursor).toBe(2);
-    const rewind = navigateAnalysis(second.line, 1);
-    expect(analysisFen(rewind)).toBe(first.move.afterFen);
-    const branch = playAnalysisMove(rewind, 'd7', 'd5');
-    if (!branch.accepted) throw new Error('Expected d5 to be legal.');
-    expect(branch.line.moves.map(move => move.san)).toEqual(['e4', 'd5']);
-    expect(second.line.moves.map(move => move.san)).toEqual(['e4', 'e5']);
-    expect(analysisFen(navigateAnalysis(branch.line, 0))).toBe(STANDARD_STARTING_FEN);
-  });
-
-  it('uses domain rules for castling and en passant', () => {
-    const castles = startAnalysis(finishedAt('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1'), 0);
-    const castle = playAnalysisMove(castles, 'e1', 'g1');
-    expect(castle).toMatchObject({ accepted: true, move: { san: 'O-O' } });
-    if (castle.accepted) expect(castle.move.afterFen.split(' ')[0]).toContain('R4RK1');
-
-    const enPassant = startAnalysis(finishedAt('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1'), 0);
-    const capture = playAnalysisMove(enPassant, 'e5', 'd6');
-    expect(capture).toMatchObject({ accepted: true, move: { san: 'exd6' } });
-    if (capture.accepted) {
-      expect(capture.move.afterFen.split(' ')[0]).toContain('3P4');
-      expect(capture.move.afterFen.split(' ')[0]).not.toContain('3pP3');
-    }
-  });
-
-  it('requires and records a promotion choice', () => {
-    const line = startAnalysis(finishedAt('4k3/P7/8/8/8/8/8/4K3 w - - 0 1'), 0);
-    expect(playAnalysisMove(line, 'a7', 'a8'))
+    expect(tree.nodes).toEqual([]);
+    const castleGame = finishedAt('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    expect(play(castleGame, createAnalysisTree(castleGame), 'e1', 'g1').nodes[0]?.san).toBe('O-O');
+    const epGame = finishedAt('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1');
+    expect(play(epGame, createAnalysisTree(epGame), 'e5', 'd6').nodes[0]?.san).toBe('exd6');
+    const promotionGame = finishedAt('4k3/P7/8/8/8/8/8/4K3 w - - 0 1');
+    const promotionTree = createAnalysisTree(promotionGame);
+    expect(playAnalysisMove(promotionTree, promotionGame, 'a7', 'a8'))
       .toMatchObject({ accepted: false, result: { reason: 'promotion_required' } });
-    const promoted = playAnalysisMove(line, 'a7', 'a8', 'q');
-    expect(promoted).toMatchObject({ accepted: true, move: { promotion: 'q', uci: 'a7a8q' } });
-    expect(line.moves).toEqual([]);
+    expect(play(promotionGame, promotionTree, 'a7', 'a8', 'q').nodes[0]?.uci).toBe('a7a8q');
   });
 
-  it('starts from a selected saved half-move, not from a new game', () => {
-    const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-    const saved: GameReadResponse = { ...finishedAt(afterE4), history: [
-      { ply: 1, side: 'white', from: 'e2', to: 'e4', san: 'e4', uci: 'e2e4',
-        beforeFen: STANDARD_STARTING_FEN, afterFen: afterE4 },
-    ] };
-    const line = startAnalysis(saved, 1);
-    expect(line.basePly).toBe(1);
-    expect(analysisFen(line)).toBe(afterE4);
-    expect(analysisSideToMove(line)).toBe('black');
-    expect(playAnalysisMove(line, 'e7', 'e5')).toMatchObject({ accepted: true });
-    expect(saved.history).toHaveLength(1);
+  it('cannot start analysis from an active game', () => {
+    expect(() => createAnalysisTree({ ...finishedAt(STANDARD_STARTING_FEN), status: 'active' }))
+      .toThrow('finished game');
   });
 });

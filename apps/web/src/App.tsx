@@ -3,8 +3,9 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
-import { analysisFen, analysisSideToMove, navigateAnalysis, playAnalysisMove, startAnalysis,
-  type AnalysisLine } from './analysis-model';
+import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
+  mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
+  selectBranch, selectMain, serializeAnalysis, type AnalysisTree } from './analysis-model';
 import { ClockPanel } from './ClockPanel';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -76,8 +77,10 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisLine | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisWarning, setAnalysisWarning] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
@@ -158,6 +161,26 @@ export function App() {
     void work.then(() => { if (gameFetch.current === work) gameFetch.current = null; });
     return work;
   }, []);
+
+  useEffect(() => {
+    if (game?.status !== 'finished' || analysis?.gameId === game.id) return;
+    try {
+      const raw = window.localStorage.getItem(analysisStorageKey(game.id));
+      const restored = raw === null ? null : restoreAnalysis(game, raw);
+      setAnalysis(restored ?? createAnalysisTree(game));
+      setAnalysisWarning(raw !== null && restored === null
+        ? 'Older or invalid local analysis was reset. The saved game is unchanged.' : null);
+    } catch {
+      setAnalysis(createAnalysisTree(game));
+      setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.');
+    }
+  }, [game?.id, game?.status, analysis?.gameId]);
+
+  useEffect(() => {
+    if (game?.status !== 'finished' || analysis?.gameId !== game.id) return;
+    try { window.localStorage.setItem(analysisStorageKey(game.id), serializeAnalysis(analysis)); }
+    catch { setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.'); }
+  }, [game?.id, game?.status, analysis]);
 
   useEffect(() => {
     if (session === null || challengeId === null || challenge?.status === 'accepted') return;
@@ -310,11 +333,15 @@ export function App() {
 
   function chooseSquare(square: Square) {
     const current = gameRef.current;
-    if (current === null || pendingRef.current !== null || posting.current || promotion !== null) return;
-    if (analysis === null && (current.status !== 'active'
+    if (current === null || promotion !== null
+      || (!analysisOpen && (pendingRef.current !== null || posting.current))) return;
+    if (!analysisOpen && (current.status !== 'active'
       || current.position.sideToMove !== current.yourSeat)) return;
-    const positionFen = analysis === null ? current.position.fen : analysisFen(analysis);
-    const sideToMove = analysis === null ? current.position.sideToMove : analysisSideToMove(analysis);
+    if (analysisOpen && (current.status !== 'finished' || analysis === null)) return;
+    const positionFen = analysisOpen && analysis !== null ? cursorFen(analysis, current)
+      : current.position.fen;
+    const sideToMove = analysisOpen && analysis !== null ? cursorSide(analysis, current)
+      : current.position.sideToMove;
     const rows = boardRows(positionFen, current.yourSeat);
     const piece = rows.flat().find(item => item.square === square)?.piece ?? null;
     if (selected === null) {
@@ -326,16 +353,16 @@ export function App() {
     const selectedPiece = rows.flat().find(item => item.square === selected)?.piece ?? null;
     if (needsPromotion(selectedPiece, square)) { setPromotion({ from: selected, to: square }); return; }
     setSelected(null);
-    if (analysis !== null) submitAnalysisMove(analysis, selected, square);
+    if (analysisOpen && analysis !== null) submitAnalysisMove(analysis, current, selected, square);
     else void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
       from: selected, to: square });
   }
 
-  function submitAnalysisMove(line: AnalysisLine, from: Square, to: Square,
+  function submitAnalysisMove(tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,
     promotionPiece?: 'q' | 'r' | 'b' | 'n') {
-    const result = playAnalysisMove(line, from, to, promotionPiece);
+    const result = playAnalysisMove(tree, current, from, to, promotionPiece);
     if (result.accepted) {
-      setAnalysis(result.line);
+      setAnalysis(result.tree);
       setAnalysisError(null);
     } else setAnalysisError(result.result.message);
   }
@@ -345,11 +372,13 @@ export function App() {
     && pending === null && !submitting;
   const replaying = game?.status === 'finished';
   const displayedPly = game === null ? 0 : replayPly(
-    selectedReplayPly ?? game.history.length, game.history.length);
+    analysisOpen && analysis !== null ? mainAncestorPly(analysis)
+      : selectedReplayPly ?? game.history.length, game.history.length);
   const rows = game === null ? null : boardRows(
-    analysis !== null ? analysisFen(analysis)
+    analysisOpen && analysis !== null ? cursorFen(analysis, game)
       : replaying ? replayFen(game, displayedPly) : game.position.fen, game.yourSeat);
-  const canSelectSquare = analysis !== null || canMove;
+  const canSelectSquare = analysisOpen && analysis !== null || canMove;
+  const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = game?.result;
   const resultText = result === null || result === undefined ? null
     : result.outcome === 'draw' ? `Draw by ${result.reason.replaceAll('_', ' ')}.`
@@ -402,7 +431,17 @@ export function App() {
             The displayed countdown is an estimate; the server decides the deadline and result.</>}</div>
         <div className="game-heading">
           <h2 id="game-title">Saved game</h2>
-          <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
+          <div className="game-actions">
+            {game?.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
+              onClick={() => {
+                if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
+                else if (analysis !== null && selectedReplayPly !== null)
+                  setAnalysis(selectMain(analysis, game, selectedReplayPly));
+                setAnalysisOpen(!analysisOpen);
+                setSelected(null); setPromotion(null); setAnalysisError(null);
+              }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
+            <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
+          </div>
         </div>
         {game === null && gameError === null && <p role="status">Loading the confirmed position…</p>}
         {gameError !== null && <p className="error" role="alert">{gameError}</p>}
@@ -422,27 +461,34 @@ export function App() {
               : canMove ? `Your turn (${game.yourSeat}).`
                 : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
           {replaying && <div className="replay" aria-label="Saved game replay">
-            <p className="replay-position" aria-live="polite">{displayedPly === 0
-              ? 'Starting position'
-              : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
+            <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
+              ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
+              : displayedPly === 0 ? 'Starting position'
+                : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
             <div className="replay-controls">
-              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === 0}
-                onClick={() => setSelectedReplayPly(0)} aria-label="Starting position">Start</button>
-              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === 0}
-                onClick={() => setSelectedReplayPly(displayedPly - 1)} aria-label="Previous move">Previous</button>
-              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === game.history.length}
-                onClick={() => setSelectedReplayPly(displayedPly + 1)} aria-label="Next move">Next</button>
-              <button type="button" className="secondary" disabled={analysis !== null || displayedPly === game.history.length}
-                onClick={() => setSelectedReplayPly(game.history.length)} aria-label="Final position">End</button>
+              <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
+                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
+                  else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
+              <button type="button" className="secondary"
+                disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
+                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
+                  else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
+                aria-label="Previous move">Previous</button>
+              <button type="button" className="secondary"
+                disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
+                  : displayedPly === game.history.length}
+                onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
+                  else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
+                aria-label="Next move">Next</button>
+              <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
+                onClick={() => { if (analysisOpen && analysis !== null)
+                  setAnalysis(selectMain(analysis, game, game.history.length));
+                else setSelectedReplayPly(game.history.length); setSelected(null); }}
+                aria-label="Final position">End</button>
             </div>
-            {analysis === null
-              ? <button type="button" className="analysis-entry" disabled={pending !== null}
-                  onClick={() => { setAnalysis(startAnalysis(game, displayedPly)); setAnalysisError(null);
-                    setSelected(null); }}>Explore from this position</button>
-              : <p className="analysis-exit">Exploring locally from this saved position. To choose a different saved move,
-                  discard this variation first. <button type="button" className="secondary"
-                    onClick={() => { setAnalysis(null); setAnalysisError(null); setSelected(null);
-                      setPromotion(null); }}>Discard variation and return to saved game</button></p>}
+            {analysisOpen && <p className="analysis-local">Analysis branches are saved only in this browser.
+              Saved moves, result, and clocks never change.</p>}
+            {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
           </div>}
           <div className="game-layout">
             <div>
@@ -459,10 +505,10 @@ export function App() {
                     <span className="coordinate" aria-hidden="true">{square}</span>
                   </button>)}
               </div>
-              <p className="board-hint">{analysis !== null
-                ? 'Select a piece for the side to move, then its destination. These moves are local to this browser.'
+              <p className="board-hint">{analysisOpen
+                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select a piece and destination.`
                 : canMove ? 'Select one of your pieces, then its destination.'
-                  : game.status === 'finished' ? 'Saved replay is read-only. Explore a position to try moves.'
+                  : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
                     : 'Move input is available on your turn.'}</p>
             </div>
             <aside className="moves" aria-label="Confirmed move list">
@@ -473,43 +519,41 @@ export function App() {
                     const move = game.history[moveIndex];
                     if (move === undefined) return <span key={moveIndex}>…</span>;
                     return replaying
-                      ? <button key={moveIndex} type="button" className="move-link" disabled={analysis !== null}
-                          aria-current={displayedPly === move.ply ? 'step' : undefined}
-                          onClick={() => setSelectedReplayPly(move.ply)}
+                      ? <button key={moveIndex} type="button" className="move-link"
+                          aria-current={(analysisOpen ? analysis?.cursor.kind === 'main'
+                            && analysis.cursor.ply === move.ply : displayedPly === move.ply) ? 'step' : undefined}
+                          onClick={() => { if (analysisOpen && analysis !== null)
+                            setAnalysis(selectMain(analysis, game, move.ply));
+                          else setSelectedReplayPly(move.ply); setSelected(null); }}
                           aria-label={`Show position after ${move.ply % 2 === 1 ? 'White' : 'Black'} ${move.san}`}>
                           {move.san}</button>
                       : <span key={moveIndex}>{move.san}</span>;
                   })}</li>)}</ol>}
-              {analysis !== null && <div className="variation" aria-label="Explored variation">
-                <h3>Explored variation</h3>
-                <p className="variation-position" aria-live="polite">{analysis.cursor === 0
-                  ? 'Starting replay position'
-                  : `After explored move ${analysis.cursor}: ${analysis.moves[analysis.cursor - 1]?.san}`}
-                  {' · '}{analysisSideToMove(analysis) === 'white' ? 'White' : 'Black'} to move</p>
-                <div className="replay-controls">
-                  <button type="button" className="secondary" disabled={analysis.cursor === 0}
-                    onClick={() => { setAnalysis(navigateAnalysis(analysis, 0)); setSelected(null);
-                      setAnalysisError(null); }}>Variation start</button>
-                  <button type="button" className="secondary" disabled={analysis.cursor === 0}
-                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.cursor - 1));
-                      setSelected(null); setAnalysisError(null); }}>Previous</button>
-                  <button type="button" className="secondary" disabled={analysis.cursor === analysis.moves.length}
-                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.cursor + 1));
-                      setSelected(null); setAnalysisError(null); }}>Next</button>
-                  <button type="button" className="secondary" disabled={analysis.cursor === analysis.moves.length}
-                    onClick={() => { setAnalysis(navigateAnalysis(analysis, analysis.moves.length));
-                      setSelected(null); setAnalysisError(null); }}>Variation end</button>
-                </div>
-                <p className="variation-note">Moves here stay in this browser. Playing from an earlier explored position
-                  replaces the continuation after it.</p>
+              {analysisOpen && analysis !== null && <div className="variation" aria-label="Local variations">
+                <h3>Local variations</h3>
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
-                {analysis.moves.length === 0 ? <p>No explored moves yet.</p>
-                  : <ol className="variation-moves">{analysis.moves.map(move =>
-                      <li key={move.ply}><button type="button" className="move-link"
-                        aria-current={analysis.cursor === move.ply ? 'step' : undefined}
-                        onClick={() => { setAnalysis(navigateAnalysis(analysis, move.ply));
-                          setSelected(null); setAnalysisError(null); }}>
-                        {move.ply}. {move.san}</button></li>)}</ol>}
+                {analysis.nodes.length === 0 ? <p>Play a different legal move to add a branch.</p>
+                  : <ol className="variation-tree">{analysis.nodes.map(item => {
+                      const parent = item.parent.kind === 'main'
+                        ? item.parent.ply === 0 ? 'saved start' : `saved move ${item.parent.ply}`
+                        : `branch #${item.parent.id}`;
+                      return <li key={item.id}>
+                        <button type="button" className="move-link"
+                          aria-current={analysis.cursor.kind === 'branch'
+                            && analysis.cursor.id === item.id ? 'step' : undefined}
+                          onClick={() => { setAnalysis(selectBranch(analysis, item.id));
+                            setSelected(null); setAnalysisError(null); }}>
+                          #{item.id} {item.san} <small>from {parent}</small></button>
+                        <button type="button" className="delete-variation"
+                          aria-label={`Delete variation ${item.id} ${item.san}`}
+                          onClick={() => {
+                            if (window.confirm(`Delete ${item.san} and every branch after it?`)) {
+                              setAnalysis(deleteVariation(analysis, item.id));
+                              setSelected(null); setAnalysisError(null);
+                            }
+                          }}>Delete</button>
+                      </li>;
+                    })}</ol>}
               </div>}
             </aside>
           </div>
@@ -520,7 +564,8 @@ export function App() {
                 const current = gameRef.current;
                 setPromotion(null);
                 setSelected(null);
-                if (analysis !== null) submitAnalysisMove(analysis, promotion.from, promotion.to, piece);
+                if (analysisOpen && analysis !== null && current)
+                  submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
                 else if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
                   from: promotion.from, to: promotion.to, promotion: piece });
               }}>{name}</button>)}</div>
