@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   MoveAcceptedResponse } from '@chess/contracts';
-import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion,
+import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { ClockPanel } from './ClockPanel';
 
@@ -73,6 +73,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
+  const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
@@ -325,7 +326,11 @@ export function App() {
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
   const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
     && pending === null && !submitting;
-  const rows = game === null ? null : boardRows(game.position.fen, game.yourSeat);
+  const replaying = game?.status === 'finished';
+  const displayedPly = game === null ? 0 : replayPly(
+    selectedReplayPly ?? game.history.length, game.history.length);
+  const rows = game === null ? null : boardRows(
+    replaying ? replayFen(game, displayedPly) : game.position.fen, game.yourSeat);
   const result = game?.result;
   const resultText = result === null || result === undefined ? null
     : result.outcome === 'draw' ? `Draw by ${result.reason.replaceAll('_', ' ')}.`
@@ -397,6 +402,21 @@ export function App() {
             : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
               : canMove ? `Your turn (${game.yourSeat}).`
                 : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
+          {replaying && <div className="replay" aria-label="Saved game replay">
+            <p className="replay-position" aria-live="polite">{displayedPly === 0
+              ? 'Starting position'
+              : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
+            <div className="replay-controls">
+              <button type="button" className="secondary" disabled={displayedPly === 0}
+                onClick={() => setSelectedReplayPly(0)} aria-label="Starting position">Start</button>
+              <button type="button" className="secondary" disabled={displayedPly === 0}
+                onClick={() => setSelectedReplayPly(displayedPly - 1)} aria-label="Previous move">Previous</button>
+              <button type="button" className="secondary" disabled={displayedPly === game.history.length}
+                onClick={() => setSelectedReplayPly(displayedPly + 1)} aria-label="Next move">Next</button>
+              <button type="button" className="secondary" disabled={displayedPly === game.history.length}
+                onClick={() => setSelectedReplayPly(game.history.length)} aria-label="Final position">End</button>
+            </div>
+          </div>}
           <div className="game-layout">
             <div>
               <div className="board" role="group" aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
@@ -413,14 +433,23 @@ export function App() {
                   </button>)}
               </div>
               <p className="board-hint">{canMove ? 'Select one of your pieces, then its destination.'
-                : game.status === 'finished' ? 'This game is finished.' : 'Move input is available on your turn.'}</p>
+                : game.status === 'finished' ? 'Replay is read-only.' : 'Move input is available on your turn.'}</p>
             </div>
             <aside className="moves" aria-label="Confirmed move list">
               <h3>Moves</h3>
               {game.history.length === 0 ? <p>No confirmed moves yet.</p>
                 : <ol>{Array.from({ length: Math.ceil(game.history.length / 2) }, (_, index) =>
-                  <li key={index}><span>{index + 1}.</span><span>{game.history[index * 2]?.san}</span>
-                    <span>{game.history[index * 2 + 1]?.san ?? '…'}</span></li>)}</ol>}
+                  <li key={index}><span>{index + 1}.</span>{[index * 2, index * 2 + 1].map(moveIndex => {
+                    const move = game.history[moveIndex];
+                    if (move === undefined) return <span key={moveIndex}>…</span>;
+                    return replaying
+                      ? <button key={moveIndex} type="button" className="move-link"
+                          aria-current={displayedPly === move.ply ? 'step' : undefined}
+                          onClick={() => setSelectedReplayPly(move.ply)}
+                          aria-label={`Show position after ${move.ply % 2 === 1 ? 'White' : 'Black'} ${move.san}`}>
+                          {move.san}</button>
+                      : <span key={moveIndex}>{move.san}</span>;
+                  })}</li>)}</ol>}
             </aside>
           </div>
           {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">

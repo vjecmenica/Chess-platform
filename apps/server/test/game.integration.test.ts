@@ -154,6 +154,17 @@ describe('earlier untimed guest games against PostgreSQL', () => {
     expect((await move(id, white, 4, 'e2', 'e4')).json().error).toBe('game_finished');
     expect((await read(id, white)).json()).toMatchObject({ version: 4, status: 'finished',
       history: [{ ply: 1 }, { ply: 2 }, { ply: 3 }, { ply: 4, san: 'Qh4#' }] });
+    const restarted = buildApp(() => checkDatabase(pool), false, { pool, secureCookies: true });
+    try {
+      const saved = (await read(id, white, restarted)).json();
+      expect(saved.result).toEqual(mate.json().game.result);
+      expect(saved.history.map((entry: { beforeFen: string; afterFen: string }, index: number) =>
+        index === 0 ? entry.beforeFen === STANDARD_STARTING_FEN
+          : entry.beforeFen === saved.history[index - 1].afterFen)).toEqual([true, true, true, true]);
+      expect(saved.history[3].afterFen).toBe(saved.position.fen);
+    } finally {
+      await restarted.close();
+    }
     expect((await pool.query('SELECT ply FROM chess.game_moves WHERE game_id = $1', [id])).rowCount).toBe(4);
   });
 });

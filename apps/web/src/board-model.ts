@@ -41,6 +41,22 @@ export function needsPromotion(piece: Piece | null, destination: Square): boolea
     || (piece === 'p' && destination.endsWith('1'));
 }
 
+export function replayPly(ply: number, moveCount: number): number {
+  return Math.max(0, Math.min(moveCount, ply));
+}
+
+export function replayFen(game: GameReadResponse, ply: number): string {
+  const history = game.history;
+  if (history.length === 0) return game.position.fen;
+  if (history[history.length - 1]?.afterFen !== game.position.fen
+    || history.some((move, index) => move.ply !== index + 1
+      || (index > 0 && move.beforeFen !== history[index - 1]?.afterFen))) {
+    throw new Error('Saved move history does not match the confirmed position.');
+  }
+  const index = replayPly(ply, history.length);
+  return index === 0 ? history[0]!.beforeFen : history[index - 1]!.afterFen;
+}
+
 export function mergeConfirmedGame(current: GameReadResponse | null,
   incoming: GameReadResponse): GameReadResponse {
   return current !== null && incoming.version < current.version ? current : incoming;

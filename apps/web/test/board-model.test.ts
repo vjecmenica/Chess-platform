@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { GameReadResponse, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
-import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion,
+import { applyAcceptedMove, boardRows, mergeConfirmedGame, needsPromotion, replayFen, replayPly,
   pieceBelongsTo } from '../src/board-model';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+const afterE5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 function game(version = 0): GameReadResponse {
   return { id: 'game', version, status: 'active', yourSeat: 'white',
@@ -64,5 +65,48 @@ describe('confirmed game state', () => {
     const waitingForMove = { ...ready, version: 2 };
     const timedReply = { ...accepted, game: { ...accepted.game, version: 3 } };
     expect(applyAcceptedMove(waitingForMove, timedReply)?.history).toEqual([move]);
+  });
+});
+
+describe('finished-game replay', () => {
+  const history: SavedMove[] = [
+    { ply: 1, side: 'white', from: 'e2', to: 'e4', uci: 'e2e4', san: 'e4',
+      beforeFen: start, afterFen: afterE4 },
+    { ply: 2, side: 'black', from: 'e7', to: 'e5', uci: 'e7e5', san: 'e5',
+      beforeFen: afterE4, afterFen: afterE5 },
+  ];
+  const finished: GameReadResponse = { ...game(2), status: 'finished', history,
+    position: { fen: afterE5, sideToMove: 'white' },
+    result: { outcome: 'draw', reason: 'agreement' } };
+
+  it('shows saved positions at each half-move, including the confirmed final board', () => {
+    expect(replayFen(finished, 0)).toBe(start);
+    expect(replayFen(finished, 1)).toBe(afterE4);
+    expect(replayFen(finished, 2)).toBe(finished.position.fen);
+    expect(boardRows(replayFen(finished, 1), 'black').flat()
+      .find(square => square.square === 'e4')?.piece).toBe('P');
+  });
+
+  it('keeps navigation within the start and end, including a zero-move result', () => {
+    expect(replayPly(-1, 2)).toBe(0);
+    expect(replayPly(3, 2)).toBe(2);
+    expect(replayFen(finished, -1)).toBe(start);
+    expect(replayFen(finished, 3)).toBe(afterE5);
+    expect(replayFen({ ...finished, history: [], position: { fen: start, sideToMove: 'white' } }, 0))
+      .toBe(start);
+  });
+
+  it('replays a fresh server read without in-memory move submissions', () => {
+    const freshRead = JSON.parse(JSON.stringify(finished)) as GameReadResponse;
+    expect(replayFen(freshRead, 1)).toBe(afterE4);
+    expect(replayFen(freshRead, 2)).toBe(freshRead.position.fen);
+    expect(freshRead).toEqual(finished);
+  });
+
+  it('rejects discontinuous or mismatched saved history', () => {
+    expect(() => replayFen({ ...finished, history: [{ ...history[0]!, afterFen: start }, history[1]!] }, 1))
+      .toThrow('Saved move history');
+    expect(() => replayFen({ ...finished, position: { fen: start, sideToMove: 'white' } }, 2))
+      .toThrow('Saved move history');
   });
 });
