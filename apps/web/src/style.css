@@ -49,10 +49,15 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   margin: 0 auto;
 }
 .play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+.board-frame {
+  position: relative;
+  width: min(100%, calc(100dvh - 96px), 720px);
+  padding: 0 0 14px 14px;
+}
 .board {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
-  width: min(100%, calc(100dvh - 96px), 720px);
+  width: 100%;
   aspect-ratio: 1;
   border: 2px solid #143d30;
   background: #143d30;
@@ -61,14 +66,21 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .square.light { background: #f0dfbd; }
 .square.dark { background: #aa7953; }
 .board .square { touch-action: none; }
-.board .square.selected { box-shadow: inset 0 0 0 4px #c88127; }
+.board .square.last-move::before { content: ''; position: absolute; inset: 0;
+  background: rgba(214, 190, 78, .42); pointer-events: none; }
+.board .square.selected::after { content: ''; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 4px #c88127; pointer-events: none; }
 .board .square:focus-visible { outline: 3px solid #d48628; outline-offset: -3px; z-index: 1; }
 .board .square:disabled { opacity: 1; cursor: default; }
-.piece { display: block; width: 88%; height: 88%; pointer-events: none; user-select: none; }
+.piece { position: relative; display: block; width: 88%; height: 88%; pointer-events: none; user-select: none; }
 .board .square.drag-origin .piece { opacity: .3; }
 .drag-piece { position: fixed; z-index: 20;
   transform: translate(-50%, -50%); pointer-events: none; user-select: none; }
-.coordinate { position: absolute; bottom: 2px; left: 4px; font-size: 10px; font-weight: 700; opacity: .75; }
+.board-files, .board-ranks { position: absolute; display: grid; color: #59635a;
+  font-size: 10px; font-weight: 600; line-height: 1; pointer-events: none; user-select: none; }
+.board-files { grid-template-columns: repeat(8, 1fr); left: 14px; right: 0; bottom: 0; height: 14px; }
+.board-ranks { grid-template-rows: repeat(8, 1fr); left: 0; top: 0; bottom: 14px; width: 14px; }
+.board-files span, .board-ranks span { display: grid; place-items: center; }
 .board-hint, .clock-policy { width: min(100%, calc(100dvh - 96px), 720px); color: #526157; font-size: 12px; margin: 6px 0 0; }
 
 .game-sidebar {
@@ -87,6 +99,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .clock-active { border-color: #143d30; background: #e4eddf; box-shadow: inset 3px 0 #143d30; }
 .player-label { font-size: 14px; font-weight: 600; }
 .player-label b { display: block; color: #526157; font-size: 12px; font-weight: 500; }
+.material-advantage { margin-left: 5px; color: #143d30; font-weight: 700; }
 .clock strong { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; font-size: clamp(24px, 2.5vw, 32px); line-height: 1; }
 .clock small { color: #526157; font-size: 11px; }
 .move-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -125,6 +138,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   background: #f4efe2; color: #463928; }
 .draw-offer p { margin: 0 0 6px; }
 .draw-offer button + button { margin-left: 6px; }
+.refresh-position { display: block; margin-top: 8px; padding: 3px 0; border: 0;
+  background: transparent; color: #526157; font-size: 12px; text-decoration: underline; }
 .readiness { margin: 7px 0; padding: 8px; border: 1px solid #b8c7b5; border-radius: 8px; font-size: 13px; }
 .readiness p { margin: 0 0 6px; }
 .share-menu { margin-top: 7px; font-size: 13px; }
@@ -140,7 +155,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 @media (max-width: 900px) {
   .game-layout { grid-template-columns: minmax(0, 1fr); max-width: 680px; gap: 12px; }
   .play-column { align-items: stretch; }
-  .board, .board-hint, .clock-policy { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
+  .board-frame, .board-hint, .clock-policy { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
   .game-sidebar { height: auto; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
   .game-sidebar > .clock:first-child { grid-area: opponent; }
   .game-sidebar > .clock:last-child { grid-area: self; }
@@ -156,7 +171,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .challenge-page header { font-size: 11px; }
   .game-area { margin-top: 7px; }
   .game-layout { gap: 8px; }
-  .board, .board-hint, .clock-policy { width: 100%; }
+  .board-frame, .board-hint, .clock-policy { width: 100%; }
   .piece { font-size: clamp(24px, 8vw, 38px); }
   .game-sidebar { gap: 6px; padding: 7px; }
   .clock { padding: 7px; gap: 2px 4px; }

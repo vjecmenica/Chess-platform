@@ -4,6 +4,7 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { boardMove, pieceAt, pieceImage } from './board-interaction';
+import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
   selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
@@ -110,7 +111,7 @@ export function App() {
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
-    moved: boolean } | null>(null);
+    moved: boolean; canSubmit: boolean; version: number; fen: string | null } | null>(null);
   const suppressClick = useRef(false);
   const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
 
@@ -470,9 +471,12 @@ export function App() {
 
   function beginDrag(event: React.PointerEvent<HTMLButtonElement>, square: Square, piece: Piece | null) {
     const input = inputPosition();
-    if (event.button !== 0 || input === null || !pieceBelongsTo(piece, input.sideToMove)) return;
-    pointer.current = { id: event.pointerId, from: square, piece: piece!,
-      x: event.clientX, y: event.clientY, moved: false };
+    if (event.button !== 0 || piece === null || promotion !== null || pendingRef.current !== null
+      || pendingActionRef.current !== null || posting.current) return;
+    pointer.current = { id: event.pointerId, from: square, piece,
+      x: event.clientX, y: event.clientY, moved: false,
+      canSubmit: input !== null && pieceBelongsTo(piece, input.sideToMove),
+      version: gameRef.current?.version ?? -1, fen: input?.positionFen ?? null };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -492,6 +496,9 @@ export function App() {
     if (!active.moved) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
+    const input = inputPosition();
+    if (!active.canSubmit || input === null || input.current.version !== active.version
+      || input.positionFen !== active.fen) return;
     const element = document.elementFromPoint(event.clientX, event.clientY);
     const target = element?.closest<HTMLElement>('[data-square]');
     if (target === null || target === undefined || !boardRef.current?.contains(target)) {
@@ -540,10 +547,14 @@ export function App() {
   const displayedPly = game === null ? 0 : replayPly(
     analysisOpen && analysis !== null ? mainAncestorPly(analysis)
       : selectedReplayPly ?? game.history.length, game.history.length);
-  const rows = game === null ? null : boardRows(
+  const displayedFen = game === null ? null :
     analysisOpen && analysis !== null ? cursorFen(analysis, game)
-      : replaying ? replayFen(game, displayedPly) : game.position.fen, game.yourSeat);
-  const canSelectSquare = analysisOpen && analysis !== null || canMove;
+      : replaying ? replayFen(game, displayedPly) : game.position.fen;
+  const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, game.yourSeat);
+  const material = displayedFen === null ? null : materialAdvantage(displayedFen);
+  const coordinates = game === null ? null : boardCoordinates(game.yourSeat);
+  const lastMove = game === null ? null : highlightedMove(game, replaying ? displayedPly : game.history.length,
+    analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = game?.result;
   const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
@@ -600,22 +611,27 @@ export function App() {
         {game !== null && rows !== null && <>
           <div className="game-layout">
             <div className="play-column">
-              <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
-                {rows.flat().map(({ square, piece, dark }) =>
-                  <button key={square} type="button"
-                    className={`square ${dark ? 'dark' : 'light'} ${selected === square ? 'selected' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
-                    data-square={square}
-                    aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
-                    aria-pressed={selected === square}
-                    disabled={!canSelectSquare || promotion !== null}
-                    onPointerDown={event => beginDrag(event, square, piece)}
-                    onPointerMove={moveDrag}
-                    onPointerUp={endDrag}
-                    onPointerCancel={cancelDrag}
-                    onClick={() => chooseSquare(square)}>
-                    {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
-                    <span className="coordinate" aria-hidden="true">{square}</span>
-                  </button>)}
+              <div className="board-frame">
+                <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
+                  {rows.flat().map(({ square, piece, dark }) =>
+                    <button key={square} type="button"
+                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
+                      data-square={square}
+                      aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
+                      aria-pressed={selected === square}
+                      disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
+                      onPointerDown={event => beginDrag(event, square, piece)}
+                      onPointerMove={moveDrag}
+                      onPointerUp={endDrag}
+                      onPointerCancel={cancelDrag}
+                      onClick={() => chooseSquare(square)}>
+                      {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
+                    </button>)}
+                </div>
+                <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
+                  <span key={rank}>{rank}</span>)}</div>
+                <div className="board-files" aria-hidden="true">{coordinates?.files.map(file =>
+                  <span key={file}>{file}</span>)}</div>
               </div>
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
@@ -624,13 +640,14 @@ export function App() {
                 ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select or drag a piece.`
                 : canMove ? 'Select or drag one of your pieces.'
                   : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
-                    : 'Move input is available on your turn.'}</p>
+                    : 'Drag to inspect pieces; moves are available on your turn.'}</p>
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              <ClockPanel clock={game.clocks} side={game.yourSeat === 'white' ? 'black' : 'white'} isYou={false} />
+              <ClockPanel clock={game.clocks} side={game.yourSeat === 'white' ? 'black' : 'white'}
+                isYou={false} materialAdvantage={material?.side === game.yourSeat ? null : material?.points ?? null} />
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
@@ -727,7 +744,6 @@ export function App() {
                       setAnalysisOpen(!analysisOpen);
                       setSelected(null); setPromotion(null); setAnalysisError(null);
                     }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
-                  <button type="button" className="secondary" onClick={() => void refreshGame()}>Refresh position</button>
                 </div>
                 {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
                   <p>Promote your pawn to:</p>
@@ -752,6 +768,7 @@ export function App() {
                   <button type="button" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
+                <button type="button" className="refresh-position" onClick={() => void refreshGame()}>Refresh position</button>
                 <details className="share-menu">
                   <summary>Challenge link</summary>
                   <label htmlFor="challenge-link">Shareable link</label>
@@ -759,7 +776,8 @@ export function App() {
                     onFocus={event => event.currentTarget.select()} />
                 </details>
               </div>
-              <ClockPanel clock={game.clocks} side={game.yourSeat} isYou />
+              <ClockPanel clock={game.clocks} side={game.yourSeat} isYou
+                materialAdvantage={material?.side === game.yourSeat ? material.points : null} />
             </aside>
           </div>
         </>}

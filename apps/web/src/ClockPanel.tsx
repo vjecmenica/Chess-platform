@@ -12,10 +12,11 @@ export function formatClock(milliseconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function ClockPanel({ clock, side, isYou }: {
+export function ClockPanel({ clock, side, isYou, materialAdvantage }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
+  materialAdvantage?: number | null;
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -28,7 +29,11 @@ export function ClockPanel({ clock, side, isYou }: {
 
   return <div className={`clock ${clock?.activeSide === side ? 'clock-active' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <span className="player-label">{isYou ? 'You' : 'Opponent'} <b>{side === 'white' ? 'White' : 'Black'}</b></span>
+      <span className="player-label">{isYou ? 'You' : 'Opponent'}
+        {materialAdvantage != null && materialAdvantage > 0 &&
+          <span className="material-advantage" aria-label={`${side} leads by ${materialAdvantage} material points`}>
+            +{materialAdvantage}</span>}
+        <b>{side === 'white' ? 'White' : 'Black'}</b></span>
       <strong aria-live="off">{clock === null ? 'Untimed' : formatClock(displayedMs(clock, side, elapsedMs))}</strong>
       <small>{clock === null ? 'Earlier untimed game' : clock.startMode === 'first_move'
         ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
