@@ -24,10 +24,10 @@ describe('guest game actions against PostgreSQL', () => {
   afterEach(async () => { for (const app of apps.splice(0)) await app.close(); });
   afterAll(async () => { if (pool) await pool.end(); });
 
-  function fixture() {
+  function fixture(hooks: { resignationSearchBudget?: { maxDepth?: number; maxNodes?: number } } = {}) {
     const time = { value: 2_000_000_000_000, nowMs() { return this.value; },
       set(value: number) { this.value = value; } };
-    const service = createGameService(pool, time);
+    const service = createGameService(pool, time, hooks);
     const app = buildApp(() => checkDatabase(pool), false,
       { pool, secureCookies: true, gameService: service });
     apps.push(app);
@@ -195,6 +195,57 @@ describe('guest game actions against PostgreSQL', () => {
       clocks: { phase: 'stopped' } });
     expect((await read(restarted, id, black)).json().result.winner).toBe('black');
     expect(await service.resolveResignation(id, [])).toBe(false);
+  });
+
+  it('finishes a standard-start resignation automatically and restores the result after restart', async () => {
+    const { app, service, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    expect((await action(app, id, white, 'resign', 0)).json()).toMatchObject({
+      accepted: true, game: { status: 'pending_adjudication', result: null } });
+    expect(await service.pollPendingResignations()).toBe(1);
+    for (const actor of [white, black]) {
+      expect((await read(app, id, actor)).json()).toMatchObject({ status: 'finished', version: 2,
+        result: { outcome: 'win', winner: 'black', reason: 'resignation' },
+        clocks: { phase: 'stopped' }, history: [] });
+    }
+    const { app: restarted, service: recovered } = another(time);
+    expect(await recovered.pollPendingResignations()).toBe(0);
+    expect((await read(restarted, id, white)).json()).toMatchObject({ status: 'finished',
+      result: { winner: 'black', reason: 'resignation' } });
+    expect((await pool.query('SELECT resignation_witness FROM chess.games WHERE id=$1', [id]))
+      .rows[0].resignation_witness).toHaveLength(4);
+  });
+
+  it('searches from the saved move history before resolving a middlegame resignation', async () => {
+    const { app, service, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    expect((await move(app, id, white, 0, 'e2', 'e4')).statusCode).toBe(200);
+    expect((await move(app, id, black, 1, 'e7', 'e5')).statusCode).toBe(200);
+    expect((await action(app, id, black, 'resign', 2)).json()).toMatchObject({
+      accepted: true, game: { status: 'pending_adjudication' } });
+    expect(await service.pollPendingResignations()).toBe(1);
+    const { app: restarted } = another(time);
+    expect((await read(restarted, id, white)).json()).toMatchObject({
+      status: 'finished', history: [{ san: 'e4' }, { san: 'e5' }],
+      result: { outcome: 'win', winner: 'white', reason: 'resignation' },
+    });
+    expect((await pool.query('SELECT resignation_witness FROM chess.games WHERE id=$1', [id]))
+      .rows[0].resignation_witness).toHaveLength(5);
+  });
+
+  it('keeps exhausted searches pending and recovers them with a new worker after restart', async () => {
+    const { app, service, time } = fixture({ resignationSearchBudget: { maxDepth: 0, maxNodes: 0 } });
+    const { id, white, black } = await challenge(app);
+    expect((await action(app, id, black, 'resign', 0)).statusCode).toBe(200);
+    expect(await service.pollPendingResignations()).toBe(0);
+    expect(await service.pollPendingResignations()).toBe(0);
+    expect((await read(app, id, white)).json()).toMatchObject({ status: 'pending_adjudication',
+      result: null, pending: { kind: 'resignation', resigningSide: 'black' } });
+    await app.close();
+    const { app: restarted, service: recovered } = another(time);
+    expect(await recovered.pollPendingResignations()).toBe(1);
+    expect((await read(restarted, id, black)).json()).toMatchObject({ status: 'finished',
+      result: { outcome: 'win', winner: 'white', reason: 'resignation' } });
   });
 
   it('keeps explicit actions available in an earlier untimed game', async () => {

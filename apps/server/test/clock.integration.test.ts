@@ -437,4 +437,38 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
       activeSide: 'black', remainingMs: { white: 302000, black: 300000 },
       deadlineMs: time.value + 300000 } } });
   });
+
+  it('returns a pending receipt instead of hanging when first-move handoff stalls', async () => {
+    let committed!: () => void;
+    let release!: () => void;
+    const atCommit = new Promise<void>(resolve => { committed = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const { app, time } = fixture(2_000_000_000_000,
+      { afterMoveCommit: async () => { committed(); await held; } });
+    const { id, white, black } = await challenge(app);
+    const other = anotherInstance(time);
+    const requestId = randomUUID();
+    try {
+      const first = move(app, id, white, 0, 'e2', 'e4', requestId);
+      await atCommit;
+      expect((await pool.query<{ clock_phase: string }>(
+        'SELECT clock_phase FROM chess.games WHERE id = $1', [id])).rows[0]?.clock_phase)
+        .toBe('handoff');
+      expect((await first).json()).toMatchObject({ error: 'receipt_pending' });
+
+      // A second process can finish the durable handoff while the original request is stalled.
+      await other.service.pollDueGames();
+      const retry = await move(other.app, id, white, 0, 'e2', 'e4', requestId);
+      expect(retry.statusCode).toBe(200);
+      expect(retry.json()).toMatchObject({ move: { san: 'e4' }, game: {
+        clocks: { phase: 'running', activeSide: 'black' } } });
+      expect((await read(other.app, id, black)).json()).toMatchObject({
+        history: [{ san: 'e4' }], clocks: { phase: 'running', activeSide: 'black' },
+      });
+      expect((await pool.query<{ count: string }>(
+        'SELECT count(*) FROM chess.game_moves WHERE game_id = $1', [id])).rows[0]?.count).toBe('1');
+    } finally {
+      release();
+    }
+  });
 });

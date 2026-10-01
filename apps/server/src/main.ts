@@ -12,9 +12,14 @@ async function main() {
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
-  app.addHook('onClose', async () => { await gameService.stop(); await pool.end(); });
   let timer: ReturnType<typeof setInterval> | null = null;
-  app.addHook('onClose', async () => { if (timer !== null) clearInterval(timer); });
+  let resignationTimer: ReturnType<typeof setInterval> | null = null;
+  app.addHook('onClose', async () => {
+    if (timer !== null) clearInterval(timer);
+    if (resignationTimer !== null) clearInterval(resignationTimer);
+    await gameService.stop();
+    await pool.end();
+  });
 
   try {
     await checkDatabase(pool);
@@ -41,6 +46,17 @@ async function main() {
   };
   timer = setInterval(() => { void poll(); }, 500);
   void poll();
+
+  let checkingResignations = false;
+  const checkResignations = async () => {
+    if (checkingResignations) return;
+    checkingResignations = true;
+    try { await gameService.pollPendingResignations(); }
+    catch { console.error('Could not verify pending resignations; the next poll will retry.'); }
+    finally { checkingResignations = false; }
+  };
+  resignationTimer = setInterval(() => { void checkResignations(); }, 1_000);
+  void checkResignations();
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

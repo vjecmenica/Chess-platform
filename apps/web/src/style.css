@@ -132,6 +132,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .game-controls { min-width: 0; border-top: 1px solid #d2d9cb; padding-top: 8px; }
 .game-controls > p { margin: 0 0 7px; }
 .turn { font-size: 14px; font-weight: 650; line-height: 1.35; }
+.final-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px;
+  margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
+.final-result strong { font-size: 21px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .game-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .game-actions button { padding: 7px 10px; }
 .resign-confirmation { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 6px;

@@ -1,8 +1,10 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { Worker } from 'node:worker_threads';
 import type pg from 'pg';
 import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
+import type { MateSearchBudget, MateSearchResult } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
 
 export interface WallClock { nowMs(): number }
@@ -250,6 +252,8 @@ export interface GameService {
   action(id: string, guestId: string, requestId: string, kind: GameAction,
     body: ActionBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
+  /** Search pending resignations away from the live command path. */
+  pollPendingResignations(): Promise<number>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
   /** A background worker may persist only a domain-verified mate witness. */
@@ -257,7 +261,7 @@ export interface GameService {
 }
 
 export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
-  hooks: { afterMoveCommit?: () => Promise<void> } = {}): GameService {
+  hooks: { afterMoveCommit?: () => Promise<void>; resignationSearchBudget?: MateSearchBudget } = {}): GameService {
   const instanceId = randomUUID();
   const arrivals = new Map<symbol, number>();
   const queues = new Map<string, Promise<unknown>>();
@@ -265,6 +269,9 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   let pulse: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
   let registered = false;
+  let resignationWork: Promise<number> | null = null;
+  let activeResignationWorker: Worker | null = null;
+  const unresolvedResignations = new Set<string>();
 
   function safeThrough(): number {
     let safe = now(clock);
@@ -297,6 +304,8 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     if (stopped) return;
     stopped = true;
     if (pulse !== null) clearInterval(pulse);
+    if (activeResignationWorker !== null) await activeResignationWorker.terminate();
+    if (resignationWork !== null) await resignationWork.catch(() => undefined);
     if (started !== null) await started.catch(() => undefined);
     if (registered) {
       await pool.query('DELETE FROM chess.clock_ingress_watermarks WHERE instance_id = $1', [instanceId]);
@@ -343,6 +352,34 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       [throughMs],
     );
     return !rows[0]!.blocked;
+  }
+
+  async function searchResignation(fen: string, resigningSide: Side,
+    history: readonly MoveRecord[]): Promise<MateSearchResult> {
+    const worker = new Worker(new URL('../workers/resignation-worker.mjs', import.meta.url), {
+      workerData: { fen, resigningSide, history,
+        budget: hooks.resignationSearchBudget ?? { maxDepth: 8, maxNodes: 20_000 } },
+    });
+    activeResignationWorker = worker;
+    try {
+      return await new Promise<MateSearchResult>((resolve, reject) => {
+        let settled = false;
+        const finish = (outcome: () => void) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          outcome();
+        };
+        const timer = setTimeout(() => finish(() => reject(new Error('Resignation witness search timed out.'))),
+          30_000);
+        worker.once('message', (result: MateSearchResult) => finish(() => resolve(result)));
+        worker.once('error', error => finish(() => reject(error)));
+        worker.once('exit', code => finish(() => reject(new Error(`Resignation worker exited (${code}).`))));
+      });
+    } finally {
+      activeResignationWorker = null;
+      await worker.terminate();
+    }
   }
 
   async function completeReceipt(client: pg.PoolClient, receipt: Receipt,
@@ -531,7 +568,14 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     await arrival.release();
     const waitUntil = Date.now() + 1_000;
     for (;;) {
-      await advanceGame(id);
+      const remaining = waitUntil - Date.now();
+      if (remaining <= 0) return { status: 503, body: { error: 'receipt_pending' } };
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const progressed = await Promise.race([
+        advanceGame(id).then(() => true),
+        new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), remaining); }),
+      ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+      if (!progressed) return { status: 503, body: { error: 'receipt_pending' } };
       const { rows } = await pool.query<Receipt>(`SELECT * FROM chess.game_move_receipts
         WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId]);
       const receipt = rows[0];
@@ -545,7 +589,47 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     }
   }
 
-  return {
+  async function processPendingResignation(): Promise<number> {
+    await start();
+    const { rows } = await pool.query<{ id: string; fen: string; resigning_side: Side }>(
+      `SELECT id, fen, pending->>'resigningSide' AS resigning_side FROM chess.games
+        WHERE status = 'pending_adjudication' AND pending->>'kind' = 'resignation'
+          AND id <> ALL($1::uuid[])
+        ORDER BY updated_at LIMIT 50`, [Array.from(unresolvedResignations)]);
+    let resolved = 0;
+    for (const candidate of rows) {
+      if (unresolvedResignations.has(candidate.id)) continue;
+      const client = await pool.connect();
+      let locked = false;
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          'SELECT pg_try_advisory_lock(28104, hashtext($1::text)) AS acquired', [candidate.id]);
+        locked = lock.rows[0]?.acquired === true;
+        if (!locked) continue;
+        const fresh = await client.query<{ fen: string; resigning_side: Side }>(
+          `SELECT fen, pending->>'resigningSide' AS resigning_side FROM chess.games
+            WHERE id = $1 AND status = 'pending_adjudication'
+              AND pending->>'kind' = 'resignation'`, [candidate.id]);
+        if (!fresh.rows[0]) continue;
+        const moves = await client.query<StoredMove>(
+          'SELECT ply, record FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [candidate.id]);
+        const search = await searchResignation(fresh.rows[0].fen, fresh.rows[0].resigning_side,
+          moves.rows.map(move => move.record));
+        if (search.status === 'found') {
+          if (await service.resolveResignation(candidate.id, search.mateLine)) resolved += 1;
+          continue;
+        }
+        unresolvedResignations.add(candidate.id);
+      } finally {
+        if (locked) await client.query('SELECT pg_advisory_unlock(28104, hashtext($1::text))',
+          [candidate.id]);
+        client.release();
+      }
+    }
+    return resolved;
+  }
+
+  const service: GameService = {
     start, stop, heartbeat, beginReceipt,
     async read(id, guestId) {
       await start();
@@ -610,6 +694,13 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       for (const { id } of rows) flags += await advanceGame(id);
       return flags;
     },
+    async pollPendingResignations() {
+      if (resignationWork !== null) return resignationWork;
+      const work = processPendingResignation();
+      resignationWork = work;
+      try { return await work; }
+      finally { if (resignationWork === work) resignationWork = null; }
+    },
     async registerTimeoutWitness(id, line) {
       await start();
       await advanceGame(id);
@@ -647,4 +738,5 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       }));
     },
   };
+  return service;
 }

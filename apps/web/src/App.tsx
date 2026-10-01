@@ -6,6 +6,7 @@ import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, 
 import { boardMove, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
 import { confirmMoveWithRetry } from './move-confirmation';
+import { resultDisplay } from './result-display';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
   selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
@@ -114,6 +115,8 @@ export function App() {
   const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
     moved: boolean; canSubmit: boolean; version: number; fen: string | null } | null>(null);
   const suppressClick = useRef(false);
+  const suppressDragMenu = useRef(false);
+  const dragMenuReset = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
 
   useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
@@ -122,16 +125,36 @@ export function App() {
     [game?.id, game?.version, game?.status, challenge?.status, analysisOpen]);
 
   useEffect(() => {
+    const cancelWithRightButton = (event: MouseEvent) => {
+      if (event.button !== 2 || pointer.current === null) return;
+      event.preventDefault();
+      armDragMenuSuppression();
+      cancelDrag();
+      setSelected(null);
+      suppressClick.current = true;
+    };
     const cancelWithRightClick = (event: MouseEvent) => {
-      if (pointer.current === null) return;
+      if (pointer.current === null && !suppressDragMenu.current) return;
       event.preventDefault();
       cancelDrag();
       setSelected(null);
       suppressClick.current = true;
-      window.setTimeout(() => { suppressClick.current = false; }, 500);
+      suppressDragMenu.current = false;
     };
+    const releaseCancelledClick = (event: MouseEvent) => {
+      if (event.button === 0 && suppressClick.current) {
+        window.setTimeout(() => { suppressClick.current = false; }, 0);
+      }
+    };
+    window.addEventListener('mousedown', cancelWithRightButton, true);
     window.addEventListener('contextmenu', cancelWithRightClick, true);
-    return () => window.removeEventListener('contextmenu', cancelWithRightClick, true);
+    window.addEventListener('mouseup', releaseCancelledClick, true);
+    return () => {
+      window.removeEventListener('mousedown', cancelWithRightButton, true);
+      window.removeEventListener('contextmenu', cancelWithRightClick, true);
+      window.removeEventListener('mouseup', releaseCancelledClick, true);
+      if (dragMenuReset.current !== null) window.clearTimeout(dragMenuReset.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -535,6 +558,12 @@ export function App() {
     }
   }
 
+  function armDragMenuSuppression() {
+    suppressDragMenu.current = true;
+    if (dragMenuReset.current !== null) window.clearTimeout(dragMenuReset.current);
+    dragMenuReset.current = window.setTimeout(() => { suppressDragMenu.current = false; }, 1_000);
+  }
+
   function submitAnalysisMove(tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,
     promotionPiece?: 'q' | 'r' | 'b' | 'n') {
     const result = playAnalysisMove(tree, current, from, to, promotionPiece);
@@ -578,12 +607,9 @@ export function App() {
   const lastMove = game === null ? null : highlightedMove(game, replaying ? displayedPly : game.history.length,
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
-  const result = game?.result;
+  const result = resultDisplay(game?.result ?? null);
   const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
   const offerPliesRemaining = game === null ? 0 : Math.max(0, offerNextPly - game.history.length);
-  const resultText = result === null || result === undefined ? null
-    : result.outcome === 'draw' ? `Draw by ${result.reason.replaceAll('_', ' ')}.`
-      : `${result.winner === 'white' ? 'White' : 'Black'} won by ${result.reason.replaceAll('_', ' ')}.`;
 
   return (
     <main className={challengeId === null ? 'home-page' : 'challenge-page'}>
@@ -645,7 +671,12 @@ export function App() {
                       onPointerDown={event => beginDrag(event, square, piece)}
                       onPointerMove={moveDrag}
                       onPointerUp={endDrag}
-                      onPointerCancel={cancelDrag}
+                      onPointerCancel={event => {
+                        if (pointer.current !== null && event.pointerType === 'mouse' && (event.buttons & 2)) {
+                          armDragMenuSuppression();
+                        }
+                        cancelDrag();
+                      }}
                       onClick={() => chooseSquare(square)}>
                       {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
                     </button>)}
@@ -711,15 +742,17 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                <p className="turn" role="status">{resultText ?? (game.status === 'pending_adjudication'
+                {result !== null ? <div className="final-result" role="status">
+                  <strong>{result.score}</strong><span>{result.explanation}</span>
+                </div> : <p className="turn" role="status">{game.status === 'pending_adjudication'
                   ? game.pending?.kind === 'resignation'
-                    ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. The game is frozen while mating possibility is adjudicated.`
+                    ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. Play and clocks are stopped while the result awaits a verified mating decision.`
                     : 'A clock flagged. The game is frozen while its result awaits adjudication.'
                   : game.clocks?.phase === 'awaiting_first_move'
                     ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
                   : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
                     : canMove ? `Your turn (${game.yourSeat}).`
-                      : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`)}</p>
+                      : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`}</p>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
