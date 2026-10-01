@@ -3,7 +3,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
-import { filterNagGroups, nagDetails } from './pgn-nags';
+import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -11,7 +11,7 @@ interface MoveTreeProps {
   readonly selected: AnalysisCursor;
   readonly interactive: boolean;
   readonly onSelect: (cursor: AnalysisCursor) => void;
-  readonly onDelete: (id: number, notation: string) => void;
+  readonly onDelete: (id: number) => void;
   readonly onPromote?: (id: number) => void;
   readonly onNote?: (cursor: AnalysisCursor, note: MoveNote) => void;
 }
@@ -76,7 +76,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
           openMenu(move, event.clientX, event.clientY, event.currentTarget); } }}
         onClick={() => onSelect(move.cursor)}>{move.san}{nag && <span className="nag-symbol"
-          title={`${nag.description} (PGN $${nag.value})`}>{nag.glyph}</span>}</button>
+          title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}</button>
       {tree !== null && <button type="button" className="move-options"
         aria-label={`Options for ${move.notation}`} title={`Options for ${move.notation}`}
         onClick={event => { const rect = event.currentTarget.getBoundingClientRect();
@@ -158,7 +158,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
             Promote variation to main line</button>
           {confirmDelete ? <div className="menu-actions"><span>Delete this continuation?</span>
             <button type="button" onClick={() => {
-              if (menu.move.cursor.kind === 'branch') onDelete(menu.move.cursor.id, menu.move.notation);
+              if (menu.move.cursor.kind === 'branch') onDelete(menu.move.cursor.id);
               closeMenu();
             }}>Confirm delete</button><button type="button" onClick={() => setConfirmDelete(false)}>Cancel</button></div>
             : <button type="button" onClick={() => setConfirmDelete(true)}>Delete continuation</button>}
@@ -169,7 +169,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           }}>Clear annotation</button>
           <label htmlFor="nag-search">Search annotations</label>
           <input id="nag-search" type="search" value={nagQuery}
-            placeholder="Description, symbol, or PGN number"
+            placeholder="Search NAG or description"
             onChange={event => setNagQuery(event.target.value)} />
           {filteredNagGroups.map(group => <section key={group.label} aria-label={group.label}>
             <h4>{group.label}</h4><div className="nag-grid">{group.options.map(option =>

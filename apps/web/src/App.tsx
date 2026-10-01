@@ -584,11 +584,11 @@ export function App() {
     setAnalysisError(null);
   }
 
-  function removeVariation(id: number, notation: string) {
+  function removeVariation(id: number) {
     if (analysis !== null) {
       setAnalysis(deleteVariation(analysis, id));
       setSelected(null);
-      setAnalysisError(`Deleted ${notation} and its continuation from this browser.`);
+      setAnalysisError(null);
     }
   }
 
@@ -744,13 +744,9 @@ export function App() {
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
                       aria-label="Final position">End</button>
                   </div>
-                  {analysisOpen && <p className="analysis-local">Variations are saved only in this browser.
-                    The game and clocks never change.</p>}
                   {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
-                {replaying && <p className="move-legend">{analysisOpen
-                  ? 'Local analysis line · Dotted moves are browser-only; saved moves remain available.'
-                  : 'Saved line'}</p>}
+                {replaying && !analysisOpen && <p className="move-legend">Saved line</p>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
@@ -813,6 +809,7 @@ export function App() {
                         onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
                   </>}
                   {game.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
+                    title="Analysis notes stay in this browser and do not affect the game."
                     onClick={() => {
                       if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
                       else if (analysis !== null && selectedReplayPly !== null)

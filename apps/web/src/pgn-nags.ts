@@ -106,6 +106,37 @@ export const nagGroups: readonly { readonly label: string; readonly options: rea
 
 const byValue = new Map(nagGroups.flatMap(group => group.options.map(item => [item.value, item] as const)));
 
+// Compact board-list labels for paired White/Black assessments; the picker keeps the full label.
+const compactPairs = new Map<number, string>([
+  [20, 'crush'], [22, 'zug'],
+  [24, 'space+'], [26, 'space++'], [28, 'space!'],
+  [30, 'dev+'], [32, 'dev++'], [34, 'dev!'],
+  [36, 'init'], [38, 'init+'], [40, 'attack'],
+  [42, 'comp-'], [44, 'comp='], [46, 'comp+'],
+  [48, 'center+'], [50, 'center++'], [52, 'center!'],
+  [54, 'K-side+'], [56, 'K-side++'], [58, 'K-side!'],
+  [60, 'Q-side+'], [62, 'Q-side++'], [64, 'Q-side!'],
+  [66, 'rank-'], [68, 'rank+'], [70, 'king-'], [72, 'king+'],
+  [74, 'king pos-'], [76, 'king pos+'],
+  [78, 'pawns--'], [80, 'pawns-'], [82, 'pawns+'], [84, 'pawns++'],
+  [86, 'N-'], [88, 'N+'], [90, 'B-'], [92, 'B+'],
+  [94, 'R-'], [96, 'R+'], [98, 'Q-'], [100, 'Q+'],
+  [102, 'coord-'], [104, 'coord+'],
+  [106, 'open--'], [108, 'open-'], [110, 'open+'], [112, 'open++'],
+  [114, 'middle--'], [116, 'middle-'], [118, 'middle+'], [120, 'middle++'],
+  [122, 'end--'], [124, 'end-'], [126, 'end+'], [128, 'end++'],
+  [130, 'counter+'], [132, 'counter++'], [134, 'counter!'],
+  [136, 'time+'], [138, 'time!'],
+]);
+
+export function moveNagLabel(value: number): string | undefined {
+  const nag = nagDetails(value);
+  if (!nag) return undefined;
+  if (value < 20) return nag.glyph;
+  const short = compactPairs.get(value % 2 === 0 ? value : value - 1);
+  return short === undefined ? undefined : `${value % 2 === 0 ? 'W' : 'B'}:${short}`;
+}
+
 export function nagDetails(value: number | undefined): NagOption | undefined {
   return value === undefined ? undefined : byValue.get(value);
 }

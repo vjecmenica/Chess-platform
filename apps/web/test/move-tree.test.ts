@@ -79,8 +79,18 @@ describe('analysis move list', () => {
     const noted = setMoveNote(branch, branch.cursor, { comment: 'Time trouble', nag: 139 });
     const html = markup(game, noted);
     expect(html).toContain('Black has severe time control pressure, PGN $139');
-    expect(html).toContain('>B: clock pressure severe</span>');
+    expect(html).toContain('>B:time!</span>');
     expect(html).toContain('Time trouble');
+  });
+
+  it('keeps a long assessment compact beside its move and retains the full accessible meaning', () => {
+    const game = savedGame();
+    const tree = setMoveNote(createAnalysisTree(game), { kind: 'main', ply: 2 }, { nag: 35 });
+    const html = markup(game, tree);
+    expect(html).toContain('aria-label="1... e5, Black has a decisive time (development) advantage, PGN $35"');
+    expect(html).toContain('>e5<span class="nag-symbol"');
+    expect(html).toContain('>B:dev!</span>');
+    expect(html).not.toContain('>B: development decisive</span>');
   });
 
   it('marks analysis moves for quiet styling without changing live move markup', () => {

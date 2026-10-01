@@ -120,7 +120,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .variation-item { padding: 1px 0; }
 .variation-line { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 5px; }
 .inline-number { color: #617163; font-size: 12px; margin-left: 3px; }
-.nag-symbol { margin-left: 2px; color: #805322; }
+.nag-symbol { margin-left: 2px; color: #805322; font-size: 11px; white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .move-comment { font-size: 11px; font-weight: 400; color: #526157; overflow-wrap: anywhere; }
 .move-entry.local-move > .move-link { text-decoration: underline dotted #82937e; text-underline-offset: 3px; }
 .move-link { display: inline-flex; align-items: center; min-height: 34px; min-width: 0; padding: 5px 8px; border: 0; background: transparent; color: #143d30; font-weight: 600; text-align: left; white-space: normal; }
@@ -129,6 +130,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .move-entry.on-path > .move-link:not([aria-current="step"]) { background: #f0f5ec; }
 .analysis-moves .move-entry.on-path > .move-link,
 .analysis-moves .move-link[aria-current="step"] { background: transparent; box-shadow: none; }
+.analysis-moves .move-pair-row .move-link { max-width: calc(100% - 27px); padding-inline: 5px; overflow: hidden; }
 .analysis-moves .move-link[aria-current="step"] { text-decoration: underline; text-decoration-thickness: 2px;
   text-underline-offset: 4px; color: #102e25; }
 .analysis-moves .variation-line .move-link { font-size: 12px; font-weight: 500; color: #526157; }
@@ -141,13 +143,16 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding: 10px; background: #fffdf8;
   border: 1px solid #9bad98; border-radius: 8px; box-shadow: 0 8px 25px #142b2540; }
 .analysis-menu > button, .analysis-menu .menu-actions button, .nag-options button { min-height: 32px;
+  display: flex; align-items: center; padding: 6px 8px; line-height: 1.35;
   border: 1px solid #cbd9c8; border-radius: 4px; background: #f4f6ef; color: #143d30; text-align: left; }
 .analysis-menu button:focus-visible { outline: 3px solid #d48628; }
 .comment-editor { display: grid; gap: 5px; }
 .comment-editor textarea { min-height: 70px; resize: vertical; }
 .menu-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.nag-options { border-top: 1px solid #d2d9cb; margin-top: 4px; padding-top: 4px; display: grid; gap: 5px; }
-.nag-options input { width: 100%; min-height: 32px; }
+.nag-options { border-top: 1px solid #d2d9cb; margin-top: 4px; padding-top: 4px;
+  display: grid; gap: 5px; min-width: 0; }
+.nag-options input { width: 100%; min-width: 0; max-width: 100%; min-height: 32px;
+  padding: 7px 8px; font-size: 13px; }
 .nag-options h4 { font-size: 12px; margin: 7px 0 3px; }
 .nag-grid { display: grid; gap: 4px; }
 .nag-grid button { display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr); align-items: center; gap: 5px;
@@ -160,7 +165,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .replay-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 .replay-controls button { min-width: 0; padding: 7px 2px; font-size: 12px; }
 .replay-controls svg { display: block; width: 16px; height: 16px; margin: auto; }
-.analysis-local, .move-legend { color: #526157; font-size: 12px; margin: 6px 0; }
+.move-legend { color: #526157; font-size: 12px; margin: 6px 0; }
 .game-controls { min-width: 0; border-top: 1px solid #d2d9cb; padding-top: 8px; }
 .game-controls > p { margin: 0 0 7px; }
 .turn { font-size: 14px; font-weight: 650; line-height: 1.35; }

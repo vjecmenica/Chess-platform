@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterNagGroups, nagDetails, nagGroups } from '../src/pgn-nags';
+import { filterNagGroups, moveNagLabel, nagDetails, nagGroups } from '../src/pgn-nags';
 
 describe('PGN annotation catalog', () => {
   it('covers every defined non-null value exactly once and excludes reserved values', () => {
@@ -26,5 +26,18 @@ describe('PGN annotation catalog', () => {
     expect(filterNagGroups('$139').flatMap(group => group.options.map(item => item.value))).toEqual([139]);
     expect(filterNagGroups('time pressure').map(group => group.label)).toContain('Time pressure');
     expect(filterNagGroups('no such annotation')).toEqual([]);
+  });
+
+  it('uses compact move-list labels while retaining descriptive picker labels', () => {
+    expect(nagDetails(35)).toMatchObject({ glyph: 'B: development decisive',
+      description: 'Black has a decisive time (development) advantage' });
+    expect(moveNagLabel(35)).toBe('B:dev!');
+    expect(moveNagLabel(139)).toBe('B:time!');
+    expect(moveNagLabel(5)).toBe('!?');
+    expect(moveNagLabel(140)).toBeUndefined();
+    for (let value = 1; value <= 139; value++) {
+      expect(moveNagLabel(value), `NAG ${value}`).toBeTruthy();
+      expect(moveNagLabel(value)!.length, `NAG ${value}`).toBeLessThanOrEqual(12);
+    }
   });
 });
