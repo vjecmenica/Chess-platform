@@ -21,6 +21,7 @@ if (result.accepted) {
 - `createPosition()` creates an independent position with White to move and empty history. `STANDARD_STARTING_FEN` is exported for replay consumers.
 - `createPositionFromFen(fen)` creates an independent position from a saved FEN with empty local history. The finished-game analysis board uses it to explore legal moves without changing the saved game.
 - `getPosition()` returns `{ fen, sideToMove }`. Sides are `white` and `black`. FEN includes the board, turn, castling rights, en passant state, and move counters. The en passant target is included only when a legal en passant capture is available, following chess.js normalization. FEN counters do not imply a draw policy.
+- `getLegalDestinations(from)` returns each legal destination once for the side to move, with a `capture` flag. It includes castling, en passant, and promotion squares without selecting a promotion piece. It does not change the position.
 - `submitMove({ side, from, to, promotion? })` accepts lowercase squares `a1`–`h8`. Promotion uses `q`, `r`, `b`, or `n` and is required when promoting; there is no automatic queen choice. A promotion field on an ordinary move is rejected. Castling uses the king's coordinates, such as `e1` to `g1`.
 - `getHistory()` returns ordered records with a one-based half-move number (`ply`), side, origin, destination, optional promotion, SAN notation, UCI coordinates, and before/after FEN. Starting from `STANDARD_STARTING_FEN` and submitting each record reconstructs the positions for later replay.
 
@@ -46,7 +47,7 @@ The position API checks legality without enforcing game status. It remains suita
 `submitMove({ side, from, to, promotion? })` uses the existing move rules. Success returns `{ accepted: true, move, game }`, including any result caused by the move. Resignation and offer/response commands take `{ side }` and return `{ accepted: true, game }` on success:
 
 - `resign` draws when the opponent is proven unable to mate and awards a win when a legal mate witness exists. Otherwise it accepts the resignation and freezes the game in `pending_adjudication`.
-- `offerDraw` requires no pending offer and is allowed even before the first move.
+- `offerDraw` requires both sides to have moved, no pending offer, and any offer cooldown to have elapsed.
 - `acceptDraw` finishes by agreement; only the recipient of a pending offer can accept, after both sides have played a move.
 - `declineDraw` clears an offer without finishing; only its recipient can decline.
 

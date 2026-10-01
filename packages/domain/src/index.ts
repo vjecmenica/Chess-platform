@@ -1,6 +1,7 @@
 export { createPosition, createPositionFromFen, STANDARD_STARTING_FEN } from './position.js';
 export type {
-  Side, Promotion, MoveRequest, PositionSnapshot, MoveRecord, MoveRejection, MoveResult, ChessPosition,
+  Side, Promotion, MoveRequest, PositionSnapshot, MoveRecord, MoveRejection, MoveResult,
+  LegalDestination, ChessPosition,
 } from './position.js';
 export { createGame } from './game.js';
 export type {

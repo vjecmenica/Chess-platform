@@ -68,6 +68,10 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .board .square { touch-action: none; }
 .board .square.last-move::before { content: ''; position: absolute; inset: 0;
   background: rgba(214, 190, 78, .42); pointer-events: none; }
+.board .square.legal-destination::after { content: ''; position: absolute; width: 22%; aspect-ratio: 1;
+  border-radius: 50%; background: rgba(20, 61, 48, .38); pointer-events: none; }
+.board .square.legal-capture::after { content: ''; position: absolute; inset: 5%;
+  border: 3px solid rgba(20, 61, 48, .62); border-radius: 50%; pointer-events: none; }
 .board .square.selected::after { content: ''; position: absolute; inset: 0;
   box-shadow: inset 0 0 0 4px #c88127; pointer-events: none; }
 .board .square:focus-visible { outline: 3px solid #d48628; outline-offset: -3px; z-index: 1; }

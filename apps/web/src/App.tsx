@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
-import { boardMove, pieceAt, pieceImage } from './board-interaction';
+import { boardMove, legalMoveHints, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
 import { confirmMoveWithRetry } from './move-confirmation';
 import { resultDisplay } from './result-display';
@@ -608,6 +608,13 @@ export function App() {
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = resultDisplay(game?.result ?? null);
+  const hintSide = game === null ? null : analysisOpen && analysis !== null
+    ? cursorSide(analysis, game) : game.position.sideToMove;
+  const showHints = selected !== null && displayedFen !== null && hintSide !== null
+    && (analysisOpen ? game?.status === 'finished' : canMove);
+  const moveHints = useMemo(() => showHints && selected !== null && displayedFen !== null
+    && hintSide !== null ? legalMoveHints(displayedFen, hintSide, selected) : new Map<Square, boolean>(),
+  [showHints, selected, displayedFen, hintSide]);
   const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
   const offerPliesRemaining = game === null ? 0 : Math.max(0, offerNextPly - game.history.length);
 
@@ -663,7 +670,7 @@ export function App() {
                 <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) =>
                     <button key={square} type="button"
-                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
+                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
                       data-square={square}
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
                       aria-pressed={selected === square}

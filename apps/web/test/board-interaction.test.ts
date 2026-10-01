@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { boardRows } from '../src/board-model';
-import { boardMove, pieceImage } from '../src/board-interaction';
+import { boardMove, legalMoveHints, pieceImage } from '../src/board-interaction';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const castleWhite = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
@@ -51,5 +51,31 @@ describe('board input shared by clicks and drops', () => {
   it('bundles a piece image for each color', () => {
     expect(pieceImage('K')).toBe('/pieces/chessnut/wK.svg');
     expect(pieceImage('p')).toBe('/pieces/chessnut/bP.svg');
+  });
+
+  it('marks only legal destinations for the side to move', () => {
+    expect([...legalMoveHints(start, 'white', 'e2')]).toEqual([['e3', false], ['e4', false]]);
+    expect(legalMoveHints(start, 'black', 'e7').size).toBe(0);
+    expect(legalMoveHints(start, 'white', 'e7').size).toBe(0);
+    const checked = '4r1k1/8/8/8/8/8/8/4K3 w - - 0 1';
+    expect(legalMoveHints(checked, 'white', 'e1').has('e2')).toBe(false);
+  });
+
+  it('distinguishes captures and includes castling and en passant', () => {
+    const castles = legalMoveHints(castleWhite, 'white', 'e1');
+    expect(castles.get('g1')).toBe(false);
+    expect(castles.get('c1')).toBe(false);
+    expect(legalMoveHints('r3k2r/8/8/8/2b5/8/8/R3K2R w KQkq - 0 1',
+      'white', 'e1').has('g1')).toBe(false);
+    const enPassant = legalMoveHints('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1',
+      'white', 'e5');
+    expect(enPassant.get('d6')).toBe(true);
+    expect(enPassant.get('e6')).toBe(false);
+  });
+
+  it('lists a promotion destination once and does not alter the position', () => {
+    const fen = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1';
+    expect([...legalMoveHints(fen, 'white', 'a7')]).toEqual([['a8', false]]);
+    expect(boardMove(fen, 'white', 'a7', 'a8')).toEqual({ kind: 'promotion', from: 'a7', to: 'a8' });
   });
 });

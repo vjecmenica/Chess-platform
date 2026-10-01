@@ -31,9 +31,15 @@ export type MoveResult =
   | { readonly accepted: true; readonly move: MoveRecord; readonly position: PositionSnapshot }
   | { readonly accepted: false; readonly reason: MoveRejection; readonly message: string };
 
+export interface LegalDestination {
+  readonly to: string;
+  readonly capture: boolean;
+}
+
 export interface ChessPosition {
   getPosition(): PositionSnapshot;
   getHistory(): readonly MoveRecord[];
+  getLegalDestinations(from: string): readonly LegalDestination[];
   submitMove(request: MoveRequest): MoveResult;
 }
 
@@ -85,6 +91,16 @@ export function createPositionAdapter(startingFen = STANDARD_STARTING_FEN) {
   const position: ChessPosition = {
     getPosition,
     getHistory: () => history.map(move => ({ ...move })),
+    getLegalDestinations(from) {
+      if (typeof from !== 'string' || !/^[a-h][1-8]$/.test(from)) return [];
+      const destinations = new Map<string, LegalDestination>();
+      for (const move of chess.moves({ verbose: true })) {
+        if (move.from !== from) continue;
+        destinations.set(move.to, { to: move.to,
+          capture: move.captured !== undefined || move.flags.includes('e') });
+      }
+      return Array.from(destinations.values());
+    },
     submitMove(request) {
       if ((request.side !== 'white' && request.side !== 'black')
         || typeof request.from !== 'string' || !/^[a-h][1-8]$/.test(request.from)

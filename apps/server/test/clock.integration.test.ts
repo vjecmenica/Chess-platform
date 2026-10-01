@@ -150,6 +150,31 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
         remainingMs: { white: 300000, black: 302000 }, activeSide: 'white' } } });
   });
 
+  it('ignores a crashed instance watermark immediately instead of stalling the first move', async () => {
+    const { app } = fixture();
+    const { id, white, black } = await challenge(app);
+    const crashedInstance = randomUUID();
+    await pool.query(`INSERT INTO chess.clock_ingress_watermarks
+      (instance_id, safe_through_ms, lease_until)
+      VALUES ($1, 0, clock_timestamp() + interval '30 seconds')`, [crashedInstance]);
+    try {
+      const requestId = randomUUID();
+      const response = await move(app, id, white, 0, 'e2', 'e4', requestId);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ accepted: true, move: { san: 'e4' },
+        game: { status: 'active', clocks: { phase: 'running', activeSide: 'black' } } });
+      expect((await read(app, id, black)).json()).toMatchObject({
+        version: 1, history: [{ san: 'e4' }], clocks: { activeSide: 'black' },
+      });
+      expect((await move(app, id, white, 0, 'e2', 'e4', requestId)).json()).toEqual(response.json());
+      expect((await pool.query<{ count: string }>(
+        'SELECT count(*) FROM chess.game_moves WHERE game_id = $1', [id])).rows[0]?.count).toBe('1');
+    } finally {
+      await pool.query('DELETE FROM chess.clock_ingress_watermarks WHERE instance_id = $1',
+        [crashedInstance]);
+    }
+  });
+
   it('recovers the first-move clock handoff after its move transaction commits', async () => {
     const { app, time } = fixture(2_000_000_000_000,
       { afterMoveCommit: async () => { throw new Error('Simulated worker failure after commit.'); } });

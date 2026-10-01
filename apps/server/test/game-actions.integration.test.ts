@@ -8,6 +8,7 @@ import { checkDatabase, createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
 import { buildApp } from '../src/app.js';
 import { createGameService } from '../src/game-service.js';
+import { startResignationPolling } from '../src/resignation-polling.js';
 
 interface Guest { cookie: string; csrf: string }
 
@@ -214,6 +215,31 @@ describe('guest game actions against PostgreSQL', () => {
       result: { winner: 'black', reason: 'resignation' } });
     expect((await pool.query('SELECT resignation_witness FROM chess.games WHERE id=$1', [id]))
       .rows[0].resignation_witness).toHaveLength(4);
+  });
+
+  it('finishes a resignation through automatic polling and restores it after restart', async () => {
+    const { app, service, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    const errors: unknown[] = [];
+    const stop = startResignationPolling(service, { info() {},
+      error(details) { errors.push(details); } }, 20);
+    try {
+      expect((await action(app, id, white, 'resign', 0)).statusCode).toBe(200);
+      let final: Record<string, unknown> | null = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const game = (await read(app, id, black)).json() as Record<string, unknown>;
+        if (game.status === 'finished') { final = game; break; }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      expect(errors).toEqual([]);
+      expect(final).toMatchObject({ status: 'finished',
+        result: { outcome: 'win', winner: 'black', reason: 'resignation' } });
+      const { app: restarted } = another(time);
+      expect((await read(restarted, id, white)).json()).toMatchObject({ status: 'finished',
+        result: { winner: 'black' }, clocks: { phase: 'stopped' } });
+    } finally {
+      stop();
+    }
   });
 
   it('searches from the saved move history before resolving a middlegame resignation', async () => {

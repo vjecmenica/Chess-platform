@@ -3,6 +3,7 @@ import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
 import { checkChallengeSchema } from './challenge-routes.js';
 import { createGameService } from './game-service.js';
+import { startResignationPolling } from './resignation-polling.js';
 
 async function main() {
   loadEnvironment();
@@ -13,10 +14,10 @@ async function main() {
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
   let timer: ReturnType<typeof setInterval> | null = null;
-  let resignationTimer: ReturnType<typeof setInterval> | null = null;
+  let stopResignationPolling: (() => void) | null = null;
   app.addHook('onClose', async () => {
     if (timer !== null) clearInterval(timer);
-    if (resignationTimer !== null) clearInterval(resignationTimer);
+    stopResignationPolling?.();
     await gameService.stop();
     await pool.end();
   });
@@ -41,22 +42,13 @@ async function main() {
     if (polling) return;
     polling = true;
     try { await gameService.pollDueGames(); }
-    catch { console.error('Could not check due game clocks; the next poll will retry.'); }
+    catch (error) { app.log.error({ err: error }, 'Could not check due game clocks; the next poll will retry.'); }
     finally { polling = false; }
   };
   timer = setInterval(() => { void poll(); }, 500);
   void poll();
 
-  let checkingResignations = false;
-  const checkResignations = async () => {
-    if (checkingResignations) return;
-    checkingResignations = true;
-    try { await gameService.pollPendingResignations(); }
-    catch { console.error('Could not verify pending resignations; the next poll will retry.'); }
-    finally { checkingResignations = false; }
-  };
-  resignationTimer = setInterval(() => { void checkResignations(); }, 1_000);
-  void checkResignations();
+  stopResignationPolling = startResignationPolling(gameService, app.log);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

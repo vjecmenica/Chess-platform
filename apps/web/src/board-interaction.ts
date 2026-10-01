@@ -11,6 +11,15 @@ export function pieceAt(fen: string, square: Square): Piece | null {
   return boardRows(fen, 'white').flat().find(item => item.square === square)?.piece ?? null;
 }
 
+export function legalMoveHints(fen: string, side: GameSide, from: Square): ReadonlyMap<Square, boolean> {
+  const position = createPositionFromFen(fen);
+  if (position.getPosition().sideToMove !== side || !pieceBelongsTo(pieceAt(fen, from), side)) {
+    return new Map();
+  }
+  return new Map(position.getLegalDestinations(from)
+    .map(destination => [destination.to as Square, destination.capture]));
+}
+
 // The king-on-rook gesture is only an input shortcut. The domain still checks
 // the ordinary king move, including castling rights and attacked transit squares.
 export function boardMove(fen: string, side: GameSide, from: Square, target: Square | null): BoardMove {

@@ -6,6 +6,7 @@ import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domai
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
 import type { MateSearchBudget, MateSearchResult } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
+import { waitForMateSearchResult } from './worker-result.js';
 
 export interface WallClock { nowMs(): number }
 export const systemClock: WallClock = { nowMs: () => Date.now() };
@@ -269,6 +270,9 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   let pulse: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
   let registered = false;
+  let ingressClient: pg.PoolClient | null = null;
+  let ingressHealthy = false;
+  let heartbeatWork: Promise<void> = Promise.resolve();
   let resignationWork: Promise<number> | null = null;
   let activeResignationWorker: Worker | null = null;
   const unresolvedResignations = new Set<string>();
@@ -281,38 +285,78 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
 
   async function start(): Promise<void> {
     started ??= (async () => {
-      await pool.query(`INSERT INTO chess.clock_ingress_watermarks
-        (instance_id, safe_through_ms, lease_until)
-        VALUES ($1, $2, clock_timestamp() + interval '30 seconds')`, [instanceId, safeThrough()]);
-      registered = true;
-      pulse = setInterval(() => { void heartbeat().catch(() => {
-        console.error('Could not publish the game-command ingress watermark.');
-      }); }, 250);
+      const client = await pool.connect();
+      try {
+        await client.query('SELECT pg_advisory_lock(28105, hashtext($1::text))', [instanceId]);
+        await client.query(`INSERT INTO chess.clock_ingress_watermarks
+          (instance_id, safe_through_ms, lease_until)
+          VALUES ($1, $2, clock_timestamp() + interval '30 seconds')`, [instanceId, safeThrough()]);
+        ingressClient = client;
+        ingressHealthy = true;
+        client.on('error', error => {
+          ingressHealthy = false;
+          if (pulse !== null) clearInterval(pulse);
+          if (!stopped) console.error('The game-command ingress lock connection failed:', error);
+        });
+        registered = true;
+        pulse = setInterval(() => { void heartbeat().catch(error => {
+          console.error('Could not publish the game-command ingress watermark:', error);
+        }); }, 250);
+      } catch (error) {
+        await client.query('SELECT pg_advisory_unlock(28105, hashtext($1::text))', [instanceId])
+          .catch(() => undefined);
+        client.release();
+        throw error;
+      }
     })();
     try { await started; }
     catch (error) { started = null; throw error; }
   }
 
   async function heartbeat(): Promise<void> {
+    if (stopped) return;
     await start();
-    await pool.query(`UPDATE chess.clock_ingress_watermarks
-      SET safe_through_ms = $2, lease_until = clock_timestamp() + interval '30 seconds'
-      WHERE instance_id = $1`, [instanceId, safeThrough()]);
+    if (stopped) return;
+    const work = heartbeatWork.catch(() => undefined).then(async () => {
+      if (!ingressHealthy || ingressClient === null) {
+        throw new Error('The game-command ingress lock is unavailable; restart this server instance.');
+      }
+      try {
+        await ingressClient.query(`UPDATE chess.clock_ingress_watermarks
+          SET safe_through_ms = $2, lease_until = clock_timestamp() + interval '30 seconds'
+          WHERE instance_id = $1`, [instanceId, safeThrough()]);
+      } catch (error) {
+        ingressHealthy = false;
+        if (pulse !== null) clearInterval(pulse);
+        throw error;
+      }
+    });
+    heartbeatWork = work;
+    return work;
   }
 
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
     if (pulse !== null) clearInterval(pulse);
+    await heartbeatWork.catch(() => undefined);
     if (activeResignationWorker !== null) await activeResignationWorker.terminate();
     if (resignationWork !== null) await resignationWork.catch(() => undefined);
     if (started !== null) await started.catch(() => undefined);
     if (registered) {
       await pool.query('DELETE FROM chess.clock_ingress_watermarks WHERE instance_id = $1', [instanceId]);
     }
+    if (ingressClient !== null) {
+      const client = ingressClient;
+      ingressClient = null;
+      ingressHealthy = false;
+      try { await client.query('SELECT pg_advisory_unlock(28105, hashtext($1::text))', [instanceId]); }
+      finally { client.release(true); }
+    }
   }
 
   function beginReceipt(): Arrival {
+    if (stopped || !ingressHealthy) throw new Error('The game-command ingress lock is unavailable.');
     const ticket = Symbol('move arrival');
     const receivedAtMs = now(clock);
     arrivals.set(ticket, receivedAtMs);
@@ -346,36 +390,29 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   }
 
   async function safeToDecide(client: pg.PoolClient, throughMs: number): Promise<boolean> {
-    const { rows } = await client.query<{ blocked: boolean }>(
-      `SELECT EXISTS (SELECT 1 FROM chess.clock_ingress_watermarks
-        WHERE lease_until > clock_timestamp() AND safe_through_ms < $1) AS blocked`,
-      [throughMs],
-    );
-    return !rows[0]!.blocked;
+    if (!ingressHealthy) throw new Error('The game-command ingress lock is unavailable.');
+    const { rows } = await client.query<{ instance_id: string }>(
+      `SELECT instance_id FROM chess.clock_ingress_watermarks
+        WHERE lease_until > clock_timestamp() AND safe_through_ms < $1`, [throughMs]);
+    for (const row of rows) {
+      const lock = await client.query<{ orphaned: boolean }>(
+        'SELECT pg_try_advisory_xact_lock(28105, hashtext($1::text)) AS orphaned', [row.instance_id]);
+      if (!lock.rows[0]?.orphaned) return false;
+    }
+    return true;
   }
 
   async function searchResignation(fen: string, resigningSide: Side,
     history: readonly MoveRecord[]): Promise<MateSearchResult> {
     const worker = new Worker(new URL('../workers/resignation-worker.mjs', import.meta.url), {
+      // Do not inherit dev-server flags; Node watch control messages are filtered by the result reader.
+      execArgv: [],
       workerData: { fen, resigningSide, history,
         budget: hooks.resignationSearchBudget ?? { maxDepth: 8, maxNodes: 20_000 } },
     });
     activeResignationWorker = worker;
     try {
-      return await new Promise<MateSearchResult>((resolve, reject) => {
-        let settled = false;
-        const finish = (outcome: () => void) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          outcome();
-        };
-        const timer = setTimeout(() => finish(() => reject(new Error('Resignation witness search timed out.'))),
-          30_000);
-        worker.once('message', (result: MateSearchResult) => finish(() => resolve(result)));
-        worker.once('error', error => finish(() => reject(error)));
-        worker.once('exit', code => finish(() => reject(new Error(`Resignation worker exited (${code}).`))));
-      });
+      return await waitForMateSearchResult(worker);
     } finally {
       activeResignationWorker = null;
       await worker.terminate();
@@ -552,6 +589,25 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   const notFound: ServiceResult = { status: 404, body: { error: 'game_not_found' } };
   const notParticipant: ServiceResult = { status: 403, body: { error: 'not_a_participant' } };
 
+  function pendingReceipt(id: string, guestId: string, requestId: string, kind: 'move' | GameAction,
+    receivedAtMs: number): ServiceResult {
+    void (async () => {
+      const [receipt, lagging] = await Promise.all([
+        pool.query<{ applied: boolean; clock_phase: ClockPhase }>(
+          `SELECT r.applied, g.clock_phase FROM chess.game_move_receipts r
+            JOIN chess.games g ON g.id = r.game_id
+            WHERE r.game_id = $1 AND r.guest_id = $2 AND r.request_id = $3`, [id, guestId, requestId]),
+        pool.query<{ instance_id: string; safe_through_ms: string }>(
+          `SELECT instance_id, safe_through_ms FROM chess.clock_ingress_watermarks
+            WHERE lease_until > clock_timestamp() AND safe_through_ms < $1`, [receivedAtMs]),
+      ]);
+      console.warn('Game command awaits durable confirmation:', JSON.stringify({ gameId: id,
+        requestId, kind, receivedAtMs, applied: receipt.rows[0]?.applied ?? null,
+        clockPhase: receipt.rows[0]?.clock_phase ?? null, laggingIngress: lagging.rows }));
+    })().catch(error => console.error(`Could not inspect pending game command ${requestId}:`, error));
+    return { status: 503, body: { error: 'receipt_pending' } };
+  }
+
   async function submitCommand(id: string, guestId: string, requestId: string,
     kind: 'move' | GameAction, payload: MoveBody | ActionBody, arrival: Arrival): Promise<ServiceResult> {
     await start();
@@ -569,13 +625,13 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     const waitUntil = Date.now() + 1_000;
     for (;;) {
       const remaining = waitUntil - Date.now();
-      if (remaining <= 0) return { status: 503, body: { error: 'receipt_pending' } };
+      if (remaining <= 0) return pendingReceipt(id, guestId, requestId, kind, arrival.receivedAtMs);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const progressed = await Promise.race([
         advanceGame(id).then(() => true),
         new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), remaining); }),
       ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
-      if (!progressed) return { status: 503, body: { error: 'receipt_pending' } };
+      if (!progressed) return pendingReceipt(id, guestId, requestId, kind, arrival.receivedAtMs);
       const { rows } = await pool.query<Receipt>(`SELECT * FROM chess.game_move_receipts
         WHERE game_id = $1 AND guest_id = $2 AND request_id = $3`, [id, guestId, requestId]);
       const receipt = rows[0];
@@ -584,7 +640,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         return { status: 409, body: { error: 'request_id_conflict' } };
       }
       if (receipt.status_code !== null) return { status: receipt.status_code, body: receipt.response };
-      if (Date.now() >= waitUntil) return { status: 503, body: { error: 'receipt_pending' } };
+      if (Date.now() >= waitUntil) return pendingReceipt(id, guestId, requestId, kind, arrival.receivedAtMs);
       await new Promise(resolve => setTimeout(resolve, 20));
     }
   }
@@ -617,8 +673,11 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           moves.rows.map(move => move.record));
         if (search.status === 'found') {
           if (await service.resolveResignation(candidate.id, search.mateLine)) resolved += 1;
+          else console.error(`Could not persist a verified resignation witness for game ${candidate.id}.`);
           continue;
         }
+        console.warn(`Resignation for game ${candidate.id} remains unresolved: ${search.reason}; `
+          + `${search.nodesVisited} search nodes visited.`);
         unresolvedResignations.add(candidate.id);
       } finally {
         if (locked) await client.query('SELECT pg_advisory_unlock(28104, hashtext($1::text))',
