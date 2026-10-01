@@ -127,6 +127,20 @@ describe('analysis move list', () => {
     expect(replayRule).toMatch(/border:\s*0/);
   });
 
+  it('aligns live, replay, and analysis move text at the same row inset', () => {
+    const game = savedGame();
+    const live = markup({ ...game, status: 'active', result: null }, null, false);
+    const replay = markup(game, null);
+    const analysis = markup(game, createAnalysisTree(game));
+    expect(live).toMatch(/move-pair-row[\s\S]*class="move-text">e4<\/span>/);
+    expect(replay).toMatch(/move-pair-row[\s\S]*class="move-link"[\s\S]*>e4<\/button>/);
+    expect(analysis).toContain('class="moves analysis-moves"');
+
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.move-pair-row \.move-text,\s*\.move-pair-row \.move-link\s*\{\s*padding-inline:\s*5px;/);
+    expect(css).not.toMatch(/\.analysis-moves \.move-pair-row \.move-link\s*\{[^}]*padding-inline:/);
+  });
+
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
     const game = savedGame();
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');

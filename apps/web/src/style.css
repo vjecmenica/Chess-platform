@@ -126,12 +126,14 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .move-comment { font-size: 11px; font-weight: 400; color: #526157; overflow-wrap: anywhere; }
 .move-entry.local-move > .move-link { text-decoration: underline dotted #82937e; text-underline-offset: 3px; }
 .move-link { display: inline-flex; align-items: center; min-height: 34px; min-width: 0; padding: 5px 8px; border: 0; background: transparent; color: #143d30; font-weight: 600; text-align: left; white-space: normal; }
+.move-pair-row .move-text,
+.move-pair-row .move-link { padding-inline: 5px; }
 .move-link:hover { text-decoration: underline; }
 .saved-replay-moves .move-link[aria-current="step"],
 .saved-replay-moves .move-entry.on-path > .move-link { background: transparent; box-shadow: none; border: 0; }
 .analysis-moves .move-entry.on-path > .move-link,
 .analysis-moves .move-link[aria-current="step"] { background: transparent; box-shadow: none; }
-.analysis-moves .move-pair-row .move-link { max-width: 100%; padding-inline: 5px; overflow: hidden; }
+.analysis-moves .move-pair-row .move-link { max-width: 100%; overflow: hidden; }
 .analysis-moves .move-link[aria-current="step"] { text-decoration: underline; text-decoration-thickness: 2px;
   text-underline-offset: 4px; color: #102e25; }
 .analysis-moves .variation-line .move-link { font-size: 12px; font-weight: 500; color: #526157; }
