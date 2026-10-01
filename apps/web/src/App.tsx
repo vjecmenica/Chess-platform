@@ -723,13 +723,21 @@ export function App() {
                       disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
                         else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
-                      aria-label="Previous move">Previous</button>
+                      aria-label="Previous move" title="Previous move">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="m15 5-7 7 7 7" />
+                      </svg></button>
                     <button type="button" className="secondary"
                       disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
                         : displayedPly === game.history.length}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
                         else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
-                      aria-label="Next move">Next</button>
+                      aria-label="Next move" title="Next move">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="m9 5 7 7-7 7" />
+                      </svg></button>
                     <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
                       onClick={() => { if (analysisOpen && analysis !== null)
                         setAnalysis(lastMainPosition(analysis, game));

@@ -131,7 +131,8 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     </li>)}</ol>;
   }
 
-  return <nav className="moves" aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
+  return <nav className={`moves${tree !== null ? ' analysis-moves' : ''}`}
+    aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
     <h3>Moves</h3>
     {interactive && <button type="button" className="move-link start-link"
       aria-current={view.startSelected ? 'step' : undefined}

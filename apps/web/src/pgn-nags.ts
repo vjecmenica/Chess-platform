@@ -6,12 +6,13 @@ export interface NagOption {
   readonly description: string;
 }
 
-function option(value: number, description: string, glyph = `$${value}`): NagOption {
+function option(value: number, description: string, glyph: string): NagOption {
   return { value, glyph, description };
 }
 
-function sides(first: number, description: string): NagOption[] {
-  return [option(first, `White ${description}`), option(first + 1, `Black ${description}`)];
+function sides(first: number, description: string, label: string): NagOption[] {
+  return [option(first, `White ${description}`, `W: ${label}`),
+    option(first + 1, `Black ${description}`, `B: ${label}`)];
 }
 
 export const nagGroups: readonly { readonly label: string; readonly options: readonly NagOption[] }[] = [
@@ -19,67 +20,87 @@ export const nagGroups: readonly { readonly label: string; readonly options: rea
     option(1, 'Good move', '!'), option(2, 'Poor move', '?'),
     option(3, 'Very good move', '!!'), option(4, 'Very poor move', '??'),
     option(5, 'Speculative move', '!?'), option(6, 'Questionable move', '?!'),
-    option(7, 'Forced move; all others lose quickly'),
-    option(8, 'Singular move; no reasonable alternatives'), option(9, 'Worst move'),
+    option(7, 'Forced move; all others lose quickly', 'forced'),
+    option(8, 'Singular move; no reasonable alternatives', 'only move'),
+    option(9, 'Worst move', 'worst'),
   ] },
   { label: 'Overall position', options: [
     option(10, 'Drawish position', '='), option(11, 'Equal chances, quiet position', '= quiet'),
-    option(12, 'Equal chances, active position', '= active'), option(13, 'Unclear position', '∞'),
+    option(12, 'Equal chances, active position', '= active'), option(13, 'Unclear position', 'unclear'),
     option(14, 'White has a slight advantage', '+='), option(15, 'Black has a slight advantage', '=+'),
     option(16, 'White has a moderate advantage', '+/-'), option(17, 'Black has a moderate advantage', '-/+'),
     option(18, 'White has a decisive advantage', '+-'), option(19, 'Black has a decisive advantage', '-+'),
-    ...sides(20, 'has a crushing advantage; the opponent should resign'),
-    ...sides(22, 'is in zugzwang'),
+    ...sides(20, 'has a crushing advantage; the opponent should resign', 'crushing'),
+    ...sides(22, 'is in zugzwang', 'zugzwang'),
   ] },
   { label: 'Space, development, and initiative', options: [
-    ...sides(24, 'has a slight space advantage'), ...sides(26, 'has a moderate space advantage'),
-    ...sides(28, 'has a decisive space advantage'),
-    ...sides(30, 'has a slight time (development) advantage'),
-    ...sides(32, 'has a moderate time (development) advantage'),
-    ...sides(34, 'has a decisive time (development) advantage'),
-    ...sides(36, 'has the initiative'), ...sides(38, 'has a lasting initiative'),
-    ...sides(40, 'has the attack'),
+    ...sides(24, 'has a slight space advantage', 'space +'),
+    ...sides(26, 'has a moderate space advantage', 'space ++'),
+    ...sides(28, 'has a decisive space advantage', 'space decisive'),
+    ...sides(30, 'has a slight time (development) advantage', 'development +'),
+    ...sides(32, 'has a moderate time (development) advantage', 'development ++'),
+    ...sides(34, 'has a decisive time (development) advantage', 'development decisive'),
+    ...sides(36, 'has the initiative', 'initiative'),
+    ...sides(38, 'has a lasting initiative', 'lasting initiative'),
+    ...sides(40, 'has the attack', 'attack'),
   ] },
   { label: 'Compensation and board control', options: [
-    ...sides(42, 'has insufficient compensation for a material deficit'),
-    ...sides(44, 'has sufficient compensation for a material deficit'),
-    ...sides(46, 'has more than adequate compensation for a material deficit'),
-    ...sides(48, 'has a slight center control advantage'),
-    ...sides(50, 'has a moderate center control advantage'),
-    ...sides(52, 'has a decisive center control advantage'),
-    ...sides(54, 'has a slight kingside control advantage'),
-    ...sides(56, 'has a moderate kingside control advantage'),
-    ...sides(58, 'has a decisive kingside control advantage'),
-    ...sides(60, 'has a slight queenside control advantage'),
-    ...sides(62, 'has a moderate queenside control advantage'),
-    ...sides(64, 'has a decisive queenside control advantage'),
+    ...sides(42, 'has insufficient compensation for a material deficit', 'compensation lacking'),
+    ...sides(44, 'has sufficient compensation for a material deficit', 'compensation enough'),
+    ...sides(46, 'has more than adequate compensation for a material deficit', 'compensation strong'),
+    ...sides(48, 'has a slight center control advantage', 'center +'),
+    ...sides(50, 'has a moderate center control advantage', 'center ++'),
+    ...sides(52, 'has a decisive center control advantage', 'center decisive'),
+    ...sides(54, 'has a slight kingside control advantage', 'kingside +'),
+    ...sides(56, 'has a moderate kingside control advantage', 'kingside ++'),
+    ...sides(58, 'has a decisive kingside control advantage', 'kingside decisive'),
+    ...sides(60, 'has a slight queenside control advantage', 'queenside +'),
+    ...sides(62, 'has a moderate queenside control advantage', 'queenside ++'),
+    ...sides(64, 'has a decisive queenside control advantage', 'queenside decisive'),
   ] },
   { label: 'King safety, pawns, and pieces', options: [
-    ...sides(66, 'has a vulnerable first rank'), ...sides(68, 'has a well protected first rank'),
-    ...sides(70, 'has a poorly protected king'), ...sides(72, 'has a well protected king'),
-    ...sides(74, 'has a poorly placed king'), ...sides(76, 'has a well placed king'),
-    ...sides(78, 'has a very weak pawn structure'), ...sides(80, 'has a moderately weak pawn structure'),
-    ...sides(82, 'has a moderately strong pawn structure'), ...sides(84, 'has a very strong pawn structure'),
-    ...sides(86, 'has poor knight placement'), ...sides(88, 'has good knight placement'),
-    ...sides(90, 'has poor bishop placement'), ...sides(92, 'has good bishop placement'),
+    ...sides(66, 'has a vulnerable first rank', 'back rank weak'),
+    ...sides(68, 'has a well protected first rank', 'back rank safe'),
+    ...sides(70, 'has a poorly protected king', 'king exposed'),
+    ...sides(72, 'has a well protected king', 'king safe'),
+    ...sides(74, 'has a poorly placed king', 'king misplaced'),
+    ...sides(76, 'has a well placed king', 'king placed well'),
+    ...sides(78, 'has a very weak pawn structure', 'pawns very weak'),
+    ...sides(80, 'has a moderately weak pawn structure', 'pawns weak'),
+    ...sides(82, 'has a moderately strong pawn structure', 'pawns strong'),
+    ...sides(84, 'has a very strong pawn structure', 'pawns very strong'),
+    ...sides(86, 'has poor knight placement', 'knights poor'),
+    ...sides(88, 'has good knight placement', 'knights good'),
+    ...sides(90, 'has poor bishop placement', 'bishops poor'),
+    ...sides(92, 'has good bishop placement', 'bishops good'),
     // The published table repeats 84–87 here; numeric sequence makes rook placement 94–97.
-    ...sides(94, 'has poor rook placement'), ...sides(96, 'has good rook placement'),
-    ...sides(98, 'has poor queen placement'), ...sides(100, 'has good queen placement'),
-    ...sides(102, 'has poor piece coordination'), ...sides(104, 'has good piece coordination'),
+    ...sides(94, 'has poor rook placement', 'rooks poor'),
+    ...sides(96, 'has good rook placement', 'rooks good'),
+    ...sides(98, 'has poor queen placement', 'queen poor'),
+    ...sides(100, 'has good queen placement', 'queen good'),
+    ...sides(102, 'has poor piece coordination', 'coordination poor'),
+    ...sides(104, 'has good piece coordination', 'coordination good'),
   ] },
   { label: 'Game phases and counterplay', options: [
-    ...sides(106, 'has played the opening very poorly'), ...sides(108, 'has played the opening poorly'),
-    ...sides(110, 'has played the opening well'), ...sides(112, 'has played the opening very well'),
-    ...sides(114, 'has played the middlegame very poorly'), ...sides(116, 'has played the middlegame poorly'),
-    ...sides(118, 'has played the middlegame well'), ...sides(120, 'has played the middlegame very well'),
-    ...sides(122, 'has played the ending very poorly'), ...sides(124, 'has played the ending poorly'),
-    ...sides(126, 'has played the ending well'), ...sides(128, 'has played the ending very well'),
-    ...sides(130, 'has slight counterplay'), ...sides(132, 'has moderate counterplay'),
-    ...sides(134, 'has decisive counterplay'),
+    ...sides(106, 'has played the opening very poorly', 'opening very poor'),
+    ...sides(108, 'has played the opening poorly', 'opening poor'),
+    ...sides(110, 'has played the opening well', 'opening good'),
+    ...sides(112, 'has played the opening very well', 'opening very good'),
+    ...sides(114, 'has played the middlegame very poorly', 'middlegame very poor'),
+    ...sides(116, 'has played the middlegame poorly', 'middlegame poor'),
+    ...sides(118, 'has played the middlegame well', 'middlegame good'),
+    ...sides(120, 'has played the middlegame very well', 'middlegame very good'),
+    ...sides(122, 'has played the ending very poorly', 'endgame very poor'),
+    ...sides(124, 'has played the ending poorly', 'endgame poor'),
+    ...sides(126, 'has played the ending well', 'endgame good'),
+    ...sides(128, 'has played the ending very well', 'endgame very good'),
+    ...sides(130, 'has slight counterplay', 'counterplay +'),
+    ...sides(132, 'has moderate counterplay', 'counterplay ++'),
+    ...sides(134, 'has decisive counterplay', 'counterplay decisive'),
   ] },
   { label: 'Time pressure', options: [
-    ...sides(136, 'has moderate time control pressure'),
-    ...sides(138, 'has severe time control pressure'),
+    ...sides(136, 'has moderate time control pressure', 'clock pressure'),
+    ...sides(138, 'has severe time control pressure', 'clock pressure severe'),
   ] },
 ];
 
@@ -93,6 +114,6 @@ export function filterNagGroups(query: string): typeof nagGroups {
   const term = query.trim().toLowerCase();
   if (!term) return nagGroups;
   return nagGroups.map(group => ({ label: group.label, options: group.options.filter(item =>
-    `${item.value} ${item.glyph} ${item.description} ${group.label}`.toLowerCase().includes(term),
+    `${item.value} $${item.value} ${item.glyph} ${item.description} ${group.label}`.toLowerCase().includes(term),
   ) })).filter(group => group.options.length > 0);
 }

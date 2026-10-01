@@ -79,8 +79,16 @@ describe('analysis move list', () => {
     const noted = setMoveNote(branch, branch.cursor, { comment: 'Time trouble', nag: 139 });
     const html = markup(game, noted);
     expect(html).toContain('Black has severe time control pressure, PGN $139');
-    expect(html).toContain('>$139</span>');
+    expect(html).toContain('>B: clock pressure severe</span>');
     expect(html).toContain('Time trouble');
+  });
+
+  it('marks analysis moves for quiet styling without changing live move markup', () => {
+    const game = savedGame();
+    const branch = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');
+    expect(markup(game, branch)).toContain('class="moves analysis-moves"');
+    expect(markup({ ...game, status: 'active', result: null }, null, false))
+      .toContain('class="moves"');
   });
 
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
