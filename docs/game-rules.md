@@ -4,7 +4,7 @@ The reference is the [official FIDE Laws of Chess](https://handbook.fide.com/cha
 
 ## Implemented lifecycle
 
-Games start at the standard position. Every player command identifies its acting side; the server derives that side from the authorized guest session. Finished games reject every mutation, including repeated terminal commands. A game with an accepted, unresolved resignation or timeout is `pending_adjudication` and also rejects all player commands. Position and history remain available for replay.
+Games start at the standard position. Every player command identifies its acting side; the server derives that side from the authorized guest session. Finished games reject every mutation, including repeated terminal commands. An unresolved timeout enters `pending_adjudication` and rejects all player commands. Position and history remain available for replay.
 
 After each accepted move, adjudication checks these conditions in order:
 
@@ -34,7 +34,7 @@ An offer survives the sender's moves. It ends on recipient acceptance, explicit 
 
 ## Mating possibility, resignation, and timeout
 
-Resignation draws when the opponent is proven unable to mate and awards a win when a legal mate line proves that mate is possible. Timeout uses the same side-specific decision. The check is exposed as `getMatingPossibility(side)` and returns `impossible`, `possible`, or `unresolved`. The synchronous positive proof is a legal checkmate on the next move by that side. An unresolved resignation is accepted into `pending_adjudication`: no further move or result-changing player command can occur. A separately invoked bounded search can find and verify a cooperative mate line from that state. A found line can resolve the resignation to a win; exhaustion cannot resolve it to a draw. The domain has no command to convert an unverified external no-mate claim into a draw. Such cases stay pending until a complete proof can be validated. The [adjudication decision](adjudication-design.md) defines the server responsibility before live play.
+For casual guest games, resignation ends immediately. A sound proof that the opponent cannot mate makes it a draw; otherwise the opponent wins, including when the detector returns `unresolved`. This concession policy can award a win in an unusual position where mate is impossible but the current detector cannot prove it. It is not an exact implementation of FIDE Article 5.1.2. Timeout still requires a proven `impossible` or `possible` answer and remains pending if unresolved. `getMatingPossibility(side)` exposes those three answers; a bounded search that finds nothing cannot prove impossibility. The [adjudication decision](adjudication-design.md) explains the difference.
 
 The detector proves impossibility for:
 
@@ -45,7 +45,7 @@ The detector proves impossibility for:
 
 Both sides must be proven unable to mate for an automatic dead-position result. Two knights are not treated as dead material. Opposite-colored bishops and opposing material that can help block a king's escape squares are not automatically discarded. The material criteria can also be compared with [python-chess's documented conservative material check](https://python-chess.readthedocs.io/en/latest/_modules/chess.html#Board.has_insufficient_material); python-chess is not a dependency.
 
-**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify a win or a draw. The game may miss an automatic dead position until a complete proof is available. The HTTP server now searches pending resignations in a separate worker and saves verified wins, including after restart. A search that exhausts its budget remains pending; pending timeouts have no automatic worker yet. Do not call this full FIDE compliance. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
+**Detection remains partial.** Other fortresses, forced continuations, and searches that exceed the budget remain `unresolved`. They cannot justify an automatic dead-position draw or a timeout result. The game may miss an automatic dead position until a complete proof is available. Pending timeouts have no automatic worker yet. An engine score or a perfect-play tablebase draw cannot substitute for cooperative mate reachability.
 
 At flag fall, the clock calls `flagTimeout` once with the side to move and the effective deadline. A sound proof that the opponent cannot mate ends the game as `timeout_no_mating_possibility`; a verified legal mate line ends it as a timeout win. Otherwise the game enters `pending_adjudication` with the flagged side and deadline. The board and history do not change. A precomputed line may be registered with the clock before the deadline; the domain verifies it and the live clock path never searches for one. After a pending flag, `findTimeoutMateWitness` can run separately and a valid line can be passed to `resolveTimeout`. Search exhaustion leaves the game pending. A repeated flag or ruling cannot create a second result.
 

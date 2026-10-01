@@ -122,20 +122,20 @@ describe('5+3 clock ownership', () => {
       .toMatchObject({ accepted: true });
   });
 
-  it('stops both clocks on an accepted pending resignation without searching', () => {
+  it('stops both clocks on a final resignation without searching', () => {
     const { time, game } = started();
     time.set(10000);
     expect(game.receiveResignation('r1', { side: 'black' })).toMatchObject({ status: 'queued' });
     time.set(12000);
     expect(game.processNext()).toMatchObject({ outcome: { accepted: true },
-      game: { status: 'pending_adjudication', pending: { resigningSide: 'black' } },
+      game: { status: 'finished', result: { winner: 'white', reason: 'resignation' } },
       clock: { phase: 'stopped', activeSide: null, deadlineMs: null,
         remainingMs: { white: 290000, black: 300000 } } });
     time.set(900000);
     expect(game.getState().clock.remainingMs).toEqual({ white: 290000, black: 300000 });
     expect(game.poll()).toBe('unchanged');
     expect(move(game, 'm1', 'white', 'e2', 'e4').outcome)
-      .toMatchObject({ accepted: false, reason: 'adjudication_pending' });
+      .toMatchObject({ accepted: false, reason: 'game_finished' });
     expect(game.receiveResignation('r1', { side: 'black' }))
       .toMatchObject({ status: 'duplicate', resolution: { outcome: { accepted: true } } });
   });

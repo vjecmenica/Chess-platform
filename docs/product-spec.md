@@ -19,7 +19,7 @@ These are the product's explicit assignments for all 16 time controls. Do not su
 
 ### Results and draws
 
-The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, threefold/50-move claims, and timeout adjudication. Intended-move claims do not play the move. Proven dead positions draw automatically. Resignation and timeout use a three-answer mating check: proven impossible, proven possible, or unresolved. An unresolved resignation or timeout freezes the game without a final result until a supported ruling is supplied. Timeout records the flagged side and effective deadline. The [game rules](game-rules.md) describe current behavior; the [adjudication decision](adjudication-design.md) specifies the later durable server procedure for claims, flags, and unresolved cases. Finished and pending games reject further player commands.
+The domain supports checkmate, stalemate, resignation, agreement, automatic fivefold/75-move draws, threefold/50-move claims, and timeout adjudication. Intended-move claims do not play the move. Proven dead positions draw automatically. The mating check returns proven impossible, proven possible, or unresolved. For a casual guest resignation, a proof of impossibility draws; otherwise the opponent wins immediately under the documented concession policy. An unresolved timeout freezes the game without a final result until a supported ruling is supplied. Timeout records the flagged side and effective deadline. The [game rules](game-rules.md) describe current behavior; the [adjudication decision](adjudication-design.md) specifies the later durable server procedure for claims and unresolved timeouts. Finished and pending games reject further player commands.
 
 ### Ratings and matchmaking
 
@@ -36,6 +36,8 @@ Tests must show that the search widens with elapsed waiting time, canceled reque
 ### Saved-game replay
 
 Finished games are stored with their moves and result. Players can step through every half-move, return to the starting position, or jump to the end. Replay does not require an engine and is part of the first playable milestone.
+
+The current browser-local analysis board lets a player branch from any saved or explored move, navigate the tree, promote a local line for viewing, add comments and standard PGN Numeric Annotation Glyphs, and remove a continuation with confirmation. The saved result, moves, and clocks never change. This local note tree is not an engine evaluation or a full game review. The supported glyphs are a practical subset of the [PGN Standard's NAG values](https://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm#c10): 1–7, 10–19, and 22–23. Comments are stored separately from NAGs.
 
 ### Interactive engine analysis
 
@@ -77,7 +79,7 @@ The board is the main element. Keep clocks, the side to move, the result, and co
 
 ## First playable milestone
 
-Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, explicit draw offers and resignation, polling, saved history, authoritative clocks with durable deadlines, replay controls, and a background worker for pending resignations. It lacks live push, draw claims, and automatic pending-timeout resolution, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
+Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, explicit draw offers and resignation, polling, saved history, authoritative clocks with durable deadlines, replay controls, and immediate casual-policy resignation results. It lacks live push, draw claims, and automatic pending-timeout resolution, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
 
 Acceptance criteria:
 

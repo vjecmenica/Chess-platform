@@ -2,6 +2,7 @@ import { createPositionFromFen } from '@chess/domain';
 import type { MoveResult, Promotion, Side } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
 import { replayFen, replayPly } from './board-model';
+import { nagDetails } from './pgn-nags';
 
 export type AnalysisCursor = { readonly kind: 'main'; readonly ply: number }
   | { readonly kind: 'branch'; readonly id: number };
@@ -17,18 +18,54 @@ export interface VariationNode {
   readonly fen: string;
 }
 
+export interface MoveNote { readonly comment?: string | undefined; readonly nag?: number | undefined }
+
 export interface AnalysisTree {
   readonly gameId: string;
   readonly savedFen: string;
   readonly nodes: readonly VariationNode[];
   readonly cursor: AnalysisCursor;
   readonly nextId: number;
+  readonly notes: Readonly<Record<string, MoveNote>>;
+  readonly promoted: Readonly<Record<string, number>>;
 }
 
 export function createAnalysisTree(game: GameReadResponse): AnalysisTree {
   if (game.status !== 'finished') throw new Error('Analysis requires a finished game.');
   return { gameId: game.id, savedFen: game.position.fen, nodes: [],
-    cursor: { kind: 'main', ply: game.history.length }, nextId: 1 };
+    cursor: { kind: 'main', ply: game.history.length }, nextId: 1, notes: {}, promoted: {} };
+}
+
+export function cursorKey(cursor: AnalysisCursor): string {
+  return cursor.kind === 'main' ? `m${cursor.ply}` : `b${cursor.id}`;
+}
+
+export function setMoveNote(tree: AnalysisTree, cursor: AnalysisCursor, patch: MoveNote): AnalysisTree {
+  if (cursor.kind === 'branch') node(tree, cursor.id);
+  if (patch.nag !== undefined && !supportedNag(patch.nag))
+    throw new RangeError('Unsupported PGN annotation value.');
+  if (patch.comment !== undefined && patch.comment.length > 2000)
+    throw new RangeError('Analysis comments must be at most 2000 characters.');
+  const key = cursorKey(cursor);
+  const previous = tree.notes[key] ?? {};
+  const merged = { ...previous, ...patch };
+  const next: MoveNote = { ...(merged.comment === undefined ? {} : { comment: merged.comment }),
+    ...(merged.nag === undefined ? {} : { nag: merged.nag }) };
+  const notes = { ...tree.notes };
+  if (next.comment === undefined && next.nag === undefined) delete notes[key];
+  else notes[key] = next;
+  return { ...tree, notes };
+}
+
+export function promoteVariation(tree: AnalysisTree, id: number): AnalysisTree {
+  const promoted = { ...tree.promoted };
+  let variation = node(tree, id);
+  for (;;) {
+    promoted[cursorKey(variation.parent)] = variation.id;
+    if (variation.parent.kind === 'main') break;
+    variation = node(tree, variation.parent.id);
+  }
+  return { ...tree, promoted };
 }
 
 function node(tree: AnalysisTree, id: number): VariationNode {
@@ -72,10 +109,23 @@ export function previousPosition(tree: AnalysisTree): AnalysisTree {
 
 export function nextPosition(tree: AnalysisTree, game: GameReadResponse): AnalysisTree {
   const cursor = tree.cursor;
+  const preferredId = tree.promoted[cursorKey(cursor)];
+  if (preferredId !== undefined && tree.nodes.some(item => item.id === preferredId
+    && sameCursor(item.parent, cursor))) return selectBranch(tree, preferredId);
   if (cursor.kind === 'main' && cursor.ply < game.history.length)
     return selectMain(tree, game, cursor.ply + 1);
   const child = tree.nodes.find(item => sameCursor(item.parent, cursor));
   return child ? selectBranch(tree, child.id) : tree;
+}
+
+export function lastMainPosition(tree: AnalysisTree, game: GameReadResponse): AnalysisTree {
+  let current = selectMain(tree, game, 0);
+  for (let step = 0; step <= game.history.length + tree.nodes.length; step += 1) {
+    const next = nextPosition(current, game);
+    if (next === current) return current;
+    current = next;
+  }
+  throw new Error('The local analysis line contains a cycle.');
 }
 
 function sameCursor(a: AnalysisCursor, b: AnalysisCursor): boolean {
@@ -115,7 +165,12 @@ export function deleteVariation(tree: AnalysisTree, id: number): AnalysisTree {
   for (const item of tree.nodes) {
     if (item.parent.kind === 'branch' && removed.has(item.parent.id)) removed.add(item.id);
   }
-  return { ...tree, nodes: tree.nodes.filter(item => !removed.has(item.id)),
+  const notes = Object.fromEntries(Object.entries(tree.notes)
+    .filter(([key]) => !key.startsWith('b') || !removed.has(Number(key.slice(1)))));
+  const promoted = Object.fromEntries(Object.entries(tree.promoted)
+    .filter(([key, promotedId]) => !removed.has(promotedId)
+      && (!key.startsWith('b') || !removed.has(Number(key.slice(1))))));
+  return { ...tree, nodes: tree.nodes.filter(item => !removed.has(item.id)), notes, promoted,
     cursor: tree.cursor.kind === 'branch' && removed.has(tree.cursor.id)
       ? deletedRoot.parent : tree.cursor };
 }
@@ -125,8 +180,8 @@ export function analysisStorageKey(gameId: string): string {
 }
 
 export function serializeAnalysis(tree: AnalysisTree): string {
-  return JSON.stringify({ version: 1, gameId: tree.gameId, savedFen: tree.savedFen,
-    cursor: tree.cursor, nextId: tree.nextId,
+  return JSON.stringify({ version: 2, gameId: tree.gameId, savedFen: tree.savedFen,
+    cursor: tree.cursor, nextId: tree.nextId, notes: tree.notes, promoted: tree.promoted,
     nodes: tree.nodes.map(({ id, parent, from, to, promotion }) =>
       ({ id, parent, from, to, ...(promotion === undefined ? {} : { promotion }) })) });
 }
@@ -135,7 +190,7 @@ export function restoreAnalysis(game: GameReadResponse, raw: string): AnalysisTr
   if (raw.length > 100_000 || game.status !== 'finished') return null;
   try {
     const saved: unknown = JSON.parse(raw);
-    if (!isRecord(saved) || saved.version !== 1 || saved.gameId !== game.id
+    if (!isRecord(saved) || (saved.version !== 1 && saved.version !== 2) || saved.gameId !== game.id
       || saved.savedFen !== game.position.fen || !Array.isArray(saved.nodes)
       || saved.nodes.length > 500 || !Number.isSafeInteger(saved.nextId)) return null;
     let tree = createAnalysisTree(game);
@@ -155,8 +210,35 @@ export function restoreAnalysis(game: GameReadResponse, raw: string): AnalysisTr
     }
     if (Number(saved.nextId) < tree.nextId || Number(saved.nextId) > 1_000_001
       || !validCursor(saved.cursor, tree, game)) return null;
+    if (saved.version === 2) {
+      if (!isRecord(saved.notes) || !isRecord(saved.promoted)) return null;
+      for (const [key, value] of Object.entries(saved.notes)) {
+        if (!validMoveKey(key, tree, game) || !isRecord(value)
+          || value.comment !== undefined && (typeof value.comment !== 'string' || value.comment.length > 2000)
+          || value.nag !== undefined && (!Number.isInteger(value.nag) || !supportedNag(Number(value.nag)))) return null;
+      }
+      for (const [key, value] of Object.entries(saved.promoted)) {
+        const child = tree.nodes.find(item => item.id === value);
+        if (!validCursorKey(key, tree, game) || !child || cursorKey(child.parent) !== key) return null;
+      }
+      tree = { ...tree, notes: saved.notes as Record<string, MoveNote>,
+        promoted: saved.promoted as Record<string, number> };
+    }
     return { ...tree, nextId: saved.nextId as number, cursor: saved.cursor as AnalysisCursor };
   } catch { return null; }
+}
+
+function supportedNag(value: number): boolean {
+  return nagDetails(value) !== undefined;
+}
+
+function validCursorKey(key: string, tree: AnalysisTree, game: GameReadResponse): boolean {
+  if (/^m\d+$/.test(key)) return Number(key.slice(1)) <= game.history.length;
+  return /^b\d+$/.test(key) && tree.nodes.some(item => item.id === Number(key.slice(1)));
+}
+
+function validMoveKey(key: string, tree: AnalysisTree, game: GameReadResponse): boolean {
+  return key !== 'm0' && validCursorKey(key, tree, game);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

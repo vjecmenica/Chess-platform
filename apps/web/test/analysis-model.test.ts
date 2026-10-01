@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { analysisStorageKey, createAnalysisTree, cursorFen, deleteVariation,
+import { analysisStorageKey, createAnalysisTree, cursorFen, deleteVariation, lastMainPosition,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
-  selectBranch, selectMain, serializeAnalysis } from '../src/analysis-model';
+  promoteVariation, selectBranch, selectMain, serializeAnalysis, setMoveNote } from '../src/analysis-model';
 
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 function finishedAt(fen: string, history: readonly SavedMove[] = []): GameReadResponse {
@@ -96,6 +96,48 @@ describe('finished-game analysis tree', () => {
     expect(restored).toEqual(pruned);
     expect(play(game, selectMain(restored!, game, 0), 'c2', 'c4').nodes.map(node => node.id))
       .toEqual([2, 3]);
+  });
+
+  it('persists comments, NAGs, and promotion while deleting only chosen branch notes', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
+    const c4 = play(game, selectMain(d4, game, 0), 'c2', 'c4');
+    const noted = setMoveNote(setMoveNote(c4, { kind: 'branch', id: 1 },
+      { comment: 'Alternative first move' }), { kind: 'branch', id: 1 }, { nag: 5 });
+    const withMainNote = setMoveNote(noted, { kind: 'main', ply: 1 }, { nag: 14 });
+    const promoted = promoteVariation(withMainNote, 1);
+    expect(restoreAnalysis(game, serializeAnalysis(promoted))).toEqual(promoted);
+    const deleted = deleteVariation(promoted, 1);
+    expect(deleted.nodes.map(node => node.san)).toEqual(['c4']);
+    expect(deleted.notes.b1).toBeUndefined();
+    expect(deleted.notes.m1?.nag).toBe(14);
+    expect(deleted.promoted.m0).toBeUndefined();
+    expect(restoreAnalysis(game, serializeAnalysis(deleted))).toEqual(deleted);
+    const withoutGlyph = setMoveNote(promoted, { kind: 'branch', id: 1 }, { nag: undefined });
+    expect(withoutGlyph.notes.b1).toEqual({ comment: 'Alternative first move' });
+    const older = JSON.parse(serializeAnalysis(promoted));
+    older.version = 1;
+    delete older.notes;
+    delete older.promoted;
+    expect(restoreAnalysis(game, JSON.stringify(older))?.nodes).toEqual(promoted.nodes);
+    const malformed = JSON.parse(serializeAnalysis(promoted));
+    malformed.notes.b1.nag = 999;
+    expect(restoreAnalysis(game, JSON.stringify(malformed))).toBeNull();
+    expect(() => setMoveNote(promoted, { kind: 'branch', id: 1 }, { nag: 999 }))
+      .toThrow('Unsupported PGN annotation');
+  });
+
+  it('promotes nested ancestors so the chosen continuation becomes the local main line', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
+    const d5 = play(game, d4, 'd7', 'd5');
+    const c4 = play(game, d5, 'c2', 'c4');
+    const promoted = promoteVariation(c4, 3);
+    expect(promoted.promoted).toEqual({ m0: 1, b1: 2, b2: 3 });
+    expect(nextPosition(selectMain(promoted, game, 0), game).cursor).toEqual({ kind: 'branch', id: 1 });
+    expect(nextPosition(selectBranch(promoted, 1), game).cursor).toEqual({ kind: 'branch', id: 2 });
+    expect(lastMainPosition(promoted, game).cursor).toEqual({ kind: 'branch', id: 3 });
+    expect(restoreAnalysis(game, serializeAnalysis(promoted))).toEqual(promoted);
   });
 
   it('uses domain legality for invalid moves, castling, en passant, and promotion', () => {

@@ -8,8 +8,9 @@ import { boardCoordinates, highlightedMove, materialAdvantage } from './board-di
 import { confirmMoveWithRetry } from './move-confirmation';
 import { resultDisplay } from './result-display';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
-  mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
-  selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
+  lastMainPosition, mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, promoteVariation, restoreAnalysis,
+  selectBranch, selectMain, serializeAnalysis, setMoveNote,
+  type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
 import { ClockPanel } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 
@@ -584,10 +585,10 @@ export function App() {
   }
 
   function removeVariation(id: number, notation: string) {
-    if (analysis !== null && window.confirm(`Delete ${notation} and all moves after it in this branch?`)) {
+    if (analysis !== null) {
       setAnalysis(deleteVariation(analysis, id));
       setSelected(null);
-      setAnalysisError(null);
+      setAnalysisError(`Deleted ${notation} and its continuation from this browser.`);
     }
   }
 
@@ -731,7 +732,7 @@ export function App() {
                       aria-label="Next move">Next</button>
                     <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
                       onClick={() => { if (analysisOpen && analysis !== null)
-                        setAnalysis(selectMain(analysis, game, game.history.length));
+                        setAnalysis(lastMainPosition(analysis, game));
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
                       aria-label="Final position">End</button>
                   </div>
@@ -739,12 +740,17 @@ export function App() {
                     The game and clocks never change.</p>}
                   {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
-                {replaying && <p className="move-legend">Saved line{analysisOpen ? ' · Indented moves are local variations' : ''}</p>}
+                {replaying && <p className="move-legend">{analysisOpen
+                  ? 'Local analysis line · Dotted moves are browser-only; saved moves remain available.'
+                  : 'Saved line'}</p>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
-                  onSelect={selectMove} onDelete={removeVariation} />
+                  onSelect={selectMove} onDelete={removeVariation}
+                  onPromote={id => setAnalysis(current => current === null ? null : promoteVariation(current, id))}
+                  onNote={(cursor: AnalysisCursor, note: MoveNote) => setAnalysis(current =>
+                    current === null ? null : setMoveNote(current, cursor, note))} />
               </div>
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}

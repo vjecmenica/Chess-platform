@@ -1,12 +1,9 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { Worker } from 'node:worker_threads';
 import type pg from 'pg';
 import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
-import type { MateSearchBudget, MateSearchResult } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
-import { waitForMateSearchResult } from './worker-result.js';
 
 export interface WallClock { nowMs(): number }
 export const systemClock: WallClock = { nowMs: () => Date.now() };
@@ -119,10 +116,6 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       deadlineMs: row.flagged_at.getTime(),
       ...(row.timeout_witness === null ? {} : { mateLine: row.timeout_witness }) });
     if (!flagged.accepted) throw new Error('Saved flag cannot be replayed.');
-  }
-  if (row.resignation_witness !== null) {
-    const resolved = game.resolveResignation({ verdict: 'mate_possible', mateLine: row.resignation_witness });
-    if (!resolved.accepted) throw new Error('Saved resignation ruling cannot be replayed.');
   }
   const state = game.getState();
   const expectedVersion = rows.length + (row.clock_mode === 'five_plus_three'
@@ -253,16 +246,12 @@ export interface GameService {
   action(id: string, guestId: string, requestId: string, kind: GameAction,
     body: ActionBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
-  /** Search pending resignations away from the live command path. */
-  pollPendingResignations(): Promise<number>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
-  /** A background worker may persist only a domain-verified mate witness. */
-  resolveResignation(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
 
 export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
-  hooks: { afterMoveCommit?: () => Promise<void>; resignationSearchBudget?: MateSearchBudget } = {}): GameService {
+  hooks: { afterMoveCommit?: () => Promise<void> } = {}): GameService {
   const instanceId = randomUUID();
   const arrivals = new Map<symbol, number>();
   const queues = new Map<string, Promise<unknown>>();
@@ -273,9 +262,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   let ingressClient: pg.PoolClient | null = null;
   let ingressHealthy = false;
   let heartbeatWork: Promise<void> = Promise.resolve();
-  let resignationWork: Promise<number> | null = null;
-  let activeResignationWorker: Worker | null = null;
-  const unresolvedResignations = new Set<string>();
 
   function safeThrough(): number {
     let safe = now(clock);
@@ -340,8 +326,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     stopped = true;
     if (pulse !== null) clearInterval(pulse);
     await heartbeatWork.catch(() => undefined);
-    if (activeResignationWorker !== null) await activeResignationWorker.terminate();
-    if (resignationWork !== null) await resignationWork.catch(() => undefined);
     if (started !== null) await started.catch(() => undefined);
     if (registered) {
       await pool.query('DELETE FROM chess.clock_ingress_watermarks WHERE instance_id = $1', [instanceId]);
@@ -400,23 +384,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       if (!lock.rows[0]?.orphaned) return false;
     }
     return true;
-  }
-
-  async function searchResignation(fen: string, resigningSide: Side,
-    history: readonly MoveRecord[]): Promise<MateSearchResult> {
-    const worker = new Worker(new URL('../workers/resignation-worker.mjs', import.meta.url), {
-      // Do not inherit dev-server flags; Node watch control messages are filtered by the result reader.
-      execArgv: [],
-      workerData: { fen, resigningSide, history,
-        budget: hooks.resignationSearchBudget ?? { maxDepth: 8, maxNodes: 20_000 } },
-    });
-    activeResignationWorker = worker;
-    try {
-      return await waitForMateSearchResult(worker);
-    } finally {
-      activeResignationWorker = null;
-      await worker.terminate();
-    }
   }
 
   async function completeReceipt(client: pg.PoolClient, receipt: Receipt,
@@ -645,49 +612,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     }
   }
 
-  async function processPendingResignation(): Promise<number> {
-    await start();
-    const { rows } = await pool.query<{ id: string; fen: string; resigning_side: Side }>(
-      `SELECT id, fen, pending->>'resigningSide' AS resigning_side FROM chess.games
-        WHERE status = 'pending_adjudication' AND pending->>'kind' = 'resignation'
-          AND id <> ALL($1::uuid[])
-        ORDER BY updated_at LIMIT 50`, [Array.from(unresolvedResignations)]);
-    let resolved = 0;
-    for (const candidate of rows) {
-      if (unresolvedResignations.has(candidate.id)) continue;
-      const client = await pool.connect();
-      let locked = false;
-      try {
-        const lock = await client.query<{ acquired: boolean }>(
-          'SELECT pg_try_advisory_lock(28104, hashtext($1::text)) AS acquired', [candidate.id]);
-        locked = lock.rows[0]?.acquired === true;
-        if (!locked) continue;
-        const fresh = await client.query<{ fen: string; resigning_side: Side }>(
-          `SELECT fen, pending->>'resigningSide' AS resigning_side FROM chess.games
-            WHERE id = $1 AND status = 'pending_adjudication'
-              AND pending->>'kind' = 'resignation'`, [candidate.id]);
-        if (!fresh.rows[0]) continue;
-        const moves = await client.query<StoredMove>(
-          'SELECT ply, record FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [candidate.id]);
-        const search = await searchResignation(fresh.rows[0].fen, fresh.rows[0].resigning_side,
-          moves.rows.map(move => move.record));
-        if (search.status === 'found') {
-          if (await service.resolveResignation(candidate.id, search.mateLine)) resolved += 1;
-          else console.error(`Could not persist a verified resignation witness for game ${candidate.id}.`);
-          continue;
-        }
-        console.warn(`Resignation for game ${candidate.id} remains unresolved: ${search.reason}; `
-          + `${search.nodesVisited} search nodes visited.`);
-        unresolvedResignations.add(candidate.id);
-      } finally {
-        if (locked) await client.query('SELECT pg_advisory_unlock(28104, hashtext($1::text))',
-          [candidate.id]);
-        client.release();
-      }
-    }
-    return resolved;
-  }
-
   const service: GameService = {
     start, stop, heartbeat, beginReceipt,
     async read(id, guestId) {
@@ -753,13 +677,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       for (const { id } of rows) flags += await advanceGame(id);
       return flags;
     },
-    async pollPendingResignations() {
-      if (resignationWork !== null) return resignationWork;
-      const work = processPendingResignation();
-      resignationWork = work;
-      try { return await work; }
-      finally { if (resignationWork === work) resignationWork = null; }
-    },
     async registerTimeoutWitness(id, line) {
       await start();
       await advanceGame(id);
@@ -772,26 +689,6 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         if (!game.verifyMateLine(winner, line)) return false;
         row.timeout_witness = line.map(move => ({ from: move.from, to: move.to,
           ...(move.promotion === undefined ? {} : { promotion: move.promotion }) }));
-        await saveGame(client, row);
-        return true;
-      }));
-    },
-    async resolveResignation(id, line) {
-      await start();
-      await advanceGame(id);
-      return serialize(id, () => transaction(async client => {
-        const row = await loadGame(client, id);
-        if (row === null || row.pending?.kind !== 'resignation') return false;
-        const game = await reconstruct(client, row);
-        const ruling = game.resolveResignation({ verdict: 'mate_possible', mateLine: line });
-        if (!ruling.accepted) return false;
-        const state = game.getState();
-        row.status = state.status;
-        row.result = state.result;
-        row.pending = null;
-        row.resignation_witness = line.map(move => ({ from: move.from, to: move.to,
-          ...(move.promotion === undefined ? {} : { promotion: move.promotion }) }));
-        row.version += 1;
         await saveGame(client, row);
         return true;
       }));

@@ -263,11 +263,8 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       if (rejection) return rejection;
       const winner = command.side === 'white' ? 'black' : 'white';
       const possibility = board.matingPossibility(winner);
-      if (possibility === 'unresolved') {
-        pendingResignation = command.side;
-        drawOffer = null;
-        return { accepted: true, game: getState() };
-      }
+      // Casual resignation policy: only a proven impossibility overrides the concession.
+      // An inconclusive mating search is neither a negative proof nor a reason to freeze play.
       finish(possibility === 'impossible'
         ? { outcome: 'draw', reason: 'resignation_no_mating_possibility' }
         : { outcome: 'win', winner, reason: 'resignation' });

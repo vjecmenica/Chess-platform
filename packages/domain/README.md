@@ -42,11 +42,11 @@ The position API checks legality without enforcing game status. It remains suita
 
 `createGame()` creates an independent active game and privately owns its position. Callers cannot bypass completion checks by accessing that position.
 
-`getState()` returns a detached snapshot with `position`, `status`, `result`, and `drawOffer`. An active snapshot has a null result and an optional offerer's side. An unresolved resignation or timeout has status `pending_adjudication`, a null result, no offer, and the resigning or flagged side; a timeout also records the effective deadline. A finished snapshot has a result and no offer; one resolved by a mate line also carries its `adjudication` ruling. `getHistory()` returns the same ordered, detached move records as the position API.
+`getState()` returns a detached snapshot with `position`, `status`, `result`, and `drawOffer`. An active snapshot has a null result and an optional offerer's side. An unresolved timeout has status `pending_adjudication`, a null result, no offer, and the flagged side and effective deadline. A finished snapshot has a result and no offer; one resolved by a mate line also carries its `adjudication` ruling. `getHistory()` returns the same ordered, detached move records as the position API.
 
 `submitMove({ side, from, to, promotion? })` uses the existing move rules. Success returns `{ accepted: true, move, game }`, including any result caused by the move. Resignation and offer/response commands take `{ side }` and return `{ accepted: true, game }` on success:
 
-- `resign` draws when the opponent is proven unable to mate and awards a win when a legal mate witness exists. Otherwise it accepts the resignation and freezes the game in `pending_adjudication`.
+- `resign` draws when the opponent is proven unable to mate; otherwise it immediately awards the opponent a win under the casual concession policy.
 - `offerDraw` requires both sides to have moved, no pending offer, and any offer cooldown to have elapsed.
 - `acceptDraw` finishes by agreement; only the recipient of a pending offer can accept, after both sides have played a move.
 - `declineDraw` clears an offer without finishing; only its recipient can decline.
@@ -76,22 +76,19 @@ An invalid side, wrong turn, unknown rule (`invalid_claim`), invalid intended mo
 
 `getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation and timeout check only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-resignation-and-timeout) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations.
 
-An accepted unresolved resignation stops all player commands. `resolveResignation({ verdict: 'mate_possible', mateLine })` checks a legal line from the frozen position through checkmate by the opponent, including earlier automatic-result checks. Invalid lines leave the pending state unchanged. There is no external no-mate ruling command: a reviewer ID or evidence string alone cannot approve a draw. Positions that the built-in detector proves impossible still draw immediately on resignation. Other no-mate cases remain pending until a future implementation can validate a complete proof. The [online decision](../../docs/adjudication-design.md) specifies the remaining server work.
+Resignation finishes immediately under the casual concession policy. A sound proof that the opponent cannot mate makes it a draw; otherwise the opponent wins, including when the detector is inconclusive. This is deliberately narrower than an exact FIDE impossibility decision. `resolveResignation` remains in the domain API for older callers but no new resignation enters its pending state. The [online decision](../../docs/adjudication-design.md) explains the policy and its limit.
 
-Call `findResignationMateWitness(game, { maxDepth?, maxNodes? })` **after** a resignation has entered `pending_adjudication`, from a worker rather than a move handler. It tries replay-verified opening witnesses and then a deterministic, cooperative legal-move search. The defaults are seven plies and 5,000 visited positions; hard limits are eight plies and 20,000 positions. Seed-line positions count toward that budget. A `found` result contains a mate line and node count. An `unresolved` result identifies `not_pending`, `depth_exhausted`, or `budget_exhausted`; none proves mate impossible. Search never changes the game. `verifyResignationMateLine(line)` is a read-only check; `resolveResignation` verifies again before changing the result.
+The legacy `findResignationMateWitness` helper now returns `not_pending` after a normal resignation. Its bounded search is not part of the live resignation path. `findTimeoutMateWitness` remains available for future pending-timeout work; search exhaustion never proves mate impossible.
 
 ```ts
-import { createGame, findResignationMateWitness } from '@chess/domain';
+import { createGame } from '@chess/domain';
 
 const game = createGame();
 game.resign({ side: 'white' });
-const search = findResignationMateWitness(game);
-if (search.status === 'found') {
-  game.resolveResignation({ verdict: 'mate_possible', mateLine: search.mateLine });
-}
+const result = game.getState().result; // Black wins unless impossibility was proven.
 ```
 
-This example is an in-memory domain flow. The server still needs authorized sessions, game persistence, a serialized command queue, and a separate worker to save an accepted resignation and its verified final result safely.
+This example is an in-memory domain flow. The server authorizes and orders the action with moves and flags, then saves the final result and stopped clock in the same transaction.
 
 `flagTimeout({ flaggedSide, deadlineMs, mateLine? })` is a trusted clock command. It accepts only the side to move and a nonnegative integer deadline. A sound no-mate proof draws immediately; a verified optional mate line awards the opponent a timeout win. Otherwise it freezes the game with a pending timeout. `verifyMateLine(winner, line)` can validate a candidate before a flag without changing state. `findTimeoutMateWitness` searches only a pending timeout, away from live clock processing; `resolveTimeout({ verdict: 'mate_possible', mateLine })` rechecks the line and finishes it. An invalid line or exhausted search never approves a draw. The result and pending snapshot retain the flagged side and effective deadline.
 

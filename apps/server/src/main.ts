@@ -3,7 +3,6 @@ import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
 import { checkChallengeSchema } from './challenge-routes.js';
 import { createGameService } from './game-service.js';
-import { startResignationPolling } from './resignation-polling.js';
 
 async function main() {
   loadEnvironment();
@@ -14,10 +13,8 @@ async function main() {
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
   let timer: ReturnType<typeof setInterval> | null = null;
-  let stopResignationPolling: (() => void) | null = null;
   app.addHook('onClose', async () => {
     if (timer !== null) clearInterval(timer);
-    stopResignationPolling?.();
     await gameService.stop();
     await pool.end();
   });
@@ -47,8 +44,6 @@ async function main() {
   };
   timer = setInterval(() => { void poll(); }, 500);
   void poll();
-
-  stopResignationPolling = startResignationPolling(gameService, app.log);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

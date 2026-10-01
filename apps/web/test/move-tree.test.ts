@@ -3,101 +3,96 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { createPosition } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
-import { createAnalysisTree, deleteVariation, playAnalysisMove, selectBranch,
-  selectMain } from '../src/analysis-model';
+import { createAnalysisTree, deleteVariation, playAnalysisMove, promoteVariation,
+  selectBranch, selectMain, setMoveNote } from '../src/analysis-model';
 import { MoveTree } from '../src/MoveTree';
 import { buildMoveTree, moveNotation } from '../src/move-tree-model';
 
-function savedGame(): GameReadResponse {
+function savedGame(plies = 2): GameReadResponse {
   const position = createPosition();
-  position.submitMove({ side: 'white', from: 'e2', to: 'e4' });
-  position.submitMove({ side: 'black', from: 'e7', to: 'e5' });
-  return { id: 'finished', version: 2, status: 'finished', yourSeat: 'white',
+  const moves = [['white', 'e2', 'e4'], ['black', 'e7', 'e5'], ['white', 'g1', 'f3']] as const;
+  for (const [side, from, to] of moves.slice(0, plies)) position.submitMove({ side, from, to });
+  return { id: 'finished', version: plies, status: 'finished', yourSeat: 'white',
     position: position.getPosition(), history: position.getHistory(),
     result: { outcome: 'draw', reason: 'agreement' }, clocks: null,
     clockStatus: 'not_integrated', timeControl: { initialMs: 300_000, incrementMs: 3_000 },
     rated: false };
 }
 
-function play(game: GameReadResponse, tree: ReturnType<typeof createAnalysisTree>,
-  from: string, to: string) {
+type Tree = ReturnType<typeof createAnalysisTree>;
+function play(game: GameReadResponse, tree: Tree, from: string, to: string): Tree {
   const result = playAnalysisMove(tree, game, from, to);
   if (!result.accepted) throw new Error(`Expected ${from}${to} to be legal.`);
   return result.tree;
 }
 
-describe('nested move tree', () => {
-  it('uses standard move numbers for saved and alternative moves', () => {
-    expect(moveNotation(1, 'e4')).toBe('1. e4');
+function markup(game: GameReadResponse, tree: Tree | null, interactive = true): string {
+  return renderToStaticMarkup(createElement(MoveTree, { game, tree,
+    selected: tree?.cursor ?? { kind: 'main', ply: game.history.length }, interactive,
+    onSelect: () => {}, onDelete: () => {} }));
+}
+
+describe('analysis move list', () => {
+  it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
+    const complete = markup(savedGame(2), null);
+    expect((complete.match(/class="move-pair"/g) ?? [])).toHaveLength(1);
+    expect(complete).toMatch(/move-number">1\.<\/span>[\s\S]*move-cell[\s\S]*>e4<\/button>[\s\S]*move-cell[\s\S]*>e5<\/button>/);
+    const incomplete = markup(savedGame(3), null);
+    expect((incomplete.match(/class="move-pair"/g) ?? [])).toHaveLength(2);
+    expect(incomplete).toContain('>Nf3</button>');
     expect(moveNotation(2, 'e5')).toBe('1... e5');
-    expect(moveNotation(3, 'Nf3')).toBe('2. Nf3');
   });
 
-  it('places sibling and nested branches under their actual parent move', () => {
-    const game = savedGame();
-    const initial = selectMain(createAnalysisTree(game), game, 0);
-    const d4 = play(game, initial, 'd2', 'd4');
-    const d5 = play(game, d4, 'd7', 'd5');
-    const c4 = play(game, selectMain(d5, game, 0), 'c2', 'c4');
-    const afterE4 = play(game, selectMain(c4, game, 1), 'c7', 'c5');
-    const view = buildMoveTree(game, afterE4, afterE4.cursor);
-    expect(view.rootBranches.map(item => item.notation)).toEqual(['1. d4', '1. c4']);
-    expect(view.rootBranches[0]?.children.map(item => item.notation)).toEqual(['1... d5']);
-    expect(view.rootBranches[1]?.children).toEqual([]);
-    expect(view.savedMoves.map(item => item.notation)).toEqual(['1. e4', '1... e5']);
-    expect(view.savedMoves[0]?.branches.map(item => item.notation)).toEqual(['1... c5']);
-    expect(view.savedMoves[1]?.branches).toEqual([]);
-    expect(view.savedMoves[0]?.onPath).toBe(true);
-    expect(view.savedMoves[0]?.branches[0]?.selected).toBe(true);
-    expect(view.rootBranches[0]?.onPath).toBe(false);
-  });
-
-  it('keeps a variation in one line until a real fork and highlights the selected path', () => {
+  it('keeps consecutive variation moves inline and indents only real forks', () => {
     const game = savedGame();
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
     const d5 = play(game, d4, 'd7', 'd5');
     const nc3 = play(game, d5, 'b1', 'c3');
-    const render = (tree: typeof nc3) => renderToStaticMarkup(createElement(MoveTree,
-      { game, tree, selected: tree.cursor, interactive: true, onSelect: () => {}, onDelete: () => {} }));
-    const html = render(nc3);
-    expect(html).toContain('1. d4');
-    expect(html).toContain('>d5</button>');
-    expect(html).toContain('2. Nc3');
-    expect(html).not.toContain('from branch');
-    expect(html).not.toContain('#1');
+    const html = markup(game, nc3);
     expect((html.match(/class="variation-list"/g) ?? [])).toHaveLength(1);
-    expect(html).toMatch(/1\. d4[\s\S]*>d5<\/button>[\s\S]*aria-current="step"[^>]*>2\. Nc3/);
-    expect(html).toContain('Delete variation from 1... d5');
+    expect(html).toMatch(/aria-label="1\. d4"[\s\S]*aria-label="1\.\.\. d5"[\s\S]*aria-label="2\. Nc3"/);
+    expect(html).toContain('aria-current="step" aria-label="2. Nc3"');
+    expect(html).not.toContain('delete-variation');
     const nf6 = play(game, nc3, 'g8', 'f6');
-    const forked = play(game, selectBranch(nf6, 3), 'c7', 'c6');
-    const forkHtml = render(forked);
+    const fork = play(game, selectBranch(nf6, 3), 'c7', 'c6');
+    const forkHtml = markup(game, fork);
     expect((forkHtml.match(/class="variation-list"/g) ?? [])).toHaveLength(2);
     expect(forkHtml).toContain('2... Nf6');
     expect(forkHtml).toContain('2... c6');
-    expect(forkHtml).toContain('2. Nc3');
-    expect(html).toContain('1. e4');
-    expect(html).toContain('1... e5');
   });
 
-  it('keeps siblings and saved moves after deletion', () => {
+  it('renders a Black-first variation, comments, and standard PGN glyphs', () => {
     const game = savedGame();
-    const first = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
-    const nested = play(game, first, 'd7', 'd5');
-    const siblings = play(game, selectMain(nested, game, 0), 'c2', 'c4');
-    const remaining = deleteVariation(siblings, 1);
-    const view = buildMoveTree(game, remaining, remaining.cursor);
-    expect(view.rootBranches.map(item => item.notation)).toEqual(['1. c4']);
-    expect(view.savedMoves.map(item => item.notation)).toEqual(['1. e4', '1... e5']);
-    expect(game.history).toHaveLength(2);
+    const c5 = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');
+    const noted = setMoveNote(c5, c5.cursor, { comment: 'Sicilian Defense', nag: 5 });
+    const html = markup(game, noted);
+    expect(html).toContain('1...');
+    expect(html).toContain('c5');
+    expect(html).toContain('Sicilian Defense');
+    expect(html).toContain('Speculative move (PGN $5)');
+    expect(html).toContain('!?');
   });
 
-  it('keeps the live-game move list noninteractive', () => {
-    const game = { ...savedGame(), status: 'active' as const, result: null };
-    const html = renderToStaticMarkup(createElement(MoveTree, { game, tree: null,
-      selected: { kind: 'main', ply: 2 }, interactive: false,
-      onSelect: () => {}, onDelete: () => {} }));
-    expect(html).toContain('1. e4');
-    expect(html).toContain('1... e5');
+  it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
+    const game = savedGame();
+    const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
+    const d5 = play(game, d4, 'd7', 'd5');
+    const c4 = play(game, selectMain(d5, game, 0), 'c2', 'c4');
+    const promoted = promoteVariation(c4, 1);
+    const view = buildMoveTree(game, promoted, promoted.cursor);
+    expect(view.main.moves.map(move => move.san)).toEqual(['d4', 'd5']);
+    expect(view.main.moves[0]?.alternatives.map(line => line.moves[0]?.san)).toEqual(['e4', 'c4']);
+    const remaining = deleteVariation(promoted, 1);
+    expect(buildMoveTree(game, remaining, remaining.cursor).main.moves.map(move => move.san))
+      .toEqual(['e4', 'e5']);
+    expect(remaining.nodes.map(node => node.san)).toEqual(['c4']);
+    expect(game.history.map(move => move.san)).toEqual(['e4', 'e5']);
+  });
+
+  it('renders a live move list as noninteractive paired text', () => {
+    const html = markup({ ...savedGame(), status: 'active', result: null }, null, false);
+    expect(html).toContain('>e4</span>');
+    expect(html).toContain('>e5</span>');
     expect(html).not.toContain('<button');
   });
 });

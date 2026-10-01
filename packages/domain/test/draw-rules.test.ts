@@ -288,62 +288,30 @@ describe('mating possibility and dead positions', () => {
       game: { result: { outcome: 'draw', reason: 'resignation_no_mating_possibility' } } });
   });
 
-  it('accepts an unresolved resignation and freezes the game for adjudication', () => {
+  it('finishes a normal resignation without treating an inconclusive mate search as a draw', () => {
     const game = createGame();
     expect(game.getMatingPossibility('white')).toBe('unresolved');
     expect(game.getMatingPossibility('black')).toBe('unresolved');
     expect(game.resign({ side: 'white' })).toMatchObject({ accepted: true,
-      game: { status: 'pending_adjudication', result: null, drawOffer: null,
-        pending: { kind: 'resignation', resigningSide: 'white' } } });
+      game: { status: 'finished', drawOffer: null,
+        result: { outcome: 'win', winner: 'black', reason: 'resignation' } } });
     expect(game.getHistory()).toEqual([]);
-    unchanged(game, () => game.submitMove({ side: 'white', from: 'e2', to: 'e4' }), 'adjudication_pending');
-    unchanged(game, () => game.resign({ side: 'white' }), 'adjudication_pending');
-    unchanged(game, () => game.resign({ side: 'black' }), 'adjudication_pending');
-    unchanged(game, () => game.offerDraw({ side: 'black' }), 'adjudication_pending');
-    unchanged(game, () => game.acceptDraw({ side: 'black' }), 'adjudication_pending');
-    unchanged(game, () => game.declineDraw({ side: 'black' }), 'adjudication_pending');
-    unchanged(game, () => game.claimDraw({ side: 'white', rule: 'fifty_move' }), 'adjudication_pending');
-
-    const mateLine = ['f2f3', 'e7e5', 'g2g4', 'd8h4'].map(uci => ({ from: uci.slice(0, 2), to: uci.slice(2) }));
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_possible', mateLine: mateLine.slice(0, -1) }),
-      'invalid_ruling');
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_possible', mateLine: [
-      { from: 'e2', to: 'e4' }, ...mateLine.slice(1),
-    ] }), 'invalid_ruling');
-    const wrongWinner = ['e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6', 'h5f7']
-      .map(uci => ({ from: uci.slice(0, 2), to: uci.slice(2) }));
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_possible', mateLine: wrongWinner }),
-      'invalid_ruling');
-    expect(game.resolveResignation({ verdict: 'mate_possible', mateLine })).toMatchObject({ accepted: true,
-      game: { status: 'finished', result: { outcome: 'win', winner: 'black', reason: 'resignation' },
-        adjudication: { verdict: 'mate_possible', mateLine } } });
-    expect(game.getHistory()).toEqual([]);
-    const detached = game.getState();
-    if (detached.status !== 'finished' || detached.adjudication?.verdict !== 'mate_possible') {
-      throw new Error('Expected a verified mate-line ruling');
-    }
-    Object.assign(detached.adjudication.mateLine[0]!, { from: 'a1' });
-    expect(game.getState()).toMatchObject({ adjudication: { mateLine } });
-    unchanged(game, () => game.resolveResignation({ verdict: 'mate_possible', mateLine }), 'game_finished');
+    unchanged(game, () => game.submitMove({ side: 'white', from: 'e2', to: 'e4' }), 'game_finished');
     unchanged(game, () => game.resign({ side: 'white' }), 'game_finished');
   });
 
-  it('keeps a normal middlegame frozen, including its history and pending offer', () => {
+  it('finishes a middlegame resignation and preserves its history', () => {
     const game = createGame();
     play(game, 'e2e4', 'e7e5');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     const position = game.getState().position;
     const history = game.getHistory();
     expect(game.resign({ side: 'black' })).toMatchObject({ accepted: true,
-      game: { status: 'pending_adjudication', result: null, drawOffer: null,
-        pending: { kind: 'resignation', resigningSide: 'black' } } });
+      game: { status: 'finished', drawOffer: null,
+        result: { outcome: 'win', winner: 'white', reason: 'resignation' } } });
     expect(game.getState().position).toEqual(position);
     expect(game.getHistory()).toEqual(history);
-    unchanged(game, () => game.submitMove({ side: 'white', from: 'g1', to: 'f3' }), 'adjudication_pending');
-    const mateLine = ['f1c4', 'b8c6', 'd1h5', 'g8f6', 'h5f7']
-      .map(uci => ({ from: uci.slice(0, 2), to: uci.slice(2) }));
-    expect(game.resolveResignation({ verdict: 'mate_possible', mateLine })).toMatchObject({ accepted: true,
-      game: { status: 'finished', result: { outcome: 'win', winner: 'white', reason: 'resignation' } } });
+    unchanged(game, () => game.submitMove({ side: 'white', from: 'g1', to: 'f3' }), 'game_finished');
     expect(game.getHistory()).toEqual(history);
   });
 
@@ -361,8 +329,9 @@ describe('mating possibility and dead positions', () => {
     expect(game.resign({ side: 'white' }).accepted).toBe(true);
     const unsupported = { verdict: 'mate_impossible', reviewerId: 'reviewer-1',
       evidenceReference: 'closed-wall-proof-1' } as unknown as ResignationRuling;
-    unchanged(game, () => game.resolveResignation(unsupported), 'invalid_ruling');
-    expect(game.getState()).toMatchObject({ status: 'pending_adjudication', result: null });
+    unchanged(game, () => game.resolveResignation(unsupported), 'game_finished');
+    expect(game.getState()).toMatchObject({ status: 'finished',
+      result: { outcome: 'win', winner: 'black' } });
   });
 });
 

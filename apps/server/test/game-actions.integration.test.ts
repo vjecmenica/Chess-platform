@@ -8,7 +8,6 @@ import { checkDatabase, createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
 import { buildApp } from '../src/app.js';
 import { createGameService } from '../src/game-service.js';
-import { startResignationPolling } from '../src/resignation-polling.js';
 
 interface Guest { cookie: string; csrf: string }
 
@@ -25,10 +24,10 @@ describe('guest game actions against PostgreSQL', () => {
   afterEach(async () => { for (const app of apps.splice(0)) await app.close(); });
   afterAll(async () => { if (pool) await pool.end(); });
 
-  function fixture(hooks: { resignationSearchBudget?: { maxDepth?: number; maxNodes?: number } } = {}) {
+  function fixture() {
     const time = { value: 2_000_000_000_000, nowMs() { return this.value; },
       set(value: number) { this.value = value; } };
-    const service = createGameService(pool, time, hooks);
+    const service = createGameService(pool, time);
     const app = buildApp(() => checkDatabase(pool), false,
       { pool, secureCookies: true, gameService: service });
     apps.push(app);
@@ -172,108 +171,68 @@ describe('guest game actions against PostgreSQL', () => {
     expect((await action(app, id, white, 'draw-offer', 25, requestId)).json()).toEqual(accepted.json());
   });
 
-  it('freezes a resignation until a verified ruling, then reconstructs the result', async () => {
-    const { app, service, time } = fixture();
+  it('finalizes a standard resignation in the receipt transaction for both seats and after restart', async () => {
+    const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
     const requestId = randomUUID();
     const resignation = await action(app, id, white, 'resign', 0, requestId);
     expect(resignation.json()).toMatchObject({ accepted: true,
-      game: { status: 'pending_adjudication', version: 1, drawOffer: null,
-        pending: { kind: 'resignation', resigningSide: 'white' }, result: null,
-        clocks: { phase: 'stopped', activeSide: null } } });
+      game: { status: 'finished', version: 1, result: { outcome: 'win',
+        winner: 'black', reason: 'resignation' }, clocks: { phase: 'stopped', activeSide: null } } });
     expect((await action(app, id, white, 'resign', 0, requestId)).json()).toEqual(resignation.json());
-    expect((await move(app, id, white, 1, 'e2', 'e4')).json().error).toBe('adjudication_pending');
-    expect((await action(app, id, black, 'draw-offer', 1)).json().error).toBe('adjudication_pending');
-    expect(await service.resolveResignation(id, [{ from: 'e2', to: 'e4' }])).toBe(false);
-    expect((await read(app, id, black)).json().status).toBe('pending_adjudication');
-    expect(await service.resolveResignation(id, [
-      { from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' },
-      { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' },
-    ])).toBe(true);
-    const { app: restarted } = another(time);
-    expect((await read(restarted, id, white)).json()).toMatchObject({ version: 2, status: 'finished',
-      result: { outcome: 'win', winner: 'black', reason: 'resignation' },
-      clocks: { phase: 'stopped' } });
-    expect((await read(restarted, id, black)).json().result.winner).toBe('black');
-    expect(await service.resolveResignation(id, [])).toBe(false);
-  });
-
-  it('finishes a standard-start resignation automatically and restores the result after restart', async () => {
-    const { app, service, time } = fixture();
-    const { id, white, black } = await challenge(app);
-    expect((await action(app, id, white, 'resign', 0)).json()).toMatchObject({
-      accepted: true, game: { status: 'pending_adjudication', result: null } });
-    expect(await service.pollPendingResignations()).toBe(1);
     for (const actor of [white, black]) {
-      expect((await read(app, id, actor)).json()).toMatchObject({ status: 'finished', version: 2,
-        result: { outcome: 'win', winner: 'black', reason: 'resignation' },
-        clocks: { phase: 'stopped' }, history: [] });
+      expect((await read(app, id, actor)).json()).toMatchObject({ status: 'finished',
+        result: { winner: 'black' }, clocks: { phase: 'stopped' }, history: [] });
     }
-    const { app: restarted, service: recovered } = another(time);
-    expect(await recovered.pollPendingResignations()).toBe(0);
-    expect((await read(restarted, id, white)).json()).toMatchObject({ status: 'finished',
-      result: { winner: 'black', reason: 'resignation' } });
-    expect((await pool.query('SELECT resignation_witness FROM chess.games WHERE id=$1', [id]))
-      .rows[0].resignation_witness).toHaveLength(4);
+    expect((await move(app, id, white, 1, 'e2', 'e4')).json().error).toBe('game_finished');
+    const { app: restarted } = another(time);
+    expect((await read(restarted, id, black)).json()).toMatchObject({ status: 'finished',
+      version: 1, result: { winner: 'black' }, clocks: { phase: 'stopped' } });
   });
 
-  it('finishes a resignation through automatic polling and restores it after restart', async () => {
-    const { app, service, time } = fixture();
-    const { id, white, black } = await challenge(app);
-    const errors: unknown[] = [];
-    const stop = startResignationPolling(service, { info() {},
-      error(details) { errors.push(details); } }, 20);
-    try {
-      expect((await action(app, id, white, 'resign', 0)).statusCode).toBe(200);
-      let final: Record<string, unknown> | null = null;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const game = (await read(app, id, black)).json() as Record<string, unknown>;
-        if (game.status === 'finished') { final = game; break; }
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
-      expect(errors).toEqual([]);
-      expect(final).toMatchObject({ status: 'finished',
-        result: { outcome: 'win', winner: 'black', reason: 'resignation' } });
-      const { app: restarted } = another(time);
-      expect((await read(restarted, id, white)).json()).toMatchObject({ status: 'finished',
-        result: { winner: 'black' }, clocks: { phase: 'stopped' } });
-    } finally {
-      stop();
-    }
-  });
-
-  it('searches from the saved move history before resolving a middlegame resignation', async () => {
-    const { app, service, time } = fixture();
+  it('finalizes a middlegame resignation with saved history and stopped clocks', async () => {
+    const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
     expect((await move(app, id, white, 0, 'e2', 'e4')).statusCode).toBe(200);
     expect((await move(app, id, black, 1, 'e7', 'e5')).statusCode).toBe(200);
     expect((await action(app, id, black, 'resign', 2)).json()).toMatchObject({
-      accepted: true, game: { status: 'pending_adjudication' } });
-    expect(await service.pollPendingResignations()).toBe(1);
+      accepted: true, game: { status: 'finished', version: 3,
+        result: { winner: 'white', reason: 'resignation' }, clocks: { phase: 'stopped' } } });
     const { app: restarted } = another(time);
     expect((await read(restarted, id, white)).json()).toMatchObject({
       status: 'finished', history: [{ san: 'e4' }, { san: 'e5' }],
       result: { outcome: 'win', winner: 'white', reason: 'resignation' },
     });
-    expect((await pool.query('SELECT resignation_witness FROM chess.games WHERE id=$1', [id]))
-      .rows[0].resignation_witness).toHaveLength(5);
   });
 
-  it('keeps exhausted searches pending and recovers them with a new worker after restart', async () => {
-    const { app, service, time } = fixture({ resignationSearchBudget: { maxDepth: 0, maxNodes: 0 } });
+  it('migrates an old pending resignation into a durable final result', async () => {
+    const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
-    expect((await action(app, id, black, 'resign', 0)).statusCode).toBe(200);
-    expect(await service.pollPendingResignations()).toBe(0);
-    expect(await service.pollPendingResignations()).toBe(0);
-    expect((await read(app, id, white)).json()).toMatchObject({ status: 'pending_adjudication',
-      result: null, pending: { kind: 'resignation', resigningSide: 'black' } });
-    await app.close();
-    const { app: restarted, service: recovered } = another(time);
-    expect(await recovered.pollPendingResignations()).toBe(1);
-    expect((await read(restarted, id, black)).json()).toMatchObject({ status: 'finished',
-      result: { outcome: 'win', winner: 'white', reason: 'resignation' } });
+    expect((await action(app, id, white, 'resign', 0)).statusCode).toBe(200);
+    await pool.query(`UPDATE chess.games SET status = 'pending_adjudication', result = NULL,
+      pending = '{"kind":"resignation","resigningSide":"white"}'::jsonb WHERE id = $1`, [id]);
+    const { readFile } = await import('node:fs/promises');
+    const { migrationDirectory } = await import('../src/migrations.js');
+    const { join } = await import('node:path');
+    await pool.query(await readFile(join(migrationDirectory, '008_finalize_resignations.sql'), 'utf8'));
+    const { app: restarted } = another(time);
+    expect((await read(restarted, id, black)).json()).toMatchObject({
+      status: 'finished', version: 1, result: { winner: 'black', reason: 'resignation' },
+      clocks: { phase: 'stopped' } });
   });
 
+  it('can still read a historical verified resignation after restart', async () => {
+    const { app, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    expect((await action(app, id, white, 'resign', 0)).statusCode).toBe(200);
+    const witness = [{ from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' },
+      { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' }];
+    await pool.query(`UPDATE chess.games SET resignation_witness = $2::jsonb, version = 2
+      WHERE id = $1`, [id, JSON.stringify(witness)]);
+    const { app: restarted } = another(time);
+    expect((await read(restarted, id, black)).json()).toMatchObject({ status: 'finished',
+      version: 2, result: { winner: 'black', reason: 'resignation' } });
+  });
   it('keeps explicit actions available in an earlier untimed game', async () => {
     const { app, time } = fixture();
     const { id, white, black } = await challenge(app);
@@ -336,11 +295,11 @@ describe('guest game actions against PostgreSQL', () => {
     const thirdDeadline = (await read(app, third.id, third.black)).json().clocks.deadlineMs as number;
     time.set(thirdDeadline - 1);
     expect((await action(app, third.id, third.black, 'resign', 1)).json()).toMatchObject({
-      accepted: true, game: { status: 'pending_adjudication',
-        pending: { kind: 'resignation', resigningSide: 'black' }, clocks: { phase: 'stopped' } },
+      accepted: true, game: { status: 'finished', result: { winner: 'white', reason: 'resignation' },
+        clocks: { phase: 'stopped' } },
     });
     time.set(thirdDeadline + 5000);
     await timer.pollDueGames();
-    expect((await read(app, third.id, third.white)).json().pending.kind).toBe('resignation');
+    expect((await read(app, third.id, third.white)).json().result.winner).toBe('white');
   });
 });
