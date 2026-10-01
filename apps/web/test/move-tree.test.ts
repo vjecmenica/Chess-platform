@@ -52,19 +52,29 @@ describe('nested move tree', () => {
     expect(view.rootBranches[0]?.onPath).toBe(false);
   });
 
-  it('renders variations as nested lists and highlights the selected path', () => {
+  it('keeps a variation in one line until a real fork and highlights the selected path', () => {
     const game = savedGame();
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
     const d5 = play(game, d4, 'd7', 'd5');
-    const selected = selectBranch(d5, 2);
-    const html = renderToStaticMarkup(createElement(MoveTree, { game, tree: selected,
-      selected: selected.cursor, interactive: true, onSelect: () => {}, onDelete: () => {} }));
+    const nc3 = play(game, d5, 'b1', 'c3');
+    const render = (tree: typeof nc3) => renderToStaticMarkup(createElement(MoveTree,
+      { game, tree, selected: tree.cursor, interactive: true, onSelect: () => {}, onDelete: () => {} }));
+    const html = render(nc3);
     expect(html).toContain('1. d4');
-    expect(html).toContain('1... d5');
+    expect(html).toContain('>d5</button>');
+    expect(html).toContain('2. Nc3');
     expect(html).not.toContain('from branch');
     expect(html).not.toContain('#1');
-    expect(html).toMatch(/1\. d4<\/button><button[^>]*>Delete<\/button><\/div><ol class="variation-list"><li class="variation-item on-path"/);
-    expect(html).toMatch(/aria-current="step"[^>]*>1\.\.\. d5/);
+    expect((html.match(/class="variation-list"/g) ?? [])).toHaveLength(1);
+    expect(html).toMatch(/1\. d4[\s\S]*>d5<\/button>[\s\S]*aria-current="step"[^>]*>2\. Nc3/);
+    expect(html).toContain('Delete variation from 1... d5');
+    const nf6 = play(game, nc3, 'g8', 'f6');
+    const forked = play(game, selectBranch(nf6, 3), 'c7', 'c6');
+    const forkHtml = render(forked);
+    expect((forkHtml.match(/class="variation-list"/g) ?? [])).toHaveLength(2);
+    expect(forkHtml).toContain('2... Nf6');
+    expect(forkHtml).toContain('2... c6');
+    expect(forkHtml).toContain('2. Nc3');
     expect(html).toContain('1. e4');
     expect(html).toContain('1... e5');
   });

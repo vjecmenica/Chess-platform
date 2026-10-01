@@ -5,6 +5,7 @@ import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, 
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { boardMove, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
+import { confirmMoveWithRetry } from './move-confirmation';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
   mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
   selectBranch, selectMain, serializeAnalysis, type AnalysisCursor, type AnalysisTree } from './analysis-model';
@@ -119,6 +120,19 @@ export function App() {
 
   useEffect(() => { setResignConfirmationVersion(null); },
     [game?.id, game?.version, game?.status, challenge?.status, analysisOpen]);
+
+  useEffect(() => {
+    const cancelWithRightClick = (event: MouseEvent) => {
+      if (pointer.current === null) return;
+      event.preventDefault();
+      cancelDrag();
+      setSelected(null);
+      suppressClick.current = true;
+      window.setTimeout(() => { suppressClick.current = false; }, 500);
+    };
+    window.addEventListener('contextmenu', cancelWithRightClick, true);
+    return () => window.removeEventListener('contextmenu', cancelWithRightClick, true);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -316,7 +330,7 @@ export function App() {
     let shouldRefresh = false;
     let stale = false;
     try {
-      const accepted = await responseBody<MoveAcceptedResponse>(await fetch(
+      const accepted = await confirmMoveWithRetry(async () => responseBody<MoveAcceptedResponse>(await fetch(
         `/api/games/${challengeId}/moves`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken,
@@ -324,7 +338,9 @@ export function App() {
           body: JSON.stringify({ expectedVersion: command.expectedVersion, from: command.from,
             to: command.to, ...(command.promotion ? { promotion: command.promotion } : {}) }),
         },
-      ));
+      )), cause => cause instanceof ApiError
+        ? cause.code === 'receipt_pending' || cause.status >= 500 : cause instanceof TypeError,
+      () => setGameInfo('The server is still confirming this move. Retrying the same request safely…'));
       const confirmed = applyAcceptedMove(gameRef.current, accepted);
       if (confirmed !== null && confirmed !== gameRef.current) {
         gameRef.current = confirmed;
@@ -332,6 +348,7 @@ export function App() {
       }
       setSelected(null);
       setPromotion(null);
+      setGameInfo(null);
       clearPending();
       shouldRefresh = true;
     } catch (cause) {
@@ -509,8 +526,13 @@ export function App() {
   }
 
   function cancelDrag() {
+    const active = pointer.current;
     pointer.current = null;
     setDrag(null);
+    if (active !== null) {
+      const origin = boardRef.current?.querySelector<HTMLButtonElement>(`[data-square="${active.from}"]`);
+      if (origin?.hasPointerCapture(active.id)) origin.releasePointerCapture(active.id);
+    }
   }
 
   function submitAnalysisMove(tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,

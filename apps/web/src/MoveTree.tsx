@@ -16,16 +16,27 @@ function VariationItem({ item, onSelect, onDelete }: {
   onSelect: MoveTreeProps['onSelect'];
   onDelete: MoveTreeProps['onDelete'];
 }) {
-  return <li className={`variation-item ${item.onPath ? 'on-path' : ''}`}>
-    <div className="move-row">
-      <button type="button" className="move-link" aria-current={item.selected ? 'step' : undefined}
-        onClick={() => onSelect({ kind: 'branch', id: item.id })}>{item.notation}</button>
-      <button type="button" className="delete-variation"
-        aria-label={`Delete variation beginning ${item.notation}`}
-        onClick={() => onDelete(item.id, item.notation)}>Delete</button>
+  const line: VariationView[] = [];
+  let current: VariationView | undefined = item;
+  while (current !== undefined) {
+    line.push(current);
+    current = current.children.length === 1 ? current.children[0] : undefined;
+  }
+  const fork = line.at(-1)?.children ?? [];
+  return <li className={`variation-item ${line.some(move => move.onPath) ? 'on-path' : ''}`}>
+    <div className="variation-line">
+      {line.map((move, index) => <span key={move.id} className={`variation-step ${move.onPath ? 'on-path' : ''}`}>
+        <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
+          aria-label={move.notation}
+          onClick={() => onSelect({ kind: 'branch', id: move.id })}>
+          {index > 0 ? move.notation.replace(/^\d+\.\.\. /, '') : move.notation}</button>
+        <button type="button" className="delete-variation"
+          aria-label={`Delete variation from ${move.notation}`} title={`Delete from ${move.notation}`}
+          onClick={() => onDelete(move.id, move.notation)}>×</button>
+      </span>)}
     </div>
-    {item.children.length > 0 && <ol className="variation-list">
-      {item.children.map(child => <VariationItem key={child.id} item={child}
+    {fork.length > 1 && <ol className="variation-list">
+      {fork.map(child => <VariationItem key={child.id} item={child}
         onSelect={onSelect} onDelete={onDelete} />)}
     </ol>}
   </li>;
