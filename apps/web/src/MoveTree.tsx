@@ -27,9 +27,14 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nagQuery, setNagQuery] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  const touchMenuTimer = useRef<number | null>(null);
+  const suppressTouchSelection = useRef<HTMLElement | null>(null);
   const filteredNagGroups = filterNagGroups(nagQuery);
 
-  useEffect(() => { if (tree === null) setMenu(null); }, [tree?.gameId]);
+  useEffect(() => { if (tree === null) { setMenu(null); cancelTouchMenu(); } }, [tree?.gameId]);
+  useEffect(() => () => {
+    if (touchMenuTimer.current !== null) window.clearTimeout(touchMenuTimer.current);
+  }, []);
 
   useEffect(() => {
     if (menu === null) return;
@@ -63,6 +68,17 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     setMenu(null);
   }
 
+  function cancelTouchMenu() {
+    if (touchMenuTimer.current !== null) window.clearTimeout(touchMenuTimer.current);
+    touchMenuTimer.current = null;
+  }
+
+  function suppressNextTouchClick(trigger: HTMLElement) {
+    suppressTouchSelection.current = trigger;
+    window.setTimeout(() => { if (suppressTouchSelection.current === trigger)
+      suppressTouchSelection.current = null; }, 700);
+  }
+
   function moveButton(move: MoveView, compact = false, lineStart = false) {
     const nag = nagDetails(move.note?.nag);
     if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
@@ -72,15 +88,34 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         && <span className="inline-number">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span>}
       <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
         aria-label={nag ? `${move.notation}, ${nag.description}, PGN $${nag.value}` : move.notation}
-        title={move.cursor.kind === 'main' ? 'Saved game move' : 'Local analysis move'}
+        aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
+        title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
+          if (touchMenuTimer.current !== null) suppressNextTouchClick(event.currentTarget);
+          cancelTouchMenu();
           openMenu(move, event.clientX, event.clientY, event.currentTarget); } }}
-        onClick={() => onSelect(move.cursor)}>{move.san}{nag && <span className="nag-symbol"
+        onTouchStart={event => { if (tree === null) return;
+          const trigger = event.currentTarget;
+          cancelTouchMenu();
+          touchMenuTimer.current = window.setTimeout(() => {
+            touchMenuTimer.current = null;
+            suppressNextTouchClick(trigger);
+            const rect = trigger.getBoundingClientRect();
+            openMenu(move, rect.left, rect.bottom, trigger);
+          }, 550);
+        }}
+        onTouchMove={cancelTouchMenu} onTouchEnd={cancelTouchMenu} onTouchCancel={cancelTouchMenu}
+        onKeyDown={event => { if (tree !== null && (event.key === 'ContextMenu'
+          || event.key === 'F10' && event.shiftKey)) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          openMenu(move, rect.left, rect.bottom, event.currentTarget);
+        } }}
+        onClick={event => { if (suppressTouchSelection.current === event.currentTarget) {
+          suppressTouchSelection.current = null; return;
+        }
+          onSelect(move.cursor); }}>{move.san}{nag && <span className="nag-symbol"
           title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}</button>
-      {tree !== null && <button type="button" className="move-options"
-        aria-label={`Options for ${move.notation}`} title={`Options for ${move.notation}`}
-        onClick={event => { const rect = event.currentTarget.getBoundingClientRect();
-          openMenu(move, rect.left, rect.bottom, event.currentTarget); }}>⋯</button>}
       {move.note?.comment && <span className="move-comment" title={move.note.comment}>
         {move.note.comment}</span>}
     </span>;
@@ -131,7 +166,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     </li>)}</ol>;
   }
 
-  return <nav className={`moves${tree !== null ? ' analysis-moves' : ''}`}
+  return <nav className={`moves${tree !== null ? ' analysis-moves' : ''}${!interactive ? ' live-moves' : ''}`}
     aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
     <h3>Moves</h3>
     {interactive && <button type="button" className="move-link start-link"

@@ -746,7 +746,6 @@ export function App() {
                   </div>
                   {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
-                {replaying && !analysisOpen && <p className="move-legend">Saved line</p>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   selected={analysisOpen && analysis !== null ? analysis.cursor

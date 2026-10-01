@@ -53,6 +53,8 @@ describe('analysis move list', () => {
     expect(html).toMatch(/aria-label="1\. d4"[\s\S]*aria-label="1\.\.\. d5"[\s\S]*aria-label="2\. Nc3"/);
     expect(html).toContain('aria-current="step" aria-label="2. Nc3"');
     expect(html).not.toContain('delete-variation');
+    expect(html).not.toContain('move-options');
+    expect(html).not.toContain('⋯');
     const nf6 = play(game, nc3, 'g8', 'f6');
     const fork = play(game, selectBranch(nf6, 3), 'c7', 'c6');
     const forkHtml = markup(game, fork);
@@ -97,8 +99,10 @@ describe('analysis move list', () => {
     const game = savedGame();
     const branch = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');
     expect(markup(game, branch)).toContain('class="moves analysis-moves"');
+    expect(markup(game, branch)).toContain('aria-keyshortcuts="Shift+F10"');
+    expect(markup(game, branch)).toContain('Right-click, long-press, or press Shift+F10 for analysis options');
     expect(markup({ ...game, status: 'active', result: null }, null, false))
-      .toContain('class="moves"');
+      .toContain('class="moves live-moves"');
   });
 
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
@@ -122,5 +126,6 @@ describe('analysis move list', () => {
     expect(html).toContain('>e4</span>');
     expect(html).toContain('>e5</span>');
     expect(html).not.toContain('<button');
+    expect(html).not.toContain('aria-current');
   });
 });
