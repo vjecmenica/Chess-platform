@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -103,6 +104,27 @@ describe('analysis move list', () => {
     expect(markup(game, branch)).toContain('Right-click, long-press, or press Shift+F10 for analysis options');
     expect(markup({ ...game, status: 'active', result: null }, null, false))
       .toContain('class="moves live-moves"');
+  });
+
+  it('keeps the current saved move and its path free of green fills and borders', () => {
+    const position = createPosition();
+    for (const [side, from, to] of [
+      ['white', 'd2', 'd4'], ['black', 'd7', 'd5'],
+      ['white', 'c2', 'c4'], ['black', 'e7', 'e6'],
+    ] as const) position.submitMove({ side, from, to });
+    const game = { ...savedGame(0), version: 4, position: position.getPosition(),
+      history: position.getHistory() };
+    const html = markup(game, null);
+    expect(html).toContain('class="moves saved-replay-moves"');
+    expect(html).toContain('aria-current="step" aria-label="2... e6"');
+    expect(html).toContain('class="move-entry saved-move on-path"');
+    expect(html).toContain('>e6</button>');
+
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    const replayRule = css.match(/\.saved-replay-moves \.move-link\[aria-current="step"\],\s*\.saved-replay-moves \.move-entry\.on-path > \.move-link\s*\{([^}]*)\}/)?.[1];
+    expect(replayRule).toMatch(/background:\s*transparent/);
+    expect(replayRule).toMatch(/box-shadow:\s*none/);
+    expect(replayRule).toMatch(/border:\s*0/);
   });
 
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {

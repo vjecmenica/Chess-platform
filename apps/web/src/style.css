@@ -127,8 +127,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .move-entry.local-move > .move-link { text-decoration: underline dotted #82937e; text-underline-offset: 3px; }
 .move-link { display: inline-flex; align-items: center; min-height: 34px; min-width: 0; padding: 5px 8px; border: 0; background: transparent; color: #143d30; font-weight: 600; text-align: left; white-space: normal; }
 .move-link:hover { text-decoration: underline; }
-.move-link[aria-current="step"] { background: #d8e6cf; box-shadow: inset 0 0 0 1px #143d30; }
-.move-entry.on-path > .move-link:not([aria-current="step"]) { background: #f0f5ec; }
+.saved-replay-moves .move-link[aria-current="step"],
+.saved-replay-moves .move-entry.on-path > .move-link { background: transparent; box-shadow: none; border: 0; }
 .analysis-moves .move-entry.on-path > .move-link,
 .analysis-moves .move-link[aria-current="step"] { background: transparent; box-shadow: none; }
 .analysis-moves .move-pair-row .move-link { max-width: 100%; padding-inline: 5px; overflow: hidden; }
