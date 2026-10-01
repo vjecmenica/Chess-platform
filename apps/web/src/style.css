@@ -139,10 +139,14 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .comment-editor { display: grid; gap: 5px; }
 .comment-editor textarea { min-height: 70px; resize: vertical; }
 .menu-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.nag-options { border-top: 1px solid #d2d9cb; margin-top: 4px; padding-top: 4px; }
+.nag-options { border-top: 1px solid #d2d9cb; margin-top: 4px; padding-top: 4px; display: grid; gap: 5px; }
+.nag-options input { width: 100%; min-height: 32px; }
 .nag-options h4 { font-size: 12px; margin: 7px 0 3px; }
-.nag-grid { display: flex; flex-wrap: wrap; gap: 4px; }
-.nag-grid button { min-width: 35px; text-align: center; padding: 3px 5px; font-family: Arial, 'Segoe UI Symbol', sans-serif; }
+.nag-grid { display: grid; gap: 4px; }
+.nag-grid button { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 5px;
+  text-align: left; padding: 3px 5px; }
+.nag-glyph { font-family: Arial, 'Segoe UI Symbol', sans-serif; font-weight: 700; }
+.nag-description { font-size: 12px; }
 .nag-grid button[aria-pressed="true"] { background: #d8e6cf; border-color: #143d30; }
 .replay { margin: 0 0 8px; padding: 8px; border: 1px solid #b8c7b5; border-radius: 8px; background: #f4f6ef; }
 .replay-position { margin: 0 0 7px; font-size: 13px; font-weight: 600; }

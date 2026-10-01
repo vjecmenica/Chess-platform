@@ -24,7 +24,7 @@ function rejectedWithoutChange(game: ChessGame, side: 'white' | 'black', reason:
 
 describe('draw offer eligibility', () => {
   it('requires two played half-moves for either player', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.getDrawOfferNextEligiblePly()).toEqual({ white: 2, black: 2 });
     for (const ply of [0, 1]) {
       expect(game.getHistory()).toHaveLength(ply);
@@ -36,7 +36,7 @@ describe('draw offer eligibility', () => {
   });
 
   it('starts an independent 21-ply cooldown from each accepted offer, even after decline', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     playPawnMovesTo(game, 2);
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     expect(game.declineDraw({ side: 'black' }).accepted).toBe(true);
@@ -54,7 +54,7 @@ describe('draw offer eligibility', () => {
   });
 
   it('retains cooldown after an offer expires on the opponent move', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     playPawnMovesTo(game, 2);
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     playPawnMovesTo(game, 3);
@@ -66,7 +66,7 @@ describe('draw offer eligibility', () => {
   });
 
   it('can replay an older accepted early offer without allowing another early offer', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.replayAcceptedDrawOffer({ side: 'white' }).accepted).toBe(true);
     expect(game.declineDraw({ side: 'black' }).accepted).toBe(true);
     expect(game.getDrawOfferNextEligiblePly()).toEqual({ white: 21, black: 2 });

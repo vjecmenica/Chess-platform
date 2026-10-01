@@ -78,7 +78,7 @@ async function loadGame(client: pg.PoolClient, id: string): Promise<GameRow | nu
 
 async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGame> {
   if (row.starting_fen !== STANDARD_STARTING_FEN) throw new Error('Unsupported saved starting position.');
-  const game = createGame();
+  const game = createGame('casual_concession');
   const { rows } = await client.query<StoredMove>(
     'SELECT ply, record FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [row.id],
   );

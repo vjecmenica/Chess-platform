@@ -127,6 +127,25 @@ describe('finished-game analysis tree', () => {
       .toThrow('Unsupported PGN annotation');
   });
 
+  it('keeps every annotation group independent of comments, selection, and other branches', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const first = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
+    const sibling = play(game, selectMain(first, game, 0), 'c2', 'c4');
+    let tree = setMoveNote(sibling, { kind: 'branch', id: 1 },
+      { comment: 'Candidate', nag: 8 });
+    tree = setMoveNote(tree, { kind: 'branch', id: 2 }, { nag: 94 });
+    tree = setMoveNote(tree, { kind: 'main', ply: 1 }, { nag: 139 });
+    tree = promoteVariation(tree, 1);
+    tree = selectMain(tree, game, 1);
+    expect(restoreAnalysis(game, serializeAnalysis(tree))).toEqual(tree);
+    const pruned = deleteVariation(tree, 2);
+    expect(pruned.notes.b1).toEqual({ comment: 'Candidate', nag: 8 });
+    expect(pruned.notes.m1).toEqual({ nag: 139 });
+    const cleared = setMoveNote(pruned, { kind: 'branch', id: 1 }, { nag: undefined });
+    expect(cleared.notes.b1).toEqual({ comment: 'Candidate' });
+    expect(restoreAnalysis(game, serializeAnalysis(cleared))).toEqual(cleared);
+  });
+
   it('promotes nested ancestors so the chosen continuation becomes the local main line', () => {
     const game = finishedAt(afterE4, [savedE4]);
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');

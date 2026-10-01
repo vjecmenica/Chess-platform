@@ -40,7 +40,7 @@ The position API checks legality without enforcing game status. It remains suita
 
 ## Game API
 
-`createGame()` creates an independent active game and privately owns its position. Callers cannot bypass completion checks by accessing that position.
+`createGame('casual_concession')` creates an independent active guest game and privately owns its position. Callers must select a resignation policy; `fide_proof_required` keeps unresolved resignations pending for a future competitive adjudicator. Callers cannot bypass completion checks by accessing the position.
 
 `getState()` returns a detached snapshot with `position`, `status`, `result`, and `drawOffer`. An active snapshot has a null result and an optional offerer's side. An unresolved timeout has status `pending_adjudication`, a null result, no offer, and the flagged side and effective deadline. A finished snapshot has a result and no offer; one resolved by a mate line also carries its `adjudication` ruling. `getHistory()` returns the same ordered, detached move records as the position API.
 
@@ -60,7 +60,7 @@ Rejections return `{ accepted: false, reason, message }` and preserve all state.
 ```ts
 import { createGame } from '@chess/domain';
 
-const game = createGame();
+const game = createGame('casual_concession');
 game.submitMove({ side: 'white', from: 'e2', to: 'e4' });
 game.submitMove({ side: 'black', from: 'e7', to: 'e5' });
 game.offerDraw({ side: 'white' });
@@ -76,14 +76,14 @@ An invalid side, wrong turn, unknown rule (`invalid_claim`), invalid intended mo
 
 `getMatingPossibility(side)` returns `impossible` for a sound negative proof, `possible` for a verified immediate checkmate by that side, or `unresolved`. Automatic dead-position draws need impossibility for both sides; resignation and timeout check only the opponent. The [detector coverage](../../docs/game-rules.md#mating-possibility-resignation-and-timeout) includes material proofs and closed pawn positions, but misses other fortresses or forced continuations.
 
-Resignation finishes immediately under the casual concession policy. A sound proof that the opponent cannot mate makes it a draw; otherwise the opponent wins, including when the detector is inconclusive. This is deliberately narrower than an exact FIDE impossibility decision. `resolveResignation` remains in the domain API for older callers but no new resignation enters its pending state. The [online decision](../../docs/adjudication-design.md) explains the policy and its limit.
+Resignation finishes immediately under the explicit `casual_concession` policy. A sound proof that the opponent cannot mate makes it a draw; otherwise the opponent wins, including when the detector is inconclusive. This is deliberately narrower than an exact FIDE impossibility decision. Under `fide_proof_required`, an unresolved resignation freezes play pending a verified mate witness; the server does not yet support this mode. The [online decision](../../docs/adjudication-design.md) explains the policy and its limit.
 
-The legacy `findResignationMateWitness` helper now returns `not_pending` after a normal resignation. Its bounded search is not part of the live resignation path. `findTimeoutMateWitness` remains available for future pending-timeout work; search exhaustion never proves mate impossible.
+The legacy `findResignationMateWitness` helper returns `not_pending` after a casual resignation but can inspect a pending resignation under `fide_proof_required`. Its bounded search is not part of the live resignation path. `findTimeoutMateWitness` remains available for future pending-timeout work; search exhaustion never proves mate impossible.
 
 ```ts
 import { createGame } from '@chess/domain';
 
-const game = createGame();
+const game = createGame('casual_concession');
 game.resign({ side: 'white' });
 const result = game.getState().result; // Black wins unless impossibility was proven.
 ```
@@ -92,11 +92,11 @@ This example is an in-memory domain flow. The server authorizes and orders the a
 
 `flagTimeout({ flaggedSide, deadlineMs, mateLine? })` is a trusted clock command. It accepts only the side to move and a nonnegative integer deadline. A sound no-mate proof draws immediately; a verified optional mate line awards the opponent a timeout win. Otherwise it freezes the game with a pending timeout. `verifyMateLine(winner, line)` can validate a candidate before a flag without changing state. `findTimeoutMateWitness` searches only a pending timeout, away from live clock processing; `resolveTimeout({ verdict: 'mate_possible', mateLine })` rechecks the line and finishes it. An invalid line or exhausted search never approves a draw. The result and pending snapshot retain the flagged side and effective deadline.
 
-`createGame()` still starts only from the standard position. The internal FEN fixture factory is not part of the package API and cannot restore repetition history; production restoration will need the complete move history.
+`createGame(policy)` still starts only from the standard position. The internal FEN fixture factory is not part of the package API and cannot restore repetition history; production restoration needs the complete move history.
 
 ## 5+3 clock foundation
 
-`createTimedGame({ nowMs })` owns a game and two clocks with 300,000 milliseconds each and a 3,000 millisecond increment. The time source must return nondecreasing integer milliseconds from a server monotonic clock. The clock starts when `markReady` has been called for both authorized seats; the second readiness call starts White's turn at its time reading. Repeating readiness does not reset anything. Before that, neither clock runs and commands cannot play a move.
+`createTimedGame({ nowMs }, createGame('casual_concession'))` owns a game and two clocks with 300,000 milliseconds each and a 3,000 millisecond increment. The time source must return nondecreasing integer milliseconds from a server monotonic clock. The clock starts when `markReady` has been called for both authorized seats; the second readiness call starts White's turn at its time reading. Repeating readiness does not reset anything. Before that, neither clock runs and commands cannot play a move.
 
 `receiveMove(commandId, move)` and `receiveResignation(commandId, { side })` stamp and queue commands in receipt order. `processNext()` handles the oldest receipt. The mover's clock stops at its receipt time on an accepted move, loses the elapsed time, and gains exactly one increment. The opponent's turn begins at the processing/confirmation time, so server work between receipt and confirmation is charged to neither player. Rejected moves add no increment and do not restart the turn. An accepted resignation, checkmate, draw, or pending adjudication stops both clocks at the command receipt; resignation adds no increment. A terminal move still earns its increment.
 

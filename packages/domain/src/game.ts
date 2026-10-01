@@ -6,6 +6,8 @@ export interface SideCommand {
   readonly side: Side;
 }
 
+export type ResignationPolicy = 'casual_concession' | 'fide_proof_required';
+
 export type GameResult =
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'checkmate' | 'resignation' }
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'timeout';
@@ -107,12 +109,13 @@ function reject(reason: GameRejection): Rejected<GameRejection> {
   return { accepted: false, reason, message: messages[reason] };
 }
 
-export function createGame(): ChessGame {
-  return createGameFromPosition(STANDARD_STARTING_FEN);
+export function createGame(resignationPolicy: ResignationPolicy): ChessGame {
+  return createGameFromPosition(STANDARD_STARTING_FEN, resignationPolicy);
 }
 
 // Internal setup for rule fixtures. Not exported by the package; no history is inferred from FEN.
-export function createGameFromPosition(startingFen: string): ChessGame {
+export function createGameFromPosition(startingFen: string,
+  resignationPolicy: ResignationPolicy = 'casual_concession'): ChessGame {
   const board = createPositionAdapter(startingFen);
   const position = board.position;
   let result: GameResult | null = null;
@@ -181,7 +184,7 @@ export function createGameFromPosition(startingFen: string): ChessGame {
   function verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean {
     if (result !== null || winner !== 'white' && winner !== 'black' || !Array.isArray(mateLine)
       || mateLine.length === 0 || mateLine.length > 256) return false;
-    const replay = createGameFromPosition(startingFen);
+    const replay = createGameFromPosition(startingFen, resignationPolicy);
     for (const move of position.getHistory()) {
       if (!replay.submitMove(move).accepted) return false;
     }
@@ -263,11 +266,15 @@ export function createGameFromPosition(startingFen: string): ChessGame {
       if (rejection) return rejection;
       const winner = command.side === 'white' ? 'black' : 'white';
       const possibility = board.matingPossibility(winner);
-      // Casual resignation policy: only a proven impossibility overrides the concession.
-      // An inconclusive mating search is neither a negative proof nor a reason to freeze play.
-      finish(possibility === 'impossible'
-        ? { outcome: 'draw', reason: 'resignation_no_mating_possibility' }
-        : { outcome: 'win', winner, reason: 'resignation' });
+      if (possibility === 'impossible') {
+        finish({ outcome: 'draw', reason: 'resignation_no_mating_possibility' });
+      } else if (possibility === 'possible' || resignationPolicy === 'casual_concession') {
+        // Casual games treat an unresolved mating query as a concession, not as a proof.
+        finish({ outcome: 'win', winner, reason: 'resignation' });
+      } else {
+        pendingResignation = command.side;
+        drawOffer = null;
+      }
       return { accepted: true, game: getState() };
     },
     flagTimeout(command) {

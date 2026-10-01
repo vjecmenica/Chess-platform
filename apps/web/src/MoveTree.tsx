@@ -3,7 +3,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
-import { nagDetails, nagGroups } from './pgn-nags';
+import { filterNagGroups, nagDetails } from './pgn-nags';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -25,7 +25,9 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [nagQuery, setNagQuery] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  const filteredNagGroups = filterNagGroups(nagQuery);
 
   useEffect(() => { if (tree === null) setMenu(null); }, [tree?.gameId]);
 
@@ -53,6 +55,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     setComment(move.note?.comment ?? '');
     setEditing(false);
     setConfirmDelete(false);
+    setNagQuery('');
   }
 
   function closeMenu() {
@@ -68,7 +71,8 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
       {compact && (move.ply % 2 === 1 || lineStart)
         && <span className="inline-number">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span>}
       <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
-        aria-label={move.notation} title={move.cursor.kind === 'main' ? 'Saved game move' : 'Local analysis move'}
+        aria-label={nag ? `${move.notation}, ${nag.description}, PGN $${nag.value}` : move.notation}
+        title={move.cursor.kind === 'main' ? 'Saved game move' : 'Local analysis move'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
           openMenu(move, event.clientX, event.clientY, event.currentTarget); } }}
         onClick={() => onSelect(move.cursor)}>{move.san}{nag && <span className="nag-symbol"
@@ -162,14 +166,20 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           <button type="button" onClick={() => {
             onNote?.(menu.move.cursor, { nag: undefined }); closeMenu();
           }}>Clear annotation</button>
-          {nagGroups.map(group => <section key={group.label} aria-label={group.label}>
+          <label htmlFor="nag-search">Search annotations</label>
+          <input id="nag-search" type="search" value={nagQuery}
+            placeholder="Description, symbol, or PGN number"
+            onChange={event => setNagQuery(event.target.value)} />
+          {filteredNagGroups.map(group => <section key={group.label} aria-label={group.label}>
             <h4>{group.label}</h4><div className="nag-grid">{group.options.map(option =>
               <button key={option.value} type="button" title={`${option.description} (PGN $${option.value})`}
                 aria-label={`${option.description}, ${option.glyph}, PGN $${option.value}`}
                 aria-pressed={menu.move.note?.nag === option.value}
                 onClick={() => { onNote?.(menu.move.cursor, { nag: option.value }); closeMenu(); }}>
-                {option.glyph}</button>)}</div>
+                <span className="nag-glyph">{option.glyph}</span>
+                <span className="nag-description">{option.description}</span></button>)}</div>
           </section>)}
+          {filteredNagGroups.length === 0 && <p>No matching annotations.</p>}
         </div>
       </>}
     </div>}

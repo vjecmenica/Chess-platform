@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTimedGame, FIVE_PLUS_THREE, type TimedGame } from '../src/index.js';
+import { createGame, createTimedGame, FIVE_PLUS_THREE, type TimedGame } from '../src/index.js';
 import { createGameFromPosition } from '../src/game.js';
 
 class TestTime {
@@ -10,7 +10,7 @@ class TestTime {
 
 function started() {
   const time = new TestTime();
-  const game = createTimedGame(time);
+  const game = createTimedGame(time, createGame('casual_concession'));
   game.markReady('white');
   game.markReady('black');
   return { time, game };
@@ -26,7 +26,7 @@ function move(game: TimedGame, id: string, side: 'white' | 'black', from: string
 describe('5+3 clock ownership', () => {
   it('starts White only when both sides are ready and adds one increment per accepted move', () => {
     const time = new TestTime();
-    const game = createTimedGame(time);
+    const game = createTimedGame(time, createGame('casual_concession'));
     expect(game.getState().clock).toMatchObject({ phase: 'waiting', remainingMs: {
       white: FIVE_PLUS_THREE.initialMs, black: FIVE_PLUS_THREE.initialMs,
     } });

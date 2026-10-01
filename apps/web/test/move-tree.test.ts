@@ -73,6 +73,16 @@ describe('analysis move list', () => {
     expect(html).toContain('!?');
   });
 
+  it('shows a less familiar PGN value after its move with a readable description', () => {
+    const game = savedGame();
+    const branch = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');
+    const noted = setMoveNote(branch, branch.cursor, { comment: 'Time trouble', nag: 139 });
+    const html = markup(game, noted);
+    expect(html).toContain('Black has severe time control pressure, PGN $139');
+    expect(html).toContain('>$139</span>');
+    expect(html).toContain('Time trouble');
+  });
+
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
     const game = savedGame();
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');

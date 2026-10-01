@@ -23,13 +23,13 @@ const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 
 describe('repetition thresholds and claims', () => {
   it('counts identical positions reached by different move sequences', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...cycle, 'b1c3', 'b8c6', 'c3b1', 'c6b8');
     expect(game.claimDraw({ side: 'white', rule: 'threefold_repetition' }).accepted).toBe(true);
   });
 
   it('counts the starting position and ends automatically on occurrence five, not four', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     for (let i = 0; i < 3; i++) play(game, ...cycle);
     expect(game.getState().status).toBe('active');
     expect(game.offerDraw({ side: 'black' }).accepted).toBe(true);
@@ -45,7 +45,7 @@ describe('repetition thresholds and claims', () => {
   });
 
   it('rejects occurrence two, then permits the current third position without requiring an offer', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...cycle);
     unchanged(game, () => game.claimDraw({ side: 'white', rule: 'threefold_repetition' }), 'claim_not_available');
     play(game, ...cycle);
@@ -58,7 +58,7 @@ describe('repetition thresholds and claims', () => {
   });
 
   it('accepts an intended third occurrence without playing it or changing the turn', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...cycle, ...cycle.slice(0, 3));
     unchanged(game, () => game.claimDraw({ side: 'black', rule: 'threefold_repetition' }), 'claim_not_available');
     const position = game.getState().position;
@@ -71,7 +71,7 @@ describe('repetition thresholds and claims', () => {
   });
 
   it('does not count previews from rejected claims as occurrences', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...cycle.slice(0, 3));
     for (let i = 0; i < 5; i++) unchanged(game, () => game.claimDraw({
       side: 'black', rule: 'threefold_repetition', intendedMove: { from: 'f6', to: 'g8' },
@@ -289,7 +289,7 @@ describe('mating possibility and dead positions', () => {
   });
 
   it('finishes a normal resignation without treating an inconclusive mate search as a draw', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.getMatingPossibility('white')).toBe('unresolved');
     expect(game.getMatingPossibility('black')).toBe('unresolved');
     expect(game.resign({ side: 'white' })).toMatchObject({ accepted: true,
@@ -301,7 +301,7 @@ describe('mating possibility and dead positions', () => {
   });
 
   it('finishes a middlegame resignation and preserves its history', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     const position = game.getState().position;
@@ -316,7 +316,7 @@ describe('mating possibility and dead positions', () => {
   });
 
   it('cannot resolve an active game as though it had a pending resignation', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     unchanged(game, () => game.resolveResignation({ verdict: 'mate_possible', mateLine: [] }),
       'no_pending_resignation');
   });
@@ -344,7 +344,7 @@ describe('invalid claims', () => {
     { command: { side: 'white', rule: 'fifty_move', intendedMove: { from: 'z2', to: 'e4' } }, reason: 'invalid_input' },
     { command: { side: 'white', rule: 'fifty_move', intendedMove: { from: 'e2', to: 'e4' } }, reason: 'claim_not_available' },
   ])('preserves all state, including a pending offer: $reason', ({ command, reason }) => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.replayAcceptedDrawOffer({ side: 'black' }).accepted).toBe(true);
     unchanged(game, () => game.claimDraw(command as DrawClaim), reason);
   });

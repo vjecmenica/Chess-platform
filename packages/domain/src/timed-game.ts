@@ -1,4 +1,3 @@
-import { createGame } from './game.js';
 import type { ChessGame, CommandResult, GameMoveResult, GameSnapshot, MateRuling, SideCommand } from './game.js';
 import type { MoveRequest, Side } from './position.js';
 
@@ -84,7 +83,7 @@ function rejected(reason: 'clock_not_started' | 'received_before_turn' | 'flag_f
 }
 
 /** Owns one domain game. Callers must not mutate the transferred game directly. */
-export function createTimedGame(time: MonotonicTimeSource, game: ChessGame = createGame()): TimedGame {
+export function createTimedGame(time: MonotonicTimeSource, game: ChessGame): TimedGame {
   const ready: Record<Side, boolean> = { white: false, black: false };
   const remainingMs: Record<Side, number> = {
     white: FIVE_PLUS_THREE.initialMs, black: FIVE_PLUS_THREE.initialMs,

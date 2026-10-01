@@ -29,7 +29,7 @@ describe('timeout adjudication', () => {
   });
 
   it('awards a win from a verified cooperative mate line without playing it', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.verifyMateLine('black', foolsMate)).toBe(true);
     expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 42, mateLine: foolsMate }))
       .toMatchObject({ accepted: true, game: { status: 'finished', result: {
@@ -40,7 +40,7 @@ describe('timeout adjudication', () => {
   });
 
   it('freezes an unresolved flag and accepts only a verified later ruling', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.replayAcceptedDrawOffer({ side: 'black' }).accepted).toBe(true);
     expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 300000,
       mateLine: [{ from: 'e2', to: 'e4' }] })).toMatchObject({
@@ -68,7 +68,7 @@ describe('timeout adjudication', () => {
   });
 
   it('does not mistake search exhaustion for impossibility', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 10 }).accepted).toBe(true);
     const before = game.getState();
     expect(findTimeoutMateWitness(game, { maxNodes: 1 })).toEqual({
@@ -78,7 +78,7 @@ describe('timeout adjudication', () => {
   });
 
   it('rejects invalid timeout metadata without changing state', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     unchanged(game, () => game.flagTimeout({ flaggedSide: 'black', deadlineMs: 10 }), 'invalid_timeout');
     unchanged(game, () => game.flagTimeout({ flaggedSide: 'white', deadlineMs: -1 }), 'invalid_timeout');
     unchanged(game, () => game.flagTimeout({ flaggedSide: 'white', deadlineMs: 1.5 }), 'invalid_timeout');

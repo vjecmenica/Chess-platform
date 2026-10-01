@@ -30,7 +30,7 @@ const stalemateMoves = [
 
 describe('game lifecycle', () => {
   it('starts active with a standard board, no offer, no result, and no history', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     expect(game.getState()).toEqual({
       status: 'active', result: null, drawOffer: null,
       position: { fen: STANDARD_STARTING_FEN, sideToMove: 'white' },
@@ -42,7 +42,7 @@ describe('game lifecycle', () => {
     { winner: 'black', moves: ['f2f3', 'e7e5', 'g2g4', 'd8h4'] },
     { winner: 'white', moves: ['e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6', 'h5f7'] },
   ])('finishes with checkmate by $winner and retains the final move', ({ winner, moves }) => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...moves.slice(0, -1));
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     const uci = moves.at(-1)!;
@@ -58,7 +58,7 @@ describe('game lifecycle', () => {
   });
 
   it('finishes automatically on stalemate and keeps its final move', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...stalemateMoves.slice(0, -1));
     expect(game.getState().status).toBe('active');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
@@ -75,7 +75,7 @@ describe('game lifecycle', () => {
     { side: 'white' as const, moves: ['f2f3', 'e7e5', 'g2g4'] },
     { side: 'black' as const, moves: ['e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6'] },
   ])('allows $side to resign when a mate is demonstrably possible', ({ side, moves }) => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, ...moves);
     const board = game.getState().position;
     expect(game.resign({ side })).toMatchObject({
@@ -87,15 +87,15 @@ describe('game lifecycle', () => {
   });
 
   it('does not automatically finish on a threefold repetition', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     for (let i = 0; i < 2; i++) play(game, 'g1f3', 'g8f6', 'f3g1', 'f6g8');
     expect(game.getHistory()).toHaveLength(8);
     expect(game.getState()).toMatchObject({ status: 'active', result: null });
   });
 
   it('returns detached state, result, and history and isolates game instances', () => {
-    const game = createGame();
-    const other = createGame();
+    const game = createGame('casual_concession');
+    const other = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5', 'f1c4', 'b8c6', 'd1h5', 'g8f6');
     const move = game.getHistory()[0]!;
     Object.assign(move, { san: 'changed', from: 'a1' });
@@ -116,7 +116,7 @@ describe('game lifecycle', () => {
 
 describe('draw agreement', () => {
   it.each(['white', 'black'] as const)('accepts an offer from %s only through the other side', side => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     const board = game.getState().position;
     const history = game.getHistory();
@@ -131,7 +131,7 @@ describe('draw agreement', () => {
   });
 
   it('rejects offers before both players have moved, then permits agreement', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     rejectUnchanged(game, () => game.offerDraw({ side: 'white' }), 'draw_offer_too_early');
     rejectUnchanged(game, () => game.offerDraw({ side: 'black' }), 'draw_offer_too_early');
     play(game, 'e2e4');
@@ -144,7 +144,7 @@ describe('draw agreement', () => {
   });
 
   it('rejects responses without an offer, self-responses, and duplicate or crossed offers', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     rejectUnchanged(game, () => game.acceptDraw({ side: 'black' }), 'no_draw_offer');
     rejectUnchanged(game, () => game.declineDraw({ side: 'white' }), 'no_draw_offer');
@@ -157,7 +157,7 @@ describe('draw agreement', () => {
   });
 
   it('declines without ending the game and permits a later offer', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     const before = game.getState();
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
@@ -167,7 +167,7 @@ describe('draw agreement', () => {
   });
 
   it('preserves an offer through the offerer’s move and all rejected moves, then declines on the recipient’s move', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     play(game, 'g1f3');
@@ -184,7 +184,7 @@ describe('draw agreement', () => {
 const sideMethods = ['resign', 'offerDraw', 'acceptDraw', 'declineDraw'] as const;
 describe('invalid acting sides', () => {
   it.each(sideMethods)('rejects invalid and missing sides for %s without changing an offer', method => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     play(game, 'e2e4', 'e7e5');
     expect(game.offerDraw({ side: 'white' }).accepted).toBe(true);
     for (const command of [{ side: 'spectator' }, {}]) {
@@ -193,7 +193,7 @@ describe('invalid acting sides', () => {
   });
 
   it('rejects a move from an invalid side', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     rejectUnchanged(game, () => game.submitMove({ side: 'spectator' as Side, from: 'e2', to: 'e4' }), 'invalid_side');
   });
 });
@@ -217,7 +217,7 @@ const endings: { name: string; finish: (game: ChessGame) => void; result: GameRe
 
 describe.each(endings)('after $name', ({ finish, result }) => {
   it('rejects all move and result commands, including terminal retries, without changing state', () => {
-    const game = createGame();
+    const game = createGame('casual_concession');
     finish(game);
     expect(game.getState()).toMatchObject({ status: 'finished', result, drawOffer: null });
     for (const side of ['white', 'black'] as const) {
