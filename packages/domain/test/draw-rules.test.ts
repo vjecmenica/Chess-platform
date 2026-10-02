@@ -22,6 +22,33 @@ const cycle = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 
 describe('repetition thresholds and claims', () => {
+  it('records an incorrect current-position claim as an offer without changing the board', () => {
+    const game = createGame('casual_concession');
+    play(game, 'e2e4', 'e7e5');
+    expect(game.offerDraw({ side: 'black' }).accepted).toBe(true);
+    const position = game.getState().position;
+    const claim = game.recordIncorrectDrawClaim({ side: 'white', rule: 'threefold_repetition' });
+    expect(claim).toMatchObject({ accepted: true, game: {
+      drawOffer: 'black', claimDrawOffer: 'white', position } });
+    expect(game.getHistory()).toHaveLength(2);
+    expect(game.acceptDraw({ side: 'black' })).toMatchObject({ accepted: true,
+      game: { status: 'finished', result: { outcome: 'draw', reason: 'agreement' } } });
+  });
+
+  it('plays an incorrect intended move once and retains its claim offer', () => {
+    const game = createGame('casual_concession');
+    const invalid = game.recordIncorrectDrawClaim({ side: 'white', rule: 'fifty_move',
+      intendedMove: { from: 'e2', to: 'e5' } });
+    expect(invalid).toMatchObject({ accepted: false, reason: 'illegal_move' });
+    expect(game.getHistory()).toHaveLength(0);
+    const claim = game.recordIncorrectDrawClaim({ side: 'white', rule: 'fifty_move',
+      intendedMove: { from: 'e2', to: 'e4' } });
+    expect(claim).toMatchObject({ accepted: true, move: { ply: 1, san: 'e4' },
+      game: { claimDrawOffer: 'white', position: { sideToMove: 'black' } } });
+    expect(game.getHistory()).toHaveLength(1);
+    play(game, 'e7e5');
+    expect(game.getState()).toMatchObject({ claimDrawOffer: null });
+  });
   it('counts identical positions reached by different move sequences', () => {
     const game = createGame('casual_concession');
     play(game, ...cycle, 'b1c3', 'b8c6', 'c3b1', 'c6b8');

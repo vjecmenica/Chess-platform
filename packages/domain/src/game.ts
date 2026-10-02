@@ -23,11 +23,14 @@ export interface TimeoutDetails {
 }
 
 export type GameSnapshot = { readonly position: PositionSnapshot } & (
-  | { readonly status: 'active'; readonly result: null; readonly drawOffer: Side | null }
+  | { readonly status: 'active'; readonly result: null; readonly drawOffer: Side | null;
+      readonly claimDrawOffer: Side | null }
   | { readonly status: 'pending_adjudication'; readonly result: null; readonly drawOffer: null;
+      readonly claimDrawOffer: null;
       readonly pending: { readonly kind: 'resignation'; readonly resigningSide: Side }
         | ({ readonly kind: 'timeout' } & TimeoutDetails) }
   | { readonly status: 'finished'; readonly result: GameResult; readonly drawOffer: null;
+      readonly claimDrawOffer: null;
       readonly adjudication?: MateRuling }
 );
 
@@ -57,6 +60,9 @@ export interface DrawClaim extends SideCommand {
 export type ClaimResult =
   | { readonly accepted: true; readonly game: GameSnapshot }
   | Rejected<GameRejection | MoveRejection>;
+export type IncorrectClaimResult =
+  | { readonly accepted: true; readonly game: GameSnapshot; readonly move?: MoveRecord }
+  | Rejected<GameRejection | MoveRejection>;
 
 type Rejected<R extends string> = { readonly accepted: false; readonly reason: R; readonly message: string };
 export type CommandResult =
@@ -72,6 +78,8 @@ export interface ChessGame {
   getDrawOfferNextEligiblePly(): Readonly<Record<Side, number>>;
   getMatingPossibility(side: Side): MatingPossibility;
   claimDraw(command: DrawClaim): ClaimResult;
+  /** Records the consequences of a legally formed claim whose threshold was not met. */
+  recordIncorrectDrawClaim(command: DrawClaim): IncorrectClaimResult;
   submitMove(request: MoveRequest): GameMoveResult;
   resign(command: SideCommand): CommandResult;
   flagTimeout(command: TimeoutCommand): CommandResult;
@@ -123,21 +131,26 @@ export function createGameFromPosition(startingFen: string,
   let pendingTimeout: TimeoutDetails | null = null;
   let adjudication: MateRuling | null = null;
   let drawOffer: Side | null = null;
+  let claimDrawOffer: Side | null = null;
   let ply = 0;
   const lastOfferPly: Record<Side, number | null> = { white: null, black: null };
   const occurrences = new Map([[board.repetitionKey(), 1]]);
 
   const getState = (): GameSnapshot => {
     if (result !== null) return { status: 'finished', result: { ...result }, drawOffer: null,
+      claimDrawOffer: null,
       ...(adjudication === null ? {} : { adjudication: { verdict: 'mate_possible' as const,
         mateLine: adjudication.mateLine.map(move => ({ ...move })) } }),
       position: position.getPosition() };
     if (pendingResignation !== null) return { status: 'pending_adjudication', result: null,
-      drawOffer: null, pending: { kind: 'resignation', resigningSide: pendingResignation },
+      drawOffer: null, claimDrawOffer: null,
+      pending: { kind: 'resignation', resigningSide: pendingResignation },
       position: position.getPosition() };
     if (pendingTimeout !== null) return { status: 'pending_adjudication', result: null,
-      drawOffer: null, pending: { kind: 'timeout', ...pendingTimeout }, position: position.getPosition() };
-    return { status: 'active', result: null, drawOffer, position: position.getPosition() };
+      drawOffer: null, claimDrawOffer: null,
+      pending: { kind: 'timeout', ...pendingTimeout }, position: position.getPosition() };
+    return { status: 'active', result: null, drawOffer, claimDrawOffer,
+      position: position.getPosition() };
   };
 
   function validate(command: SideCommand): Rejected<GameRejection> | undefined {
@@ -152,6 +165,7 @@ export function createGameFromPosition(startingFen: string,
     pendingResignation = null;
     pendingTimeout = null;
     drawOffer = null;
+    claimDrawOffer = null;
   }
 
   function recordDrawOffer(side: Side): CommandResult {
@@ -163,11 +177,15 @@ export function createGameFromPosition(startingFen: string,
   function respondToDraw(command: SideCommand, accept: boolean): CommandResult {
     const rejection = validate(command);
     if (rejection) return rejection;
-    if (drawOffer === null) return reject('no_draw_offer');
-    if (drawOffer === command.side) return reject('own_draw_offer');
+    const opponent = command.side === 'white' ? 'black' : 'white';
+    if (drawOffer !== opponent && claimDrawOffer !== opponent) {
+      return drawOffer === command.side || claimDrawOffer === command.side
+        ? reject('own_draw_offer') : reject('no_draw_offer');
+    }
     if (accept && ply < 2) return reject('draw_too_early');
     if (accept) finish({ outcome: 'draw', reason: 'agreement' });
-    else drawOffer = null;
+    else { if (drawOffer === opponent) drawOffer = null;
+      if (claimDrawOffer === opponent) claimDrawOffer = null; }
     return { accepted: true, game: getState() };
   }
 
@@ -248,6 +266,28 @@ export function createGameFromPosition(startingFen: string,
       finish({ outcome: 'draw', reason: command.rule });
       return { accepted: true, game: getState() };
     },
+    recordIncorrectDrawClaim(command) {
+      const rejection = validate(command);
+      if (rejection) return rejection;
+      if (command.side !== position.getPosition().sideToMove) {
+        return { accepted: false, reason: 'wrong_turn', message: 'Only the side to move may claim a draw.' };
+      }
+      if (command.rule !== 'threefold_repetition' && command.rule !== 'fifty_move') return reject('invalid_claim');
+      if (command.intendedMove !== undefined) {
+        const preview = board.previewMove({ ...command.intendedMove, side: command.side });
+        if (!preview.accepted) return preview;
+        const moved = this.submitMove({ ...command.intendedMove, side: command.side });
+        if (!moved.accepted) return moved;
+        if (getState().status === 'active') {
+          if (drawOffer === command.side) drawOffer = null;
+          claimDrawOffer = command.side;
+        }
+        return { accepted: true, move: moved.move, game: getState() };
+      }
+      if (drawOffer === command.side) drawOffer = null;
+      claimDrawOffer = command.side;
+      return { accepted: true, game: getState() };
+    },
     getHistory: () => position.getHistory(),
     submitMove(request) {
       const rejection = validate(request);
@@ -259,6 +299,7 @@ export function createGameFromPosition(startingFen: string,
       occurrences.set(key, (occurrences.get(key) ?? 0) + 1);
       adjudicate();
       if (drawOffer !== null && drawOffer !== request.side) drawOffer = null;
+      if (claimDrawOffer !== null && claimDrawOffer !== request.side) claimDrawOffer = null;
       return { accepted: true, move: moveResult.move, game: getState() };
     },
     resign(command) {
@@ -274,6 +315,7 @@ export function createGameFromPosition(startingFen: string,
       } else {
         pendingResignation = command.side;
         drawOffer = null;
+        claimDrawOffer = null;
       }
       return { accepted: true, game: getState() };
     },
@@ -300,6 +342,7 @@ export function createGameFromPosition(startingFen: string,
       } else {
         pendingTimeout = { flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs };
         drawOffer = null;
+        claimDrawOffer = null;
       }
       return { accepted: true, game: getState() };
     },
@@ -329,7 +372,7 @@ export function createGameFromPosition(startingFen: string,
     offerDraw(command) {
       const rejection = validate(command);
       if (rejection) return rejection;
-      if (drawOffer !== null) return reject('draw_offer_pending');
+      if (drawOffer !== null || claimDrawOffer !== null) return reject('draw_offer_pending');
       if (ply < 2) return reject('draw_offer_too_early');
       const previous = lastOfferPly[command.side];
       if (previous !== null && ply <= previous + 20) return reject('draw_offer_cooldown');
@@ -338,7 +381,7 @@ export function createGameFromPosition(startingFen: string,
     replayAcceptedDrawOffer(command) {
       const rejection = validate(command);
       if (rejection) return rejection;
-      if (drawOffer !== null) return reject('draw_offer_pending');
+      if (drawOffer !== null || claimDrawOffer !== null) return reject('draw_offer_pending');
       return recordDrawOffer(command.side);
     },
     acceptDraw: command => respondToDraw(command, true),

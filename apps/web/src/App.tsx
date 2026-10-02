@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
-  GameActionAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
+  GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
@@ -50,6 +50,8 @@ const errors: Record<string, string> = {
   draw_offer_pending: 'There is already an outstanding draw offer.',
   no_draw_offer: 'The draw offer is no longer available. The position will be refreshed.',
   own_draw_offer: 'Only your opponent can respond to your offer.',
+  claim_not_available: 'The claim was incorrect; the server has applied the time penalty and draw offer.',
+  invalid_claim: 'Choose threefold repetition or the fifty-move rule.',
 };
 
 class ApiError extends Error {
@@ -84,10 +86,13 @@ interface PendingMove {
   promotion?: 'q' | 'r' | 'b' | 'n';
   premoveId?: string;
 }
-type GameAction = 'resign' | 'offer_draw' | 'accept_draw' | 'decline_draw';
-interface PendingAction { requestId: string; expectedVersion: number; kind: GameAction }
+type GameAction = 'resign' | 'offer_draw' | 'accept_draw' | 'decline_draw' | 'claim_draw';
+interface PendingAction { requestId: string; expectedVersion: number; kind: GameAction;
+  rule?: 'threefold_repetition' | 'fifty_move';
+  intendedMove?: { from: Square; to: Square; promotion?: 'q' | 'r' | 'b' | 'n' } }
 const actionPaths: Record<GameAction, string> = {
-  resign: 'resign', offer_draw: 'draw-offer', accept_draw: 'draw-accept', decline_draw: 'draw-decline',
+  resign: 'resign', offer_draw: 'draw-offer', accept_draw: 'draw-accept',
+  decline_draw: 'draw-decline', claim_draw: 'draw-claim',
 };
 
 export function App() {
@@ -111,6 +116,11 @@ export function App() {
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [resignConfirmationVersion, setResignConfirmationVersion] = useState<number | null>(null);
+  const [claimRule, setClaimRule] = useState<'threefold_repetition' | 'fifty_move'>('threefold_repetition');
+  const [claimIntended, setClaimIntended] = useState(false);
+  const [claimFrom, setClaimFrom] = useState('');
+  const [claimTo, setClaimTo] = useState('');
+  const [claimPromotion, setClaimPromotion] = useState<'' | 'q' | 'r' | 'b' | 'n'>('');
   const [submitting, setSubmitting] = useState(false);
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
@@ -490,18 +500,27 @@ export function App() {
     }
     let shouldRefresh = false;
     try {
-      const accepted = await responseBody<GameActionAcceptedResponse>(await fetch(
+      const accepted = await responseBody<GameActionAcceptedResponse | GameClaimAcceptedResponse>(await fetch(
         `/api/games/${challengeId}/${actionPaths[command.kind]}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken,
             'Idempotency-Key': command.requestId },
-          body: JSON.stringify({ expectedVersion: command.expectedVersion }),
+          body: JSON.stringify({ expectedVersion: command.expectedVersion,
+            ...(command.kind === 'claim_draw' ? { rule: command.rule,
+              ...(command.intendedMove ? { intendedMove: command.intendedMove } : {}) } : {}) }),
         },
       ));
-      const confirmed = applyAcceptedAction(gameRef.current, accepted);
-      if (confirmed !== null && confirmed !== gameRef.current) {
-        gameRef.current = confirmed;
-        setGame(confirmed);
+      if (command.kind === 'claim_draw') {
+        const claim = accepted as GameClaimAcceptedResponse;
+        setGameInfo(claim.claimCorrect ? 'Draw claim accepted.'
+          : `Incorrect claim: your opponent received one minute${claim.move
+            ? ' and your declared move was played.' : '; your draw offer is pending.'}`);
+      } else {
+        const confirmed = applyAcceptedAction(gameRef.current, accepted);
+        if (confirmed !== null && confirmed !== gameRef.current) {
+          gameRef.current = confirmed;
+          setGame(confirmed);
+        }
       }
       clearPendingAction();
       shouldRefresh = true;
@@ -524,6 +543,21 @@ export function App() {
       || pendingActionRef.current || posting.current) return;
     setResignConfirmationVersion(null);
     void submitAction({ requestId: crypto.randomUUID(), expectedVersion: current.version, kind });
+  }
+
+  function beginClaim() {
+    const current = gameRef.current;
+    if (current === null || current.status !== 'active'
+      || current.position.sideToMove !== current.yourSeat
+      || pendingRef.current || pendingActionRef.current || posting.current) return;
+    if (claimIntended && (!/^[a-h][1-8]$/.test(claimFrom) || !/^[a-h][1-8]$/.test(claimTo))) {
+      setGameError('Enter a legal source and destination square for the declared move.');
+      return;
+    }
+    void submitAction({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+      kind: 'claim_draw', rule: claimRule,
+      ...(claimIntended ? { intendedMove: { from: claimFrom as Square, to: claimTo as Square,
+        ...(claimPromotion ? { promotion: claimPromotion } : {}) } } : {}) });
   }
 
   function confirmResignation() {
@@ -957,8 +991,11 @@ export function App() {
                 </div>}
                 <div className="game-actions">
                   {game.status === 'active' && <>
-                    {game.drawOffer === game.yourSeat && <p className="draw-offer" role="status">Your draw offer is awaiting a response.</p>}
-                    {game.drawOffer !== null && game.drawOffer !== game.yourSeat && <div className="draw-offer">
+                    {(game.drawOffer === game.yourSeat || game.claimDrawOffer === game.yourSeat)
+                      && <p className="draw-offer" role="status">Your draw offer is awaiting a response.</p>}
+                    {(game.drawOffer !== null && game.drawOffer !== game.yourSeat
+                      || game.claimDrawOffer !== null && game.claimDrawOffer !== game.yourSeat)
+                      && <div className="draw-offer">
                       <p>Your opponent offered a draw.</p>
                       {game.history.length < 2 && <p>Both players must make a move before a draw can be agreed.</p>}
                       <button type="button" disabled={submitting || pending !== null || pendingAction !== null || game.history.length < 2}
@@ -966,11 +1003,40 @@ export function App() {
                       <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('decline_draw')}>Decline</button>
                     </div>}
-                    {game.drawOffer === null && game.history.length >= 2 && (offerPliesRemaining === 0
+                    {game.drawOffer === null && game.claimDrawOffer === null
+                      && game.history.length >= 2 && (offerPliesRemaining === 0
                       ? <button type="button" className="secondary"
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('offer_draw')}>Offer draw</button>
                       : <p className="draw-offer" role="status">You can offer another draw after {offerPliesRemaining} more half-move{offerPliesRemaining === 1 ? '' : 's'}.</p>)}
+                    {game.position.sideToMove === game.yourSeat && <details className="draw-claim">
+                      <summary>Claim a draw</summary>
+                      <form onSubmit={event => { event.preventDefault(); beginClaim(); }}>
+                        <label>Rule <select value={claimRule} onChange={event =>
+                          setClaimRule(event.target.value as typeof claimRule)}>
+                          <option value="threefold_repetition">Threefold repetition</option>
+                          <option value="fifty_move">Fifty-move rule</option>
+                        </select></label>
+                        <label><input type="checkbox" checked={claimIntended}
+                          onChange={event => setClaimIntended(event.target.checked)} /> Declare an intended move</label>
+                        {claimIntended && <>
+                          <label>From <input value={claimFrom} maxLength={2} pattern="[a-h][1-8]"
+                            onChange={event => setClaimFrom(event.target.value.toLowerCase())} required /></label>
+                          <label>To <input value={claimTo} maxLength={2} pattern="[a-h][1-8]"
+                            onChange={event => setClaimTo(event.target.value.toLowerCase())} required /></label>
+                          <label>Promotion <select value={claimPromotion} onChange={event =>
+                            setClaimPromotion(event.target.value as typeof claimPromotion)}>
+                            <option value="">None</option><option value="q">Queen</option>
+                            <option value="r">Rook</option><option value="b">Bishop</option>
+                            <option value="n">Knight</option>
+                          </select></label>
+                        </>}
+                        <p>An incorrect claim gives your opponent one minute and offers a draw.
+                          A declared legal move will be played.</p>
+                        <button type="submit" className="secondary"
+                          disabled={submitting || pending !== null || pendingAction !== null}>Submit claim</button>
+                      </form>
+                    </details>}
                     {resignConfirmationVersion === game.version
                       ? <div className="resign-confirmation" role="group" aria-label="Confirm resignation">
                         <p>Resign this game? This cannot be undone.</p>

@@ -32,7 +32,7 @@ describe('game lifecycle', () => {
   it('starts active with a standard board, no offer, no result, and no history', () => {
     const game = createGame('casual_concession');
     expect(game.getState()).toEqual({
-      status: 'active', result: null, drawOffer: null,
+      status: 'active', result: null, drawOffer: null, claimDrawOffer: null,
       position: { fen: STANDARD_STARTING_FEN, sideToMove: 'white' },
     });
     expect(game.getHistory()).toEqual([]);

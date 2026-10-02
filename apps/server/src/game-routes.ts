@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { requireGuest } from './guest-session.js';
-import { createGameService, type ActionBody, type Arrival, type GameAction,
+import { createGameService, type ActionBody, type Arrival, type ClaimBody, type GameAction,
   type GameService, type MoveBody, type WallClock } from './game-service.js';
 import { createGameUpdateHub } from './game-updates.js';
 
@@ -17,6 +17,12 @@ const moveBody = { type: 'object', required: ['expectedVersion', 'from', 'to'], 
     promotion: { type: 'string', enum: ['q', 'r', 'b', 'n'] } } } as const;
 const actionBody = { type: 'object', required: ['expectedVersion'], additionalProperties: false,
   properties: { expectedVersion: { type: 'integer', minimum: 0, maximum: 2147483646 } } } as const;
+const claimBody = { type: 'object', required: ['expectedVersion', 'rule'], additionalProperties: false,
+  properties: { expectedVersion: { type: 'integer', minimum: 0, maximum: 2147483646 },
+    rule: { type: 'string', enum: ['threefold_repetition', 'fifty_move'] },
+    intendedMove: { type: 'object', required: ['from', 'to'], additionalProperties: false,
+      properties: { from: { type: 'string', pattern: square }, to: { type: 'string', pattern: square },
+        promotion: { type: 'string', enum: ['q', 'r', 'b', 'n'] } } } } } as const;
 
 export { createGameService };
 export type { GameService, WallClock };
@@ -111,10 +117,10 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       return reply.code(result.status).send(result.body);
     });
 
-  const actions: Readonly<Record<GameAction, string>> = {
+  const actions: Readonly<Record<Exclude<GameAction, 'claim_draw'>, string>> = {
     resign: 'resign', offer_draw: 'draw-offer', accept_draw: 'draw-accept', decline_draw: 'draw-decline',
   };
-  for (const [kind, path] of Object.entries(actions) as [GameAction, string][]) {
+  for (const [kind, path] of Object.entries(actions) as [Exclude<GameAction, 'claim_draw'>, string][]) {
     app.post<{ Params: { id: string }; Body: ActionBody }>(`/games/:id/${path}`,
       { schema: { params: idParams, headers: requestHeaders, body: actionBody },
         preValidation: (request, _reply, done) => {
@@ -138,4 +144,27 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
         return reply.code(result.status).send(result.body);
       });
   }
+
+  app.post<{ Params: { id: string }; Body: ClaimBody }>('/games/:id/draw-claim',
+    { schema: { params: idParams, headers: requestHeaders, body: claimBody },
+      preValidation: (request, _reply, done) => {
+        arrivals.set(request, service.beginReceipt());
+        done();
+      },
+      onResponse: async request => {
+        const arrival = arrivals.get(request);
+        if (arrival) await arrival.release();
+        arrivals.delete(request);
+      } },
+    async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const guest = await requireGuest(pool, request, reply, true);
+      if (guest === null) return;
+      const requestId = request.headers['idempotency-key'];
+      if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
+      const arrival = arrivals.get(request);
+      if (!arrival) throw new Error('Draw claim arrival was not recorded.');
+      const result = await service.claim(request.params.id, guest.id, requestId, request.body, arrival);
+      return reply.code(result.status).send(result.body);
+    });
 }

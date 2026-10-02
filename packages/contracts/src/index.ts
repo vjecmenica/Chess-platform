@@ -52,6 +52,7 @@ export interface GameState {
   readonly result: { readonly outcome: 'win' | 'draw'; readonly reason: string;
     readonly winner?: GameSide; readonly flaggedSide?: GameSide; readonly deadlineMs?: number } | null;
   readonly drawOffer: GameSide | null;
+  readonly claimDrawOffer: GameSide | null;
   readonly drawOfferNextEligiblePly: Readonly<Record<GameSide, number>>;
   readonly pending?: { readonly kind: 'timeout'; readonly flaggedSide: GameSide;
     readonly deadlineMs: number } | { readonly kind: 'resignation'; readonly resigningSide: GameSide };
@@ -75,4 +76,10 @@ export interface MoveAcceptedResponse {
 export interface GameActionAcceptedResponse {
   readonly accepted: true;
   readonly game: GameState;
+}
+
+export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {
+  readonly claimCorrect: boolean;
+  readonly bonusMs: number;
+  readonly move?: SavedMove;
 }
