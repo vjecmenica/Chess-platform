@@ -75,9 +75,12 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   border: 3px solid rgba(20, 61, 48, .62); border-radius: 50%; pointer-events: none; }
 .board .square.selected::after { content: ''; position: absolute; inset: 0;
   box-shadow: inset 0 0 0 4px #c88127; pointer-events: none; }
+.board .square.annotation-origin::after { content: ''; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 4px #143d30; pointer-events: none; }
 .board .square:focus-visible { outline: 3px solid #d48628; outline-offset: -3px; z-index: 1; }
 .board .square:disabled { opacity: 1; cursor: default; }
-.piece { position: relative; display: block; width: 88%; height: 88%; pointer-events: none; user-select: none; }
+.piece { position: relative; z-index: 1; display: block; width: 88%; height: 88%; pointer-events: none; user-select: none; }
+.square-mark { position: absolute; inset: 4px; border: 3px solid; pointer-events: none; }
 .board .square.drag-origin .piece { opacity: .3; }
 .board .square.premove-target { box-shadow: inset 0 0 0 3px rgba(85, 80, 141, .75); }
 .premove-ghost { position: absolute; width: 88%; height: 88%; opacity: .5; pointer-events: none; }
@@ -92,6 +95,14 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .board-ranks { grid-template-rows: repeat(8, 1fr); left: 0; top: 0; bottom: 14px; width: 14px; }
 .board-files span, .board-ranks span { display: grid; place-items: center; }
 .board-hint, .clock-policy { width: min(100%, calc(100dvh - 96px), 720px); color: #526157; font-size: 12px; margin: 6px 0 0; }
+.analysis-board-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  width: min(100%, calc(100dvh - 96px), 720px); margin-top: 6px; }
+.analysis-board-controls button { min-height: 30px; padding: 4px 7px; font-size: 12px; }
+.analysis-tool-group, .analysis-colors { display: flex; align-items: center; gap: 3px; }
+.analysis-board-controls button[aria-pressed="true"] { border-color: #143d30; box-shadow: inset 0 -2px #143d30; }
+.analysis-board-controls .color-choice { display: grid; place-items: center; width: 30px;
+  min-width: 30px; padding: 3px; border-color: #b8c7b5; background: #fffdf8; }
+.color-choice span { display: block; width: 17px; height: 17px; border-radius: 50%; }
 
 .game-sidebar {
   display: grid;
@@ -209,7 +220,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 @media (max-width: 900px) {
   .game-layout { grid-template-columns: minmax(0, 1fr); max-width: 680px; gap: 12px; }
   .play-column { align-items: stretch; }
-  .board-frame, .board-hint, .clock-policy { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
+  .board-frame, .board-hint, .clock-policy, .analysis-board-controls { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
   .game-sidebar { height: auto; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
   .game-sidebar > .clock:first-child { grid-area: opponent; }
   .game-sidebar > .clock:last-child { grid-area: self; }
@@ -225,7 +236,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .challenge-page header { font-size: 11px; }
   .game-area { margin-top: 7px; }
   .game-layout { gap: 8px; }
-  .board-frame, .board-hint, .clock-policy { width: 100%; }
+  .board-frame, .board-hint, .clock-policy, .analysis-board-controls { width: 100%; }
   .piece { font-size: clamp(24px, 8vw, 38px); }
   .game-sidebar { gap: 6px; padding: 7px; }
   .clock { padding: 7px; gap: 2px 4px; }

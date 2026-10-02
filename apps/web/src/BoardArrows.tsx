@@ -1,4 +1,5 @@
 import type { GameSide } from '@chess/contracts';
+import { annotationColors } from './analysis-board';
 import { arrowCenter, type BoardArrow } from './board-arrows';
 
 export function arrowPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
@@ -23,7 +24,8 @@ export function BoardArrows({ arrows, orientation }: {
     {arrows.map((arrow, index) => {
       const start = arrowCenter(arrow.from, orientation);
       const end = arrowCenter(arrow.to, orientation);
-      return <path key={`${arrow.from}-${arrow.to}-${index}`} d={arrowPath(start, end)} stroke="none" />;
+      return <path key={`${arrow.from}-${arrow.to}-${index}`} d={arrowPath(start, end)} stroke="none"
+        fill={arrow.color === undefined ? undefined : annotationColors[arrow.color].fill} />;
     })}
   </svg>;
 }

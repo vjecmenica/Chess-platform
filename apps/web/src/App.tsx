@@ -9,6 +9,10 @@ import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows } from './BoardArrows';
+import { analysisBoardStorageKey, annotationColors, boardOrientation,
+  clearPositionAnnotations, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
+  serializeAnalysisBoard, toggleAnalysisArrow, toggleAnalysisMark,
+  type AnalysisBoardState, type AnnotationColor } from './analysis-board';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
@@ -108,6 +112,9 @@ export function App() {
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
+  const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
+  const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisWarning, setAnalysisWarning] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
@@ -132,6 +139,8 @@ export function App() {
   const pendingRef = useRef<PendingMove | null>(null);
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const analysisOpenRef = useRef(false);
+  analysisOpenRef.current = analysisOpen;
   const premovesRef = useRef<Premove[]>([]);
   const premoveAttemptedVersion = useRef<number | null>(null);
   const rightPointer = useRef<{ id: number; from: Square } | null>(null);
@@ -169,6 +178,7 @@ export function App() {
   useEffect(() => {
     const clearOnLeftDown = (event: PointerEvent) => {
       if (!isLeftPointerPress(event.button, event.pointerType)) return;
+      if (analysisOpenRef.current) return;
       setArrows([]);
       setArrowPreview(null);
       const target = event.target instanceof Element ? event.target : null;
@@ -310,6 +320,24 @@ export function App() {
     try { window.localStorage.setItem(analysisStorageKey(game.id), serializeAnalysis(analysis)); }
     catch { setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.'); }
   }, [game?.id, game?.status, analysis]);
+
+  useEffect(() => {
+    if (game?.status !== 'finished' || analysisBoard?.gameId === game.id) return;
+    let restored: AnalysisBoardState | null = null;
+    try {
+      const raw = window.localStorage.getItem(analysisBoardStorageKey(game.id));
+      if (raw !== null) restored = restoreAnalysisBoard(game.id, raw);
+    } catch { /* Browser storage is optional. */ }
+    setAnalysisBoard(restored ?? createAnalysisBoard(game.id));
+  }, [game?.id, game?.status, analysisBoard?.gameId]);
+
+  useEffect(() => {
+    if (game?.status !== 'finished' || analysisBoard?.gameId !== game.id) return;
+    try { window.localStorage.setItem(analysisBoardStorageKey(game.id), serializeAnalysisBoard(analysisBoard)); }
+    catch { /* Board controls still work when storage is unavailable. */ }
+  }, [game?.id, game?.status, analysisBoard]);
+
+  useEffect(() => { setAnnotationFrom(null); }, [analysis?.cursor]);
 
   useEffect(() => {
     if (session === null || challengeId === null || challenge?.status === 'accepted') return;
@@ -610,8 +638,24 @@ export function App() {
     premoveAttemptedVersion.current = null;
   }
 
+  function editBoardAnnotations(edit: (state: AnalysisBoardState, fen: string) => AnalysisBoardState) {
+    if (!analysisOpen || game === null || analysis === null || analysisBoard?.gameId !== game.id) return;
+    const fen = cursorFen(analysis, game);
+    setAnalysisBoard(current => current?.gameId === game.id ? edit(current, fen) : current);
+  }
+
   function chooseSquare(square: Square) {
     if (suppressClick.current) return;
+    if (analysisOpen && analysisTool !== 'move') {
+      if (analysisTool === 'square') editBoardAnnotations((state, fen) => toggleAnalysisMark(state, fen, square));
+      else if (annotationFrom === null) setAnnotationFrom(square);
+      else {
+        if (annotationFrom !== square)
+          editBoardAnnotations((state, fen) => toggleAnalysisArrow(state, fen, annotationFrom, square));
+        setAnnotationFrom(null);
+      }
+      return;
+    }
     const input = inputPosition();
     if (input === null) return;
     const piece = input.mode === 'premove'
@@ -640,6 +684,7 @@ export function App() {
   }
 
   function beginDrag(event: React.PointerEvent<HTMLButtonElement>, square: Square, piece: Piece | null) {
+    if (analysisOpen && analysisTool !== 'move') return;
     const input = inputPosition();
     const planned = input?.mode === 'premove'
       ? projectedPieces(input.positionFen, input.sideToMove, premovesRef.current).get(square) ?? null : null;
@@ -676,7 +721,8 @@ export function App() {
     const active = rightPointer.current;
     if (active === null || active.id !== event.pointerId) return;
     const to = boardSquareAt(event.clientX, event.clientY);
-    setArrowPreview(to !== null && to !== active.from ? { from: active.from, to } : null);
+    setArrowPreview(to !== null && to !== active.from ? { from: active.from, to,
+      ...(analysisOpen && analysisBoard !== null ? { color: analysisBoard.color } : {}) } : null);
   }
 
   function endArrow(event: React.PointerEvent<HTMLButtonElement>) {
@@ -685,7 +731,11 @@ export function App() {
     rightPointer.current = null;
     setArrowPreview(null);
     const to = boardSquareAt(event.clientX, event.clientY);
-    if (to !== null) setArrows(current => toggleArrow(current, active.from, to));
+    if (to !== null) {
+      if (analysisOpen) editBoardAnnotations((state, fen) => to === active.from
+        ? toggleAnalysisMark(state, fen, to) : toggleAnalysisArrow(state, fen, active.from, to));
+      else setArrows(current => toggleArrow(current, active.from, to));
+    }
     armArrowMenuSuppression();
   }
 
@@ -752,6 +802,7 @@ export function App() {
       setAnalysis(selectMain(analysis, game, cursor.ply));
     } else setSelectedReplayPly(cursor.ply);
     setSelected(null);
+    setAnnotationFrom(null);
     setAnalysisError(null);
   }
 
@@ -790,12 +841,20 @@ export function App() {
   const displayedFen = game === null ? null :
     analysisOpen && analysis !== null ? cursorFen(analysis, game)
       : replaying ? replayFen(game, displayedPly) : game.position.fen;
-  const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, game.yourSeat);
+  const orientation = game === null ? 'white' : boardOrientation(game.yourSeat,
+    analysisOpen && analysisBoard?.gameId === game.id && analysisBoard.flipped);
+  const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, orientation);
   const premovePieces = game?.status === 'active' && game.position.sideToMove !== game.yourSeat
     ? projectedPieces(game.position.fen, game.yourSeat, premoves) : null;
-  const visibleArrows = arrowPreview === null ? arrows : [...arrows, arrowPreview];
+  const boardNotes = analysisOpen && analysisBoard?.gameId === game?.id && displayedFen !== null
+    ? positionAnnotations(analysisBoard, displayedFen) : null;
+  const visibleArrows = [...(analysisOpen ? boardNotes?.arrows ?? [] : arrows),
+    ...(arrowPreview === null ? [] : [arrowPreview])];
+  const marks = new Map(boardNotes?.marks.map(mark => [mark.square, mark.color]) ?? []);
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
-  const coordinates = game === null ? null : boardCoordinates(game.yourSeat);
+  const coordinates = game === null ? null : boardCoordinates(orientation);
+  const topSide = orientation === 'white' ? 'black' : 'white';
+  const bottomSide = orientation;
   const lastMove = game === null ? null : highlightedMove(game, replaying ? displayedPly : game.history.length,
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
@@ -859,14 +918,14 @@ export function App() {
           <div className="game-layout">
             <div className="play-column">
               <div className="board-frame">
-                <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
+                <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
                     const ghost = planned !== null && planned !== piece ? planned : null;
                     return <button key={square} type="button"
-                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
+                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${annotationFrom === square && analysisOpen ? 'annotation-origin' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
                       data-square={square}
-                      aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
+                      aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}${marks.has(square) ? ', marked' : ''}`}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
                       onPointerDown={event => { beginArrow(event, square); beginDrag(event, square, piece); }}
@@ -884,11 +943,14 @@ export function App() {
                         cancelDrag();
                       }}
                       onClick={() => chooseSquare(square)}>
+                      {marks.has(square) && <span className="square-mark" aria-hidden="true"
+                        style={{ borderColor: annotationColors[marks.get(square)!].fill,
+                          backgroundColor: annotationColors[marks.get(square)!].wash }} />}
                       {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
                         aria-hidden="true" draggable={false} />}
                     </button>})}
-                  <BoardArrows arrows={visibleArrows} orientation={game.yourSeat} />
+                  <BoardArrows arrows={visibleArrows} orientation={orientation} />
                 </div>
                 <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
                   <span key={rank}>{rank}</span>)}</div>
@@ -898,8 +960,37 @@ export function App() {
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
+              {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
+                <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
+                  title="Board marks and orientation are saved only in this browser.">
+                  <button type="button" className="secondary" onClick={() =>
+                    setAnalysisBoard(current => current?.gameId === game.id
+                      ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>
+                  <div className="analysis-tool-group" role="group" aria-label="Board tool">
+                    {(['move', 'arrow', 'square'] as const).map(tool =>
+                      <button key={tool} type="button" className="secondary" aria-pressed={analysisTool === tool}
+                        title={tool === 'move' ? 'Explore legal moves' : tool === 'arrow'
+                          ? 'Click two squares to draw an arrow, or right-drag' : 'Click a square to mark it'}
+                        onClick={() => { setAnalysisTool(tool); setAnnotationFrom(null); setSelected(null); }}>
+                        {tool === 'move' ? 'Move' : tool === 'arrow' ? 'Arrow' : 'Square'}
+                      </button>)}</div>
+                  <div className="analysis-colors" role="group" aria-label="Board mark color">
+                    {(Object.keys(annotationColors) as AnnotationColor[]).map(color =>
+                      <button key={color} type="button" className="color-choice"
+                        aria-label={`${color} board marks`} aria-pressed={analysisBoard.color === color}
+                        title={`${color[0]?.toUpperCase()}${color.slice(1)} arrows and squares`}
+                        onClick={() => setAnalysisBoard(current => current?.gameId === game.id
+                          ? { ...current, color } : current)}>
+                        <span aria-hidden="true" style={{ backgroundColor: annotationColors[color].fill }} />
+                      </button>)}</div>
+                  <button type="button" className="secondary" disabled={boardNotes === null
+                    || boardNotes.arrows.length === 0 && boardNotes.marks.length === 0}
+                    onClick={() => { editBoardAnnotations(clearPositionAnnotations); setAnnotationFrom(null); }}>
+                    Clear marks
+                  </button>
+                </div>}
               {(analysisOpen || canMove || game.status === 'finished') && <p className="board-hint">{analysisOpen
-                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select or drag a piece.`
+                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move.`
                 : canMove ? 'Select or drag one of your pieces.'
                   : 'Select Analysis to explore legal alternatives.'}</p>}
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
@@ -907,8 +998,9 @@ export function App() {
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              <ClockPanel clock={game.clocks} side={game.yourSeat === 'white' ? 'black' : 'white'}
-                isYou={false} materialAdvantage={material?.side === game.yourSeat ? null : material?.points ?? null} />
+              <ClockPanel clock={game.clocks} side={topSide}
+                isYou={topSide === game.yourSeat}
+                materialAdvantage={material?.side === topSide ? material.points : null} />
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
@@ -1023,6 +1115,7 @@ export function App() {
                       else if (analysis !== null && selectedReplayPly !== null)
                         setAnalysis(selectMain(analysis, game, selectedReplayPly));
                       setAnalysisOpen(!analysisOpen);
+                      setAnalysisTool('move'); setAnnotationFrom(null);
                       setSelected(null); setPromotion(null); setAnalysisError(null);
                     }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
                 </div>
@@ -1064,8 +1157,8 @@ export function App() {
                     onFocus={event => event.currentTarget.select()} />
                 </details>
               </div>
-              <ClockPanel clock={game.clocks} side={game.yourSeat} isYou
-                materialAdvantage={material?.side === game.yourSeat ? material.points : null} />
+              <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                materialAdvantage={material?.side === bottomSide ? material.points : null} />
             </aside>
           </div>
         </>}

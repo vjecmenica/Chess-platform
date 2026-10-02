@@ -1,13 +1,15 @@
 import type { GameSide } from '@chess/contracts';
 import type { Square } from './board-model';
+import type { AnnotationColor } from './analysis-board';
 
-export interface BoardArrow { from: Square; to: Square }
+export interface BoardArrow { from: Square; to: Square; color?: AnnotationColor }
 
-export function toggleArrow(arrows: readonly BoardArrow[], from: Square, to: Square): BoardArrow[] {
+export function toggleArrow(arrows: readonly BoardArrow[], from: Square, to: Square,
+  color?: AnnotationColor): BoardArrow[] {
   if (from === to) return [...arrows];
   const exists = arrows.some(arrow => arrow.from === from && arrow.to === to);
   return exists ? arrows.filter(arrow => arrow.from !== from || arrow.to !== to)
-    : [...arrows, { from, to }];
+    : [...arrows, { from, to, ...(color === undefined ? {} : { color }) }];
 }
 
 export function arrowCenter(square: Square, orientation: GameSide): { x: number; y: number } {
