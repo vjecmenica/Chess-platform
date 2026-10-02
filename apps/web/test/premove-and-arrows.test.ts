@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { createPositionFromFen } from '@chess/domain';
-import { BoardArrows } from '../src/BoardArrows';
+import { arrowPath, BoardArrows } from '../src/BoardArrows';
 import { isLeftPointerPress, keepsPremovesOnLeftPress } from '../src/board-interaction';
 import { arrowCenter, toggleArrow } from '../src/board-arrows';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
@@ -116,22 +116,25 @@ describe('board arrows', () => {
     expect(arrowCenter('h8', 'black')).toEqual({ x: 50, y: 750 });
   });
 
-  it('renders a substantial fixed-size arrowhead and all remaining routes', () => {
+  it('joins one opaque shaft and head at the destination in either orientation', () => {
     const arrows = toggleArrow(toggleArrow([], 'e2', 'e4'), 'g1', 'f3');
     const html = renderToStaticMarkup(createElement(BoardArrows, { arrows, orientation: 'white' }));
-    expect(html).toContain('markerUnits="userSpaceOnUse"');
-    expect(html).toContain('markerWidth="56" markerHeight="52" refX="54" refY="26"');
-    expect(html).toContain('d="M 2 2 L 54 26 L 2 50 L 15 26 Z"');
-    expect(html).toContain('x1="450" y1="650" x2="450" y2="450"');
+    expect(html).not.toContain('<marker');
+    expect(html).not.toContain('<line');
+    expect((html.match(/<path /g) ?? [])).toHaveLength(2);
+    expect((html.match(/stroke="none"/g) ?? [])).toHaveLength(2);
+    const straight = arrowPath({ x: 450, y: 650 }, { x: 450, y: 450 });
+    expect(straight).toContain('L 474.00 502.00 L 450 450 L 426.00 502.00');
+    expect(straight).toContain('M 456.00 650.00 L 456.00 489.00');
     expect(readFileSync(new URL('../src/style.css', import.meta.url), 'utf8'))
-      .toMatch(/\.board-arrows line \{ stroke-width: 12; stroke-linecap: round; \}/);
-    expect((html.match(/<line /g) ?? [])).toHaveLength(2);
+      .toContain('fill: rgba(162, 77, 31, .8); stroke: rgba(162, 77, 31, .8);');
     expect(renderToStaticMarkup(createElement(BoardArrows, {
       arrows: toggleArrow(arrows, 'e2', 'e4'), orientation: 'white',
-    })).match(/<line /g)).toHaveLength(1);
+    })).match(/<path /g)).toHaveLength(1);
     const flipped = renderToStaticMarkup(createElement(BoardArrows, {
       arrows: [{ from: 'e2', to: 'e4' }], orientation: 'black',
     }));
-    expect(flipped).toContain('x1="350" y1="150" x2="350" y2="350"');
+    expect(flipped).toContain('L 350 350');
+    expect(flipped).toContain('M 344.00 150.00');
   });
 });
