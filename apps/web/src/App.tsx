@@ -5,6 +5,9 @@ import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, 
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { boardMove, legalMoveHints, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
+import { arrowCenter, toggleArrow, type BoardArrow } from './board-arrows';
+import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
+  type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
 import { resultDisplay } from './result-display';
 import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
@@ -76,6 +79,7 @@ interface PendingMove {
   from: Square;
   to: Square;
   promotion?: 'q' | 'r' | 'b' | 'n';
+  premoveId?: string;
 }
 type GameAction = 'resign' | 'offer_draw' | 'accept_draw' | 'decline_draw';
 interface PendingAction { requestId: string; expectedVersion: number; kind: GameAction }
@@ -97,7 +101,11 @@ export function App() {
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
-  const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
+  const [promotion, setPromotion] = useState<{ from: Square; to: Square; mode: 'analysis' | 'live' | 'premove' } | null>(null);
+  const [premoves, setPremoves] = useState<Premove[]>([]);
+  const [replacingPremoves, setReplacingPremoves] = useState(false);
+  const [arrows, setArrows] = useState<BoardArrow[]>([]);
+  const [arrowPreview, setArrowPreview] = useState<BoardArrow | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [resignConfirmationVersion, setResignConfirmationVersion] = useState<number | null>(null);
@@ -113,6 +121,10 @@ export function App() {
   const pendingRef = useRef<PendingMove | null>(null);
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const premoveAttemptedVersion = useRef<number | null>(null);
+  const rightPointer = useRef<{ id: number; from: Square } | null>(null);
+  const suppressArrowMenu = useRef(false);
+  const arrowMenuReset = useRef<number | null>(null);
   const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
     moved: boolean; canSubmit: boolean; version: number; fen: string | null } | null>(null);
   const suppressClick = useRef(false);
@@ -126,6 +138,13 @@ export function App() {
     [game?.id, game?.version, game?.status, challenge?.status, analysisOpen]);
 
   useEffect(() => {
+    if (game?.status !== 'active') {
+      setPremoves([]);
+      setReplacingPremoves(false);
+    }
+  }, [game?.id, game?.status]);
+
+  useEffect(() => {
     const cancelWithRightButton = (event: MouseEvent) => {
       if (event.button !== 2 || pointer.current === null) return;
       event.preventDefault();
@@ -135,6 +154,11 @@ export function App() {
       suppressClick.current = true;
     };
     const cancelWithRightClick = (event: MouseEvent) => {
+      if (rightPointer.current !== null || (suppressArrowMenu.current
+        && boardRef.current?.contains(event.target as Node))) {
+        event.preventDefault();
+        return;
+      }
       if (pointer.current === null && !suppressDragMenu.current) return;
       event.preventDefault();
       cancelDrag();
@@ -155,6 +179,7 @@ export function App() {
       window.removeEventListener('contextmenu', cancelWithRightClick, true);
       window.removeEventListener('mouseup', releaseCancelledClick, true);
       if (dragMenuReset.current !== null) window.clearTimeout(dragMenuReset.current);
+      if (arrowMenuReset.current !== null) window.clearTimeout(arrowMenuReset.current);
     };
   }, []);
 
@@ -373,6 +398,11 @@ export function App() {
       setSelected(null);
       setPromotion(null);
       setGameInfo(null);
+      const premoveId = command.premoveId;
+      if (premoveId !== undefined) {
+        setPremoves(queue => consumePremove(queue, premoveId));
+        premoveAttemptedVersion.current = null;
+      }
       clearPending();
       shouldRefresh = true;
     } catch (cause) {
@@ -381,6 +411,8 @@ export function App() {
         stale = cause.code === 'stale_version';
         shouldRefresh = stale || ['wrong_turn', 'game_finished', 'flag_fell',
           'clock_not_started', 'received_before_turn', 'adjudication_pending'].includes(cause.code);
+        if (command.premoveId !== undefined && !stale
+          && !['wrong_turn', 'received_before_turn'].includes(cause.code)) setPremoves([]);
         if (!stale) setGameError(cause.message);
       } else {
         setGameError('The move was not confirmed. Retry it with the same request ID; the board has not changed.');
@@ -470,40 +502,65 @@ export function App() {
     if (current === null || promotion !== null
       || (!analysisOpen && (pendingRef.current !== null || pendingActionRef.current !== null
         || posting.current))) return null;
-    if (!analysisOpen && (current.status !== 'active'
-      || current.position.sideToMove !== current.yourSeat)) return null;
+    if (!analysisOpen && current.status !== 'active') return null;
     if (analysisOpen && (current.status !== 'finished' || analysis === null)) return null;
     const positionFen = analysisOpen && analysis !== null ? cursorFen(analysis, current)
       : current.position.fen;
     const sideToMove = analysisOpen && analysis !== null ? cursorSide(analysis, current)
       : current.position.sideToMove;
-    return { current, positionFen, sideToMove };
+    const mode: 'analysis' | 'live' | 'premove' = analysisOpen ? 'analysis' : current.position.sideToMove === current.yourSeat
+      ? 'live' : 'premove';
+    return { current, positionFen, sideToMove: mode === 'premove' ? current.yourSeat : sideToMove, mode };
   }
 
   function attemptBoardMove(from: Square, target: Square | null) {
     const input = inputPosition();
     if (input === null) return;
-    const move = boardMove(input.positionFen, input.sideToMove, from, target);
+    const move = input.mode === 'premove'
+      ? premoveChoice(input.positionFen, input.sideToMove,
+        replacingPremoves ? [] : premoves, from, target)
+      : boardMove(input.positionFen, input.sideToMove, from, target);
     setSelected(null);
     if (move.kind === 'invalid') return;
-    if (move.kind === 'promotion') { setPromotion({ from: move.from, to: move.to }); return; }
-    if (analysisOpen && analysis !== null) submitAnalysisMove(analysis, input.current, move.from, move.to);
-    else void submitMove({ requestId: crypto.randomUUID(), expectedVersion: input.current.version,
-      from: move.from, to: move.to });
+    if (move.kind === 'promotion') {
+      setPromotion({ from: move.from, to: move.to, mode: input.mode }); return;
+    }
+    if (input.mode === 'premove') queuePremove(move.from, move.to);
+    else if (input.mode === 'analysis' && analysis !== null)
+      submitAnalysisMove(analysis, input.current, move.from, move.to);
+    else {
+      setPremoves([]);
+      void submitMove({ requestId: crypto.randomUUID(), expectedVersion: input.current.version,
+        from: move.from, to: move.to });
+    }
+  }
+
+  function queuePremove(from: Square, to: Square, promotionPiece?: 'q' | 'r' | 'b' | 'n') {
+    const move: Premove = { id: crypto.randomUUID(), from, to,
+      ...(promotionPiece === undefined ? {} : { promotion: promotionPiece }) };
+    setPremoves(queue => addPremove(queue, move, replacingPremoves));
+    setReplacingPremoves(false);
+    premoveAttemptedVersion.current = null;
   }
 
   function chooseSquare(square: Square) {
     if (suppressClick.current) return;
     const input = inputPosition();
     if (input === null) return;
-    const piece = pieceAt(input.positionFen, square);
+    const piece = input.mode === 'premove'
+      ? projectedPieces(input.positionFen, input.sideToMove,
+        replacingPremoves ? [] : premoves).get(square) ?? null
+      : pieceAt(input.positionFen, square);
     if (selected === null) {
       if (pieceBelongsTo(piece, input.sideToMove)) setSelected(square);
       return;
     }
     if (selected === square) { setSelected(null); return; }
     if (pieceBelongsTo(piece, input.sideToMove)
-      && boardMove(input.positionFen, input.sideToMove, selected, square).kind === 'invalid') {
+      && (input.mode === 'premove'
+        ? premoveChoice(input.positionFen, input.sideToMove,
+          replacingPremoves ? [] : premoves, selected, square)
+        : boardMove(input.positionFen, input.sideToMove, selected, square)).kind === 'invalid') {
       setSelected(square);
       return;
     }
@@ -519,6 +576,41 @@ export function App() {
       canSubmit: input !== null && pieceBelongsTo(piece, input.sideToMove),
       version: gameRef.current?.version ?? -1, fen: input?.positionFen ?? null };
     event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function boardSquareAt(x: number, y: number): Square | null {
+    const target = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-square]');
+    return target && boardRef.current?.contains(target) ? target.dataset.square as Square : null;
+  }
+
+  function armArrowMenuSuppression() {
+    suppressArrowMenu.current = true;
+    if (arrowMenuReset.current !== null) window.clearTimeout(arrowMenuReset.current);
+    arrowMenuReset.current = window.setTimeout(() => { suppressArrowMenu.current = false; }, 1_000);
+  }
+
+  function beginArrow(event: React.PointerEvent<HTMLButtonElement>, square: Square) {
+    if (event.button !== 2 || pointer.current !== null || suppressDragMenu.current) return;
+    rightPointer.current = { id: event.pointerId, from: square };
+    armArrowMenuSuppression();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveArrow(event: React.PointerEvent<HTMLButtonElement>) {
+    const active = rightPointer.current;
+    if (active === null || active.id !== event.pointerId) return;
+    const to = boardSquareAt(event.clientX, event.clientY);
+    setArrowPreview(to !== null && to !== active.from ? { from: active.from, to } : null);
+  }
+
+  function endArrow(event: React.PointerEvent<HTMLButtonElement>) {
+    const active = rightPointer.current;
+    if (active === null || active.id !== event.pointerId) return;
+    rightPointer.current = null;
+    setArrowPreview(null);
+    const to = boardSquareAt(event.clientX, event.clientY);
+    if (to !== null) setArrows(current => toggleArrow(current, active.from, to));
+    armArrowMenuSuppression();
   }
 
   function moveDrag(event: React.PointerEvent<HTMLButtonElement>) {
@@ -592,6 +684,23 @@ export function App() {
     }
   }
 
+  useEffect(() => {
+    if (game?.status !== 'active' || game.position.sideToMove !== game.yourSeat
+      || premoves.length === 0 || replacingPremoves || analysisOpen || promotion !== null
+      || pending !== null || pendingAction !== null || submitting || posting.current
+      || game.clocks?.phase === 'handoff'
+      || premoveAttemptedVersion.current === game.version) return;
+    const next = nextPremove(game.position.fen, game.yourSeat, premoves);
+    if (next === null) {
+      setPremoves([]);
+      setGameInfo('Queued premoves were cancelled because the next move is illegal in the confirmed position.');
+      return;
+    }
+    premoveAttemptedVersion.current = game.version;
+    void submitMove({ requestId: next.id, premoveId: next.id, expectedVersion: game.version,
+      from: next.from, to: next.to, ...(next.promotion ? { promotion: next.promotion } : {}) });
+  }, [game, premoves, replacingPremoves, analysisOpen, promotion, pending, pendingAction, submitting]);
+
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
   const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
     && pending === null && pendingAction === null && !submitting;
@@ -603,6 +712,9 @@ export function App() {
     analysisOpen && analysis !== null ? cursorFen(analysis, game)
       : replaying ? replayFen(game, displayedPly) : game.position.fen;
   const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, game.yourSeat);
+  const premovePieces = game?.status === 'active' && game.position.sideToMove !== game.yourSeat
+    ? projectedPieces(game.position.fen, game.yourSeat, replacingPremoves ? [] : premoves) : null;
+  const visibleArrows = arrowPreview === null ? arrows : [...arrows, arrowPreview];
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
   const coordinates = game === null ? null : boardCoordinates(game.yourSeat);
   const lastMove = game === null ? null : highlightedMove(game, replaying ? displayedPly : game.history.length,
@@ -669,17 +781,25 @@ export function App() {
             <div className="play-column">
               <div className="board-frame">
                 <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${game.yourSeat} side at the bottom`}>
-                  {rows.flat().map(({ square, piece, dark }) =>
-                    <button key={square} type="button"
-                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''}`}
+                  {rows.flat().map(({ square, piece, dark }) => {
+                    const planned = premovePieces?.get(square) ?? null;
+                    const ghost = planned !== null && planned !== piece ? planned : null;
+                    return <button key={square} type="button"
+                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
                       data-square={square}
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
-                      onPointerDown={event => beginDrag(event, square, piece)}
-                      onPointerMove={moveDrag}
-                      onPointerUp={endDrag}
+                      onPointerDown={event => { beginArrow(event, square); beginDrag(event, square,
+                        planned !== null && pieceBelongsTo(planned, game.yourSeat) ? planned : piece); }}
+                      onPointerMove={event => { moveArrow(event); moveDrag(event); }}
+                      onPointerUp={event => { endArrow(event); endDrag(event); }}
                       onPointerCancel={event => {
+                        if (rightPointer.current?.id === event.pointerId) {
+                          rightPointer.current = null;
+                          setArrowPreview(null);
+                          armArrowMenuSuppression();
+                        }
                         if (pointer.current !== null && event.pointerType === 'mouse' && (event.buttons & 2)) {
                           armDragMenuSuppression();
                         }
@@ -687,7 +807,22 @@ export function App() {
                       }}
                       onClick={() => chooseSquare(square)}>
                       {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
-                    </button>)}
+                      {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
+                        aria-hidden="true" draggable={false} />}
+                    </button>})}
+                  <svg className="board-arrows" viewBox="0 0 800 800" aria-hidden="true" focusable="false">
+                    <defs><marker id="board-arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="4"
+                      orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 8 4 L 0 8 z" /></marker></defs>
+                    {visibleArrows.map((arrow, index) => {
+                      const start = arrowCenter(arrow.from, game.yourSeat);
+                      const end = arrowCenter(arrow.to, game.yourSeat);
+                      const length = Math.hypot(end.x - start.x, end.y - start.y);
+                      const x2 = end.x - (end.x - start.x) * 22 / length;
+                      const y2 = end.y - (end.y - start.y) * 22 / length;
+                      return <line key={`${arrow.from}-${arrow.to}-${index}`} x1={start.x} y1={start.y}
+                        x2={x2} y2={y2} markerEnd="url(#board-arrow-head)" />;
+                    })}
+                  </svg>
                 </div>
                 <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
                   <span key={rank}>{rank}</span>)}</div>
@@ -701,7 +836,7 @@ export function App() {
                 ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select or drag a piece.`
                 : canMove ? 'Select or drag one of your pieces.'
                   : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
-                    : 'Drag to inspect pieces; moves are available on your turn.'}</p>
+                    : 'Queue premoves while waiting, or drag to inspect pieces. Right-drag to draw an arrow.'}</p>
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
@@ -758,6 +893,19 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
+                {game.status === 'active' && premoves.length > 0 && <div className="premove-queue" role="status">
+                  <p>Queued premoves · sent only when legal on your turn</p>
+                  <ol>{premoves.map(move => <li key={move.id}>{move.from}–{move.to}{move.promotion ? `=${move.promotion.toUpperCase()}` : ''}</li>)}</ol>
+                  {replacingPremoves ? <button type="button" className="secondary"
+                    disabled={submitting || pending !== null} onClick={() => setReplacingPremoves(false)}>Keep queue</button>
+                    : <button type="button" className="secondary"
+                      disabled={submitting || pending !== null}
+                      onClick={() => { setReplacingPremoves(true); setSelected(null); }}>Replace queue</button>}
+                  <button type="button" className="secondary" disabled={submitting || pending !== null} onClick={() => {
+                    setPremoves([]); setReplacingPremoves(false); setSelected(null);
+                    premoveAttemptedVersion.current = null;
+                  }}>Cancel premoves</button>
+                </div>}
                 {result !== null ? <div className="final-result" role="status">
                   <strong>{result.score}</strong><span>{result.explanation}</span>
                 </div> : <p className="turn" role="status">{game.status === 'pending_adjudication'
@@ -824,10 +972,14 @@ export function App() {
                       const current = gameRef.current;
                       setPromotion(null);
                       setSelected(null);
-                      if (analysisOpen && analysis !== null && current)
+                      if (promotion.mode === 'premove') queuePremove(promotion.from, promotion.to, piece);
+                      else if (analysisOpen && analysis !== null && current)
                         submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
-                      else if (current) void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
-                        from: promotion.from, to: promotion.to, promotion: piece });
+                      else if (current) {
+                        setPremoves([]);
+                        void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+                          from: promotion.from, to: promotion.to, promotion: piece });
+                      }
                     }}>{name}</button>)}</div>
                   <button type="button" className="secondary" onClick={() => setPromotion(null)}>Cancel</button>
                 </div>}
