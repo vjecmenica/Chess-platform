@@ -120,13 +120,18 @@ describe('board arrows', () => {
     const arrows = toggleArrow(toggleArrow([], 'e2', 'e4'), 'g1', 'f3');
     const html = renderToStaticMarkup(createElement(BoardArrows, { arrows, orientation: 'white' }));
     expect(html).toContain('markerUnits="userSpaceOnUse"');
-    expect(html).toContain('markerWidth="38" markerHeight="34"');
-    expect(html).toContain('d="M 2 2 L 34 17 L 2 32 L 10 17 Z"');
+    expect(html).toContain('markerWidth="56" markerHeight="52" refX="54" refY="26"');
+    expect(html).toContain('d="M 2 2 L 54 26 L 2 50 L 15 26 Z"');
+    expect(html).toContain('x1="450" y1="650" x2="450" y2="450"');
     expect(readFileSync(new URL('../src/style.css', import.meta.url), 'utf8'))
       .toMatch(/\.board-arrows line \{ stroke-width: 12; stroke-linecap: round; \}/);
     expect((html.match(/<line /g) ?? [])).toHaveLength(2);
     expect(renderToStaticMarkup(createElement(BoardArrows, {
       arrows: toggleArrow(arrows, 'e2', 'e4'), orientation: 'white',
     })).match(/<line /g)).toHaveLength(1);
+    const flipped = renderToStaticMarkup(createElement(BoardArrows, {
+      arrows: [{ from: 'e2', to: 'e4' }], orientation: 'black',
+    }));
+    expect(flipped).toContain('x1="350" y1="150" x2="350" y2="350"');
   });
 });
