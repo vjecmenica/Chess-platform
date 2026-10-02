@@ -11,6 +11,11 @@ export function isLeftPointerPress(button: number, pointerType: string): boolean
   return button === 0 && pointerType !== 'touch';
 }
 
+export function keepsPremovesOnLeftPress(boardSquare: boolean, promotionChoice: boolean,
+  canQueue: boolean): boolean {
+  return canQueue && (boardSquare || promotionChoice);
+}
+
 export function pieceAt(fen: string, square: Square): Piece | null {
   return boardRows(fen, 'white').flat().find(item => item.square === square)?.piece ?? null;
 }

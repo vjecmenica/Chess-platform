@@ -202,6 +202,9 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       row.timeout_witness === null ? null : JSON.stringify(row.timeout_witness), row.draw_offer,
       row.resignation_witness === null ? null : JSON.stringify(row.resignation_witness)],
   );
+  // PostgreSQL delivers this notification only if the surrounding transaction commits.
+  await client.query("SELECT pg_notify('chess_game_updates', $1)",
+    [JSON.stringify({ id: row.id, version: row.version })]);
 }
 
 async function expireIfDue(client: pg.PoolClient, row: GameRow, game: ChessGame,

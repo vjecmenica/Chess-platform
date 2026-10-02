@@ -79,7 +79,7 @@ The board is the main element. Keep clocks, the side to move, the result, and co
 
 ## First playable milestone
 
-Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, explicit draw offers and resignation, polling, saved history, authoritative clocks with durable deadlines, replay controls, and immediate casual-policy resignation results. It lacks live push, draw claims, and automatic pending-timeout resolution, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
+Two players follow a challenge link, play a legal game with a clock, and then replay the saved game move by move. The chosen starting scope is a casual 5+3 challenge from the standard starting position, using secure guest sessions. The current preview has an HTTP board, versioned move submission, explicit draw offers and resignation, committed game-update signals with fallback polling, saved history, authoritative clocks with durable deadlines, replay controls, and immediate casual-policy resignation results. It lacks draw claims and automatic pending-timeout resolution, so the first playable milestone is still open. Session recovery details and archive visibility still need decisions. Ratings, matchmaking, engine analysis, and tournaments are not prerequisites for this first complete flow.
 
 Acceptance criteria:
 
@@ -96,7 +96,7 @@ Acceptance criteria:
 
 ### Initial choices and remaining setup decisions
 
-**Stack and deployment.** TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries were chosen on September 28, 2026. This keeps the development setup small and gives persistence a real transactional database from the start. See the [architecture](architecture.md) for the setup and later proposals. Socket.IO remains a proposal for live play. Hosting region, budget, load targets, monitoring, retention, and backup/restore targets remain open before public release.
+**Stack and deployment.** TypeScript, npm workspaces, React + Vite, Fastify on Node.js, PostgreSQL, and the domain/contracts package boundaries were chosen on September 28, 2026. This keeps the development setup small and gives persistence a real transactional database from the start. See the [architecture](architecture.md) for the setup and later proposals. The current live update path uses server-sent events; Socket.IO remains an option if later features need bidirectional delivery. Hosting region, budget, load targets, monitoring, retention, and backup/restore targets remain open before public release.
 
 **Identity and access.** The first challenge slice uses an opaque 30-day HttpOnly guest cookie, a CSRF token for writes, and a random link that lets one other guest claim Black while the seat is open. Seat ownership is stored in PostgreSQL; filled challenges and their games are readable only by their two guests. Losing the cookie currently loses access. Guest recovery, invitation expiry and revocation, broader saved-game visibility, and later account linking still need design before the complete playable flow. Accounts for rated play remain the suggestion for the later rating step.
 

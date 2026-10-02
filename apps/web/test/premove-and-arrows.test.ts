@@ -1,9 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { createPositionFromFen } from '@chess/domain';
 import { BoardArrows } from '../src/BoardArrows';
-import { isLeftPointerPress } from '../src/board-interaction';
+import { isLeftPointerPress, keepsPremovesOnLeftPress } from '../src/board-interaction';
 import { arrowCenter, toggleArrow } from '../src/board-arrows';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from '../src/premove-model';
@@ -70,6 +71,19 @@ describe('client-side premoves', () => {
     expect(old).toHaveLength(1);
   });
 
+  it('keeps the queue for another board premove but cancels it on an outside click', () => {
+    const first: Premove = { id: 'one', from: 'e2', to: 'e4' };
+    expect(keepsPremovesOnLeftPress(true, false, true)).toBe(true);
+    expect(premoveChoice(whiteWaiting, 'white', [first], 'g1', 'f3'))
+      .toEqual({ kind: 'move', from: 'g1', to: 'f3' });
+    const second: Premove = { id: 'two', from: 'g1', to: 'f3' };
+    expect(addPremove([first], second)).toEqual([first, second]);
+    expect(keepsPremovesOnLeftPress(false, false, true)).toBe(false);
+    expect(keepsPremovesOnLeftPress(true, false, false)).toBe(false);
+    expect(keepsPremovesOnLeftPress(false, true, true)).toBe(true);
+    expect(addPremove([], second)).toEqual([second]);
+  });
+
   it('keeps promotion and king-on-rook gestures tentative until turn-time validation', () => {
     const promotion = '4k3/P7/8/8/8/8/8/4K3 b - - 0 1';
     expect(premoveChoice(promotion, 'white', [], 'a7', 'a8'))
@@ -102,12 +116,14 @@ describe('board arrows', () => {
     expect(arrowCenter('h8', 'black')).toEqual({ x: 50, y: 750 });
   });
 
-  it('renders a fixed-size open arrowhead and all remaining routes', () => {
+  it('renders a substantial fixed-size arrowhead and all remaining routes', () => {
     const arrows = toggleArrow(toggleArrow([], 'e2', 'e4'), 'g1', 'f3');
     const html = renderToStaticMarkup(createElement(BoardArrows, { arrows, orientation: 'white' }));
     expect(html).toContain('markerUnits="userSpaceOnUse"');
-    expect(html).toContain('markerWidth="18" markerHeight="18"');
-    expect(html).toContain('d="M 2 2 L 14 9 L 2 16" fill="none"');
+    expect(html).toContain('markerWidth="38" markerHeight="34"');
+    expect(html).toContain('d="M 2 2 L 34 17 L 2 32 L 10 17 Z"');
+    expect(readFileSync(new URL('../src/style.css', import.meta.url), 'utf8'))
+      .toMatch(/\.board-arrows line \{ stroke-width: 12; stroke-linecap: round; \}/);
     expect((html.match(/<line /g) ?? [])).toHaveLength(2);
     expect(renderToStaticMarkup(createElement(BoardArrows, {
       arrows: toggleArrow(arrows, 'e2', 'e4'), orientation: 'white',

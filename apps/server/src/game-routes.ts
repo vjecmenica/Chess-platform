@@ -3,6 +3,7 @@ import type pg from 'pg';
 import { requireGuest } from './guest-session.js';
 import { createGameService, type ActionBody, type Arrival, type GameAction,
   type GameService, type MoveBody, type WallClock } from './game-service.js';
+import { createGameUpdateHub } from './game-updates.js';
 
 const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const square = '^[a-h][1-8]$';
@@ -23,8 +24,10 @@ export type { GameService, WallClock };
 export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
   service: GameService = createGameService(pool)): void {
   const arrivals = new WeakMap<FastifyRequest, Arrival>();
+  const updates = createGameUpdateHub(pool);
   app.addHook('onReady', () => service.start());
   app.addHook('onClose', () => service.stop());
+  app.addHook('preClose', () => updates.stop());
   app.get<{ Params: { id: string } }>('/games/:id', { schema: { params: idParams } },
     async (request, reply) => {
       reply.header('Cache-Control', 'no-store');
@@ -32,6 +35,37 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       if (guest === null) return;
       const result = await service.read(request.params.id, guest.id);
       return reply.code(result.status).send(result.body);
+    });
+
+  app.get<{ Params: { id: string } }>('/games/:id/events', { schema: { params: idParams } },
+    async (request, reply) => {
+      const guest = await requireGuest(pool, request, reply);
+      if (guest === null) return;
+      const access = await service.read(request.params.id, guest.id);
+      if (access.status !== 200) return reply.code(access.status).send(access.body);
+      await updates.start();
+      reply.hijack();
+      reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no',
+        Connection: 'keep-alive' });
+      let closed = false;
+      let unsubscribe = () => {};
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        if (heartbeat !== null) clearInterval(heartbeat);
+        unsubscribe();
+        if (!reply.raw.writableEnded) reply.raw.end();
+      };
+      unsubscribe = updates.subscribe(request.params.id, version => {
+        if (!closed) reply.raw.write(`event: game\ndata: ${JSON.stringify({ version })}\n\n`);
+      }, close);
+      reply.raw.on('close', close);
+      reply.raw.write(': connected\n\n');
+      heartbeat = setInterval(() => {
+        if (!closed) reply.raw.write(': heartbeat\n\n');
+      }, 15_000);
     });
 
   app.post<{ Params: { id: string } }>('/games/:id/ready',
