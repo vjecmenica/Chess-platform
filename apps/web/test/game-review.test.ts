@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewGraph } from '../src/EnginePanel';
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel,
-  reviewMethodVersion, reviewPositions, type ReviewProgress } from '../src/game-review';
+  reviewGlyph, reviewMethodVersion, reviewPositions, reviewSummary,
+  type ReviewProgress } from '../src/game-review';
 
 function gameWithMoves(): GameReadResponse {
   const position = createPosition();
@@ -80,9 +81,29 @@ describe('browser-local full-game review', () => {
       evaluation(fens[2]!, 20)]);
     expect(review.moves.map(move => [move.lossCp, move.label]))
       .toEqual([[null, 'Mate score'], [null, 'Mate score']]);
-    const markup = renderToStaticMarkup(createElement(ReviewGraph, { review, selectedPly: 1 }));
+    const markup = renderToStaticMarkup(createElement(ReviewGraph,
+      { review, selectedPly: 1, onSelectPly: () => {} }));
     expect(markup).toContain('White-perspective evaluation');
     expect(markup).toContain('class="review-selected"');
+    expect(markup).toContain('role="button"');
+  });
+
+  it('summarizes each player without treating mate scores as centipawn loss', () => {
+    const game = gameWithMoves();
+    const fens = reviewPositions(game);
+    const review = buildGameReview(game, [evaluation(fens[0]!, 100),
+      evaluation(fens[1]!, 0), evaluation(fens[2]!, 200)]);
+    expect(reviewSummary(review, 'white')).toEqual({ inaccuracy: 1, mistake: 0,
+      blunder: 0, averageLossCp: 100 });
+    expect(reviewSummary(review, 'black')).toEqual({ inaccuracy: 0, mistake: 1,
+      blunder: 0, averageLossCp: 200 });
+    expect(['Strong', 'Good', 'Inaccuracy', 'Mistake', 'Blunder', 'Mate score']
+      .map(label => reviewGlyph(label as typeof review.moves[number]['label'])))
+      .toEqual(['S', 'G', '?!', '?', '??', 'M']);
+    const mate = buildGameReview(game, [evaluation(fens[0]!, 100),
+      { ...evaluation(fens[1]!, 0), score: { kind: 'mate', value: 1 } },
+      evaluation(fens[2]!, 200)]);
+    expect(reviewSummary(mate, 'white').averageLossCp).toBeNull();
   });
 
   it('reuses cached positions, reports progress, and finishes after bounded searches', () => {

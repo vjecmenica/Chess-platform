@@ -25,6 +25,7 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
 import { ClockPanel } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
+import type { GameReview } from './game-review';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -113,6 +114,7 @@ export function App() {
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
@@ -997,19 +999,19 @@ export function App() {
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
+              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                fen={displayedFen}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
               <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
                 materialAdvantage={material?.side === topSide ? material.points : null} />
               <div className="move-panel">
-                {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-                  fen={displayedFen}
-                  selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                  onSelectPly={ply => {
-                    setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                    setSelected(null);
-                  }} />}
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
                     ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
@@ -1048,6 +1050,7 @@ export function App() {
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
+                  review={analysisOpen ? gameReview : null}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}
@@ -1123,6 +1126,7 @@ export function App() {
                       else if (analysis !== null && selectedReplayPly !== null)
                         setAnalysis(selectMain(analysis, game, selectedReplayPly));
                       setAnalysisOpen(!analysisOpen);
+                      setGameReview(null);
                       setAnalysisTool('move'); setAnnotationFrom(null);
                       setSelected(null); setPromotion(null); setAnalysisError(null);
                     }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}

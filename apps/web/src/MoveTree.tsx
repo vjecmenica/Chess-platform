@@ -4,12 +4,14 @@ import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
+import { reviewGlyph, type GameReview } from './game-review';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
   readonly tree: AnalysisTree | null;
   readonly selected: AnalysisCursor;
   readonly interactive: boolean;
+  readonly review?: GameReview | null;
   readonly onSelect: (cursor: AnalysisCursor) => void;
   readonly onDelete: (id: number) => void;
   readonly onPromote?: (id: number) => void;
@@ -19,7 +21,7 @@ interface MoveTreeProps {
 interface OpenMenu { move: MoveView; x: number; y: number; trigger: HTMLElement }
 
 export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
-  onPromote, onNote }: MoveTreeProps) {
+  onPromote, onNote, review }: MoveTreeProps) {
   const view = buildMoveTree(game, tree, selected);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [editing, setEditing] = useState(false);
@@ -81,13 +83,18 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
 
   function moveButton(move: MoveView, compact = false, lineStart = false) {
     const nag = nagDetails(move.note?.nag);
+    const reviewed = move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined;
+    const glyph = reviewed && reviewGlyph(reviewed.label);
     if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
     return <span key={cursorKey(move.cursor)}
       className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
       {compact && (move.ply % 2 === 1 || lineStart)
         && <span className="inline-number">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span>}
       <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
-        aria-label={nag ? `${move.notation}, ${nag.description}, PGN $${nag.value}` : move.notation}
+        aria-label={[move.notation,
+          ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
+          ...(glyph ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
+            ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : [])].join(', ')}
         aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
         title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
@@ -115,7 +122,11 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           suppressTouchSelection.current = null; return;
         }
           onSelect(move.cursor); }}>{move.san}{nag && <span className="nag-symbol"
-          title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}</button>
+          title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}
+          {glyph && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
+            title={`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
+              ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`}
+            aria-hidden="true">{glyph}</span>}</button>
       {move.note?.comment && <span className="move-comment" title={move.note.comment}>
         {move.note.comment}</span>}
     </span>;

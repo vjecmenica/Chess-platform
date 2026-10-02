@@ -8,6 +8,7 @@ import { createAnalysisTree, deleteVariation, playAnalysisMove, promoteVariation
   selectBranch, selectMain, setMoveNote } from '../src/analysis-model';
 import { MoveTree } from '../src/MoveTree';
 import { buildMoveTree, moveNotation } from '../src/move-tree-model';
+import { buildGameReview, reviewPositions, type GameReview } from '../src/game-review';
 
 function savedGame(plies = 2): GameReadResponse {
   const position = createPosition();
@@ -27,13 +28,40 @@ function play(game: GameReadResponse, tree: Tree, from: string, to: string): Tre
   return result.tree;
 }
 
-function markup(game: GameReadResponse, tree: Tree | null, interactive = true): string {
+function markup(game: GameReadResponse, tree: Tree | null, interactive = true,
+  review?: GameReview): string {
   return renderToStaticMarkup(createElement(MoveTree, { game, tree,
     selected: tree?.cursor ?? { kind: 'main', ply: game.history.length }, interactive,
-    onSelect: () => {}, onDelete: () => {} }));
+    onSelect: () => {}, onDelete: () => {}, review }));
 }
 
 describe('analysis move list', () => {
+  it('shows engine labels on saved moves without replacing a manual NAG or comment', () => {
+    const game = savedGame(3);
+    const fens = reviewPositions(game);
+    const scores = [100, 0, 200, 100];
+    const review = buildGameReview(game, fens.map((fen, index) => ({ fen, depth: 14,
+      score: { kind: 'cp' as const, value: scores[index]! }, bestMove: null, variation: [] })));
+    let tree = setMoveNote(createAnalysisTree(game), { kind: 'main', ply: 1 },
+      { nag: 1, comment: 'Prepared opening choice' });
+    tree = play(game, selectMain(tree, game, 0), 'd2', 'd4');
+    const html = markup(game, tree, true, review);
+    expect(html).toContain('PGN $1');
+    expect(html).toContain('Prepared opening choice');
+    expect(html).toContain('Engine: Inaccuracy, 100 centipawn loss');
+    expect(html).toContain('engine-glyph engine-inaccuracy');
+    expect(html).toContain('engine-glyph engine-mistake');
+    expect(html).toContain('engine-glyph engine-blunder');
+    expect((html.match(/engine-glyph/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('1. d4');
+    expect(game.history.map(move => move.san)).toEqual(['e4', 'e5', 'Nf3']);
+    const quiet = buildGameReview(game, fens.map(fen => ({ fen, depth: 14,
+      score: { kind: 'cp' as const, value: 0 }, bestMove: null, variation: [] })));
+    expect(markup(game, tree, true, quiet)).toContain('engine-glyph engine-strong');
+    const mate = buildGameReview(game, quiet.evaluations.map((evaluation, index) => index === 1
+      ? { ...evaluation, score: { kind: 'mate' as const, value: 1 } } : evaluation));
+    expect(markup(game, tree, true, mate)).toContain('Engine: Mate score, no numeric centipawn loss');
+  });
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);
     expect((complete.match(/class="move-pair"/g) ?? [])).toHaveLength(1);

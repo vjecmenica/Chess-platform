@@ -20,6 +20,29 @@ export interface GameReview {
   readonly moves: readonly ReviewedMove[];
 }
 
+export function reviewGlyph(label: ReviewedMove['label']): string {
+  switch (label) {
+    case 'Strong': return 'S';
+    case 'Good': return 'G';
+    case 'Inaccuracy': return '?!';
+    case 'Mistake': return '?';
+    case 'Blunder': return '??';
+    case 'Mate score': return 'M';
+  }
+}
+
+export function reviewSummary(review: GameReview, side: 'white' | 'black') {
+  const moves = review.moves.filter(move => move.side === side);
+  const numeric = moves.flatMap(move => move.lossCp === null ? [] : [move.lossCp]);
+  return {
+    inaccuracy: moves.filter(move => move.label === 'Inaccuracy').length,
+    mistake: moves.filter(move => move.label === 'Mistake').length,
+    blunder: moves.filter(move => move.label === 'Blunder').length,
+    averageLossCp: numeric.length === 0 ? null
+      : Math.round(numeric.reduce((sum, loss) => sum + loss, 0) / numeric.length),
+  };
+}
+
 export function reviewPositions(game: GameReadResponse): string[] {
   if (game.status !== 'finished') throw new Error('Only finished games can be reviewed.');
   replayFen(game, game.history.length);

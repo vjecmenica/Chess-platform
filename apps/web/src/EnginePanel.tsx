@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   evaluationLabel, variationSan, type EngineState, type EngineWorker } from './engine-analysis';
-import { buildGameReview, GameReviewRunner, graphCentipawns, reviewMethodVersion,
+import { buildGameReview, GameReviewRunner, graphCentipawns, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
 type ReviewState = { readonly kind: 'idle' | 'cancelled' }
@@ -10,27 +10,35 @@ type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
 
-export function ReviewGraph({ review, selectedPly }: {
+export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   readonly review: GameReview; readonly selectedPly: number | null;
+  readonly onSelectPly: (ply: number) => void;
 }) {
   const x = (index: number) => 10 + index * 300 / Math.max(1, review.evaluations.length - 1);
   const y = (evaluation: GameReview['evaluations'][number]) =>
     48 - graphCentipawns(evaluation) * 4 / 100;
   const points = review.evaluations.map((evaluation, index) => `${x(index)},${y(evaluation)}`).join(' ');
   const selected = selectedPly === null ? null : review.evaluations[selectedPly];
-  return <svg className="review-graph" viewBox="0 0 320 96" role="img"
+  return <svg className="review-graph" viewBox="0 0 320 96" role="group"
     aria-label="White-perspective evaluation by half-move, clipped at plus or minus ten pawns; mate at the edge">
     <line x1="10" x2="310" y1="48" y2="48" className="review-zero" />
     <polyline points={points} fill="none" className="review-plot" />
     {review.evaluations.map((evaluation, index) =>
-      <circle key={index} cx={x(index)} cy={y(evaluation)} r="2" className="review-point" />)}
+      <circle key={index} cx={x(index)} cy={y(evaluation)} r="5" className="review-point"
+        role="button" tabIndex={0} aria-label={`${index === 0 ? 'Show starting position'
+          : `Show position after ${review.moves[index - 1]?.san}`}, evaluation ${evaluationLabel(evaluation)}`}
+        onClick={() => onSelectPly(index)}
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault(); onSelectPly(index);
+        } }} />)}
     {selected && <circle cx={x(selectedPly!)} cy={y(selected)} r="4" className="review-selected" />}
   </svg>;
 }
 
-export function EnginePanel({ game, fen, selectedPly, onSelectPly }: {
+export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
+  readonly onReviewChange: (review: GameReview | null) => void;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
@@ -59,13 +67,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly }: {
     controller.current?.stop();
     setEnabled(false);
     runner.current?.cancel();
+    onReviewChange(null);
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
         () => new Worker(engineWorkerUrl) as EngineWorker, cache.current,
         progress => setReview({ kind: 'running', progress }),
         evaluations => {
-          try { setReview({ kind: 'complete', review: buildGameReview(game, evaluations) }); }
+          try {
+            const complete = buildGameReview(game, evaluations);
+            setReview({ kind: 'complete', review: complete });
+            onReviewChange(complete);
+          }
           catch { setReview({ kind: 'error', message: 'The review did not match the saved game.' }); }
         },
         message => setReview({ kind: 'error', message }));
@@ -103,7 +116,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly }: {
     <div className="review-control">
       <button type="button" className="secondary" onClick={() => {
         if (review.kind === 'running') {
-          runner.current?.cancel(); setReview({ kind: 'cancelled' });
+          runner.current?.cancel(); setReview({ kind: 'cancelled' }); onReviewChange(null);
         } else startReview();
       }}>{review.kind === 'running' ? 'Cancel review'
           : review.kind === 'complete' ? 'Review again' : 'Review game'}</button>
@@ -114,15 +127,25 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly }: {
     </div>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
-      <ReviewGraph review={review.review} selectedPly={selectedPly} />
+      <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
       <small>White perspective · mate at graph edge · {reviewMethodVersion}</small>
-      <div className="review-moves" aria-label="Reviewed main-line moves">
-        {review.review.moves.map(move => <button key={move.ply} type="button" className="review-move"
-          aria-current={selectedPly === move.ply ? 'step' : undefined}
-          onClick={() => onSelectPly(move.ply)}>
-          <span>{Math.ceil(move.ply / 2)}{move.side === 'white' ? '.' : '...'} {move.san}</span>
-          <span>{move.lossCp === null ? '—' : `${move.lossCp} cp`} · {move.label}</span>
-        </button>)}
+      <div className="review-summary" aria-label="Review summary">
+        {(['white', 'black'] as const).map(side => {
+          const summary = reviewSummary(review.review, side);
+          return <div key={side} className="review-player">
+            <strong>{side === 'white' ? 'White' : 'Black'}</strong>
+            <span>Average loss: {summary.averageLossCp === null ? '—' : `${summary.averageLossCp} cp`}</span>
+            {(['inaccuracy', 'mistake', 'blunder'] as const).map(kind => {
+              const matching = review.review.moves.find(move => move.side === side
+                && move.label.toLowerCase() === kind);
+              return <button key={kind} type="button" className={`review-count review-${kind}`}
+                disabled={matching === undefined} onClick={() => matching && onSelectPly(matching.ply)}
+                title={matching ? `Show first ${kind} by ${side}` : `No ${kind} moves by ${side}`}>
+                {summary[kind]} {kind === 'inaccuracy' ? 'inaccuracies' : `${kind}s`}
+              </button>;
+            })}
+          </div>;
+        })}
       </div>
     </div>}
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"

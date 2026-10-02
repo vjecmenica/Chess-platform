@@ -127,9 +127,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   gap: 8px; margin-top: 5px; padding-top: 5px; border-top: 1px solid #cbd9c8;
   color: #6f451c; font-size: 12px; font-weight: 600; }
 .first-move-countdown b { font-variant-numeric: tabular-nums; }
-.move-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow-y: auto; }
-.engine-panel { display: grid; gap: 5px; min-width: 0; margin-bottom: 8px; padding: 8px 10px;
-  flex-shrink: 0; border: 1px solid #d2d9cb;
+.move-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.engine-panel { display: grid; gap: 7px; width: min(100%, calc(100dvh - 96px), 720px);
+  min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid #d2d9cb;
   border-radius: 8px; background: #fbfaf5; font-size: 13px; color: #33473b; }
 .engine-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .engine-heading button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
@@ -143,19 +143,24 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .review-control button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
 .review-results { display: grid; gap: 4px; min-width: 0; }
 .review-results small { color: #617163; font-size: 11px; }
-.review-graph { display: block; width: 100%; height: 96px; border: 1px solid #d2d9cb;
+.review-graph { display: block; width: 100%; height: 160px; border: 1px solid #d2d9cb;
   border-radius: 5px; background: #fffdf8; }
 .review-zero { stroke: #cbd9c8; stroke-width: 1; }
 .review-plot { stroke: #805322; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.review-point { fill: #805322; }
-.review-selected { fill: #143d30; }
-.review-moves { display: grid; max-height: 140px; overflow-y: auto; }
-.review-move { display: flex; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px;
-  padding: 4px 6px; border: 0; border-bottom: 1px solid #e1e5db; background: transparent;
-  color: #33473b; text-align: left; font-size: 12px; }
-.review-move[aria-current="step"] { box-shadow: inset 3px 0 #143d30; font-weight: 700; }
-.move-panel:has(.review-results) .moves { flex: 0 0 100px; }
-.move-panel .replay { flex-shrink: 0; }
+.review-point { fill: #805322; cursor: pointer; }
+.review-point:focus-visible { stroke: #143d30; stroke-width: 3; }
+.review-selected { fill: #143d30; pointer-events: none; }
+.review-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.review-player { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px;
+  padding: 8px; border: 1px solid #d2d9cb; border-radius: 6px; font-size: 12px; }
+.review-player strong { min-width: 45px; }
+.review-player > span { color: #526157; }
+.review-count { padding: 3px 6px; border: 1px solid #d2d9cb; background: transparent;
+  color: #33473b; font-size: 11px; }
+.review-count:disabled { opacity: .7; }
+.review-inaccuracy { border-color: #ba9b51; }
+.review-mistake { border-color: #b9783c; }
+.review-blunder { border-color: #a64b42; }
 .moves { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #d2d9cb; border-radius: 8px; padding: 8px 10px; scrollbar-gutter: stable; }
 .moves.live-moves { border-color: transparent; background: transparent; }
 .moves h3 { font-size: 15px; margin: 0 0 6px; }
@@ -172,6 +177,13 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .inline-number { color: #617163; font-size: 12px; margin-left: 3px; }
 .nag-symbol { margin-left: 2px; color: #805322; font-size: 11px; white-space: nowrap;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.engine-glyph { margin-left: 3px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.engine-strong { color: #315e48; }
+.engine-good { color: #526157; }
+.engine-inaccuracy { color: #8b681b; }
+.engine-mistake { color: #a05120; }
+.engine-blunder { color: #a12d2d; }
+.engine-mate-score { color: #526157; }
 .move-comment { font-size: 11px; font-weight: 400; color: #526157; overflow-wrap: anywhere; }
 .move-entry.local-move > .move-link { text-decoration: underline dotted #82937e; text-underline-offset: 3px; }
 .move-link { display: inline-flex; align-items: center; min-height: 34px; min-width: 0; padding: 5px 8px; border: 0; background: transparent; color: #143d30; font-weight: 600; text-align: left; white-space: normal; }
@@ -248,7 +260,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 @media (max-width: 900px) {
   .game-layout { grid-template-columns: minmax(0, 1fr); max-width: 680px; gap: 12px; }
   .play-column { align-items: stretch; }
-  .board-frame, .board-hint, .clock-policy, .analysis-board-controls { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
+  .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .engine-panel { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
   .game-sidebar { height: auto; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
   .game-sidebar > .clock:first-child { grid-area: opponent; }
   .game-sidebar > .clock:last-child { grid-area: self; }
@@ -264,7 +276,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .challenge-page header { font-size: 11px; }
   .game-area { margin-top: 7px; }
   .game-layout { gap: 8px; }
-  .board-frame, .board-hint, .clock-policy, .analysis-board-controls { width: 100%; }
+  .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .engine-panel { width: 100%; }
+  .review-summary { grid-template-columns: minmax(0, 1fr); }
   .piece { font-size: clamp(24px, 8vw, 38px); }
   .game-sidebar { gap: 6px; padding: 7px; }
   .clock { padding: 7px; gap: 2px 4px; }
