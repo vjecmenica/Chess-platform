@@ -7,6 +7,10 @@ export type BoardMove =
   | { kind: 'promotion'; from: Square; to: Square }
   | { kind: 'invalid' };
 
+export function isLeftPointerPress(button: number, pointerType: string): boolean {
+  return button === 0 && pointerType !== 'touch';
+}
+
 export function pieceAt(fen: string, square: Square): Piece | null {
   return boardRows(fen, 'white').flat().find(item => item.square === square)?.piece ?? null;
 }

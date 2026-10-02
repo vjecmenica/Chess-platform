@@ -3,9 +3,10 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
-import { boardMove, legalMoveHints, pieceAt, pieceImage } from './board-interaction';
+import { boardMove, isLeftPointerPress, legalMoveHints, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
-import { arrowCenter, toggleArrow, type BoardArrow } from './board-arrows';
+import { toggleArrow, type BoardArrow } from './board-arrows';
+import { BoardArrows } from './BoardArrows';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
@@ -103,7 +104,6 @@ export function App() {
   const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square; mode: 'analysis' | 'live' | 'premove' } | null>(null);
   const [premoves, setPremoves] = useState<Premove[]>([]);
-  const [replacingPremoves, setReplacingPremoves] = useState(false);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
   const [arrowPreview, setArrowPreview] = useState<BoardArrow | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
@@ -121,6 +121,7 @@ export function App() {
   const pendingRef = useRef<PendingMove | null>(null);
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const premovesRef = useRef<Premove[]>([]);
   const premoveAttemptedVersion = useRef<number | null>(null);
   const rightPointer = useRef<{ id: number; from: Square } | null>(null);
   const suppressArrowMenu = useRef(false);
@@ -132,6 +133,12 @@ export function App() {
   const dragMenuReset = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
 
+  function updatePremoves(update: Premove[] | ((queue: readonly Premove[]) => Premove[])) {
+    const next = typeof update === 'function' ? update(premovesRef.current) : update;
+    premovesRef.current = next;
+    setPremoves(next);
+  }
+
   useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
 
   useEffect(() => { setResignConfirmationVersion(null); },
@@ -139,10 +146,22 @@ export function App() {
 
   useEffect(() => {
     if (game?.status !== 'active') {
-      setPremoves([]);
-      setReplacingPremoves(false);
+      updatePremoves([]);
     }
   }, [game?.id, game?.status]);
+
+  useEffect(() => {
+    const clearOnLeftDown = (event: PointerEvent) => {
+      if (!isLeftPointerPress(event.button, event.pointerType)) return;
+      premovesRef.current = [];
+      setPremoves([]);
+      setArrows([]);
+      setArrowPreview(null);
+      premoveAttemptedVersion.current = null;
+    };
+    window.addEventListener('pointerdown', clearOnLeftDown, true);
+    return () => window.removeEventListener('pointerdown', clearOnLeftDown, true);
+  }, []);
 
   useEffect(() => {
     const cancelWithRightButton = (event: MouseEvent) => {
@@ -400,7 +419,7 @@ export function App() {
       setGameInfo(null);
       const premoveId = command.premoveId;
       if (premoveId !== undefined) {
-        setPremoves(queue => consumePremove(queue, premoveId));
+        updatePremoves(queue => consumePremove(queue, premoveId));
         premoveAttemptedVersion.current = null;
       }
       clearPending();
@@ -412,7 +431,7 @@ export function App() {
         shouldRefresh = stale || ['wrong_turn', 'game_finished', 'flag_fell',
           'clock_not_started', 'received_before_turn', 'adjudication_pending'].includes(cause.code);
         if (command.premoveId !== undefined && !stale
-          && !['wrong_turn', 'received_before_turn'].includes(cause.code)) setPremoves([]);
+          && !['wrong_turn', 'received_before_turn'].includes(cause.code)) updatePremoves([]);
         if (!stale) setGameError(cause.message);
       } else {
         setGameError('The move was not confirmed. Retry it with the same request ID; the board has not changed.');
@@ -518,7 +537,7 @@ export function App() {
     if (input === null) return;
     const move = input.mode === 'premove'
       ? premoveChoice(input.positionFen, input.sideToMove,
-        replacingPremoves ? [] : premoves, from, target)
+        premovesRef.current, from, target)
       : boardMove(input.positionFen, input.sideToMove, from, target);
     setSelected(null);
     if (move.kind === 'invalid') return;
@@ -529,7 +548,7 @@ export function App() {
     else if (input.mode === 'analysis' && analysis !== null)
       submitAnalysisMove(analysis, input.current, move.from, move.to);
     else {
-      setPremoves([]);
+      updatePremoves([]);
       void submitMove({ requestId: crypto.randomUUID(), expectedVersion: input.current.version,
         from: move.from, to: move.to });
     }
@@ -538,8 +557,7 @@ export function App() {
   function queuePremove(from: Square, to: Square, promotionPiece?: 'q' | 'r' | 'b' | 'n') {
     const move: Premove = { id: crypto.randomUUID(), from, to,
       ...(promotionPiece === undefined ? {} : { promotion: promotionPiece }) };
-    setPremoves(queue => addPremove(queue, move, replacingPremoves));
-    setReplacingPremoves(false);
+    updatePremoves(queue => addPremove(queue, move));
     premoveAttemptedVersion.current = null;
   }
 
@@ -549,7 +567,7 @@ export function App() {
     if (input === null) return;
     const piece = input.mode === 'premove'
       ? projectedPieces(input.positionFen, input.sideToMove,
-        replacingPremoves ? [] : premoves).get(square) ?? null
+        premovesRef.current).get(square) ?? null
       : pieceAt(input.positionFen, square);
     if (selected === null) {
       if (pieceBelongsTo(piece, input.sideToMove)) setSelected(square);
@@ -559,7 +577,7 @@ export function App() {
     if (pieceBelongsTo(piece, input.sideToMove)
       && (input.mode === 'premove'
         ? premoveChoice(input.positionFen, input.sideToMove,
-          replacingPremoves ? [] : premoves, selected, square)
+          premovesRef.current, selected, square)
         : boardMove(input.positionFen, input.sideToMove, selected, square)).kind === 'invalid') {
       setSelected(square);
       return;
@@ -569,11 +587,15 @@ export function App() {
 
   function beginDrag(event: React.PointerEvent<HTMLButtonElement>, square: Square, piece: Piece | null) {
     const input = inputPosition();
-    if (event.button !== 0 || piece === null || promotion !== null || pendingRef.current !== null
+    const planned = input?.mode === 'premove'
+      ? projectedPieces(input.positionFen, input.sideToMove, premovesRef.current).get(square) ?? null : null;
+    const dragPiece = input?.mode === 'premove'
+      ? pieceBelongsTo(planned, input.sideToMove) ? planned : pieceAt(input.positionFen, square) : piece;
+    if (event.button !== 0 || dragPiece === null || promotion !== null || pendingRef.current !== null
       || pendingActionRef.current !== null || posting.current) return;
-    pointer.current = { id: event.pointerId, from: square, piece,
+    pointer.current = { id: event.pointerId, from: square, piece: dragPiece,
       x: event.clientX, y: event.clientY, moved: false,
-      canSubmit: input !== null && pieceBelongsTo(piece, input.sideToMove),
+      canSubmit: input !== null && pieceBelongsTo(dragPiece, input.sideToMove),
       version: gameRef.current?.version ?? -1, fen: input?.positionFen ?? null };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -685,21 +707,22 @@ export function App() {
   }
 
   useEffect(() => {
+    const queue = premovesRef.current;
     if (game?.status !== 'active' || game.position.sideToMove !== game.yourSeat
-      || premoves.length === 0 || replacingPremoves || analysisOpen || promotion !== null
+      || queue.length === 0 || analysisOpen || promotion !== null
       || pending !== null || pendingAction !== null || submitting || posting.current
       || game.clocks?.phase === 'handoff'
       || premoveAttemptedVersion.current === game.version) return;
-    const next = nextPremove(game.position.fen, game.yourSeat, premoves);
+    const next = nextPremove(game.position.fen, game.yourSeat, queue);
     if (next === null) {
-      setPremoves([]);
+      updatePremoves([]);
       setGameInfo('Queued premoves were cancelled because the next move is illegal in the confirmed position.');
       return;
     }
     premoveAttemptedVersion.current = game.version;
     void submitMove({ requestId: next.id, premoveId: next.id, expectedVersion: game.version,
       from: next.from, to: next.to, ...(next.promotion ? { promotion: next.promotion } : {}) });
-  }, [game, premoves, replacingPremoves, analysisOpen, promotion, pending, pendingAction, submitting]);
+  }, [game, premoves, analysisOpen, promotion, pending, pendingAction, submitting]);
 
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
   const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
@@ -713,7 +736,7 @@ export function App() {
       : replaying ? replayFen(game, displayedPly) : game.position.fen;
   const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, game.yourSeat);
   const premovePieces = game?.status === 'active' && game.position.sideToMove !== game.yourSeat
-    ? projectedPieces(game.position.fen, game.yourSeat, replacingPremoves ? [] : premoves) : null;
+    ? projectedPieces(game.position.fen, game.yourSeat, premoves) : null;
   const visibleArrows = arrowPreview === null ? arrows : [...arrows, arrowPreview];
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
   const coordinates = game === null ? null : boardCoordinates(game.yourSeat);
@@ -790,8 +813,7 @@ export function App() {
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}`}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
-                      onPointerDown={event => { beginArrow(event, square); beginDrag(event, square,
-                        planned !== null && pieceBelongsTo(planned, game.yourSeat) ? planned : piece); }}
+                      onPointerDown={event => { beginArrow(event, square); beginDrag(event, square, piece); }}
                       onPointerMove={event => { moveArrow(event); moveDrag(event); }}
                       onPointerUp={event => { endArrow(event); endDrag(event); }}
                       onPointerCancel={event => {
@@ -810,19 +832,7 @@ export function App() {
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
                         aria-hidden="true" draggable={false} />}
                     </button>})}
-                  <svg className="board-arrows" viewBox="0 0 800 800" aria-hidden="true" focusable="false">
-                    <defs><marker id="board-arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="4"
-                      orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 8 4 L 0 8 z" /></marker></defs>
-                    {visibleArrows.map((arrow, index) => {
-                      const start = arrowCenter(arrow.from, game.yourSeat);
-                      const end = arrowCenter(arrow.to, game.yourSeat);
-                      const length = Math.hypot(end.x - start.x, end.y - start.y);
-                      const x2 = end.x - (end.x - start.x) * 22 / length;
-                      const y2 = end.y - (end.y - start.y) * 22 / length;
-                      return <line key={`${arrow.from}-${arrow.to}-${index}`} x1={start.x} y1={start.y}
-                        x2={x2} y2={y2} markerEnd="url(#board-arrow-head)" />;
-                    })}
-                  </svg>
+                  <BoardArrows arrows={visibleArrows} orientation={game.yourSeat} />
                 </div>
                 <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
                   <span key={rank}>{rank}</span>)}</div>
@@ -896,15 +906,7 @@ export function App() {
                 {game.status === 'active' && premoves.length > 0 && <div className="premove-queue" role="status">
                   <p>Queued premoves · sent only when legal on your turn</p>
                   <ol>{premoves.map(move => <li key={move.id}>{move.from}–{move.to}{move.promotion ? `=${move.promotion.toUpperCase()}` : ''}</li>)}</ol>
-                  {replacingPremoves ? <button type="button" className="secondary"
-                    disabled={submitting || pending !== null} onClick={() => setReplacingPremoves(false)}>Keep queue</button>
-                    : <button type="button" className="secondary"
-                      disabled={submitting || pending !== null}
-                      onClick={() => { setReplacingPremoves(true); setSelected(null); }}>Replace queue</button>}
-                  <button type="button" className="secondary" disabled={submitting || pending !== null} onClick={() => {
-                    setPremoves([]); setReplacingPremoves(false); setSelected(null);
-                    premoveAttemptedVersion.current = null;
-                  }}>Cancel premoves</button>
+                  <p>Left-click anywhere to clear them. A new premove replaces the queue.</p>
                 </div>}
                 {result !== null ? <div className="final-result" role="status">
                   <strong>{result.score}</strong><span>{result.explanation}</span>
@@ -976,7 +978,7 @@ export function App() {
                       else if (analysisOpen && analysis !== null && current)
                         submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
                       else if (current) {
-                        setPremoves([]);
+                        updatePremoves([]);
                         void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
                           from: promotion.from, to: promotion.to, promotion: piece });
                       }

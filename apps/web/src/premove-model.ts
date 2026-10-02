@@ -6,8 +6,8 @@ export interface Premove { id: string; from: Square; to: Square; promotion?: 'q'
 export type PremoveChoice = { kind: 'move'; from: Square; to: Square }
   | { kind: 'promotion'; from: Square; to: Square } | { kind: 'invalid' };
 
-export function addPremove(queue: readonly Premove[], move: Premove, replace = false): Premove[] {
-  return replace ? [move] : [...queue, move];
+export function addPremove(queue: readonly Premove[], move: Premove): Premove[] {
+  return [...queue, move];
 }
 
 export function consumePremove(queue: readonly Premove[], id: string): Premove[] {

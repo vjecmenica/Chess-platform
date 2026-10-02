@@ -1,5 +1,9 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { createPositionFromFen } from '@chess/domain';
+import { BoardArrows } from '../src/BoardArrows';
+import { isLeftPointerPress } from '../src/board-interaction';
 import { arrowCenter, toggleArrow } from '../src/board-arrows';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from '../src/premove-model';
@@ -47,10 +51,23 @@ describe('client-side premoves', () => {
     const first: Premove = { id: 'one', from: 'e2', to: 'e4' };
     const replacement: Premove = { id: 'two', from: 'd2', to: 'd4' };
     expect(addPremove([first], replacement)).toEqual([first, replacement]);
-    expect(addPremove([first], replacement, true)).toEqual([replacement]);
+    expect(addPremove([], replacement)).toEqual([replacement]);
     expect(consumePremove([first, replacement], 'one')).toEqual([replacement]);
     expect(nextPremove(whiteWaiting, 'white', [])).toBeNull();
     expect(premoveChoice(whiteWaiting, 'white', [first], 'e2', 'e3')).toEqual({ kind: 'invalid' });
+  });
+
+  it('uses the cleared queue when the same left gesture creates a replacement premove', () => {
+    const old: Premove[] = [{ id: 'old', from: 'e2', to: 'e4' }];
+    expect(premoveChoice(whiteWaiting, 'white', old, 'e4', 'e5').kind).toBe('move');
+    const afterLeftPress: Premove[] = [];
+    expect(premoveChoice(whiteWaiting, 'white', afterLeftPress, 'e4', 'e5'))
+      .toEqual({ kind: 'invalid' });
+    const replacement = premoveChoice(whiteWaiting, 'white', afterLeftPress, 'd2', 'd4');
+    expect(replacement).toEqual({ kind: 'move', from: 'd2', to: 'd4' });
+    expect(addPremove(afterLeftPress, { id: 'new', from: 'd2', to: 'd4' }))
+      .toEqual([{ id: 'new', from: 'd2', to: 'd4' }]);
+    expect(old).toHaveLength(1);
   });
 
   it('keeps promotion and king-on-rook gestures tentative until turn-time validation', () => {
@@ -64,6 +81,12 @@ describe('client-side premoves', () => {
 });
 
 describe('board arrows', () => {
+  it('clears on a left mouse press, not on right-arrow or touch input', () => {
+    expect(isLeftPointerPress(0, 'mouse')).toBe(true);
+    expect(isLeftPointerPress(2, 'mouse')).toBe(false);
+    expect(isLeftPointerPress(0, 'touch')).toBe(false);
+  });
+
   it('adds multiple arrows and toggles only an exact repeated arrow', () => {
     const first = toggleArrow([], 'e2', 'e4');
     const both = toggleArrow(first, 'g1', 'f3');
@@ -77,5 +100,17 @@ describe('board arrows', () => {
     expect(arrowCenter('a1', 'black')).toEqual({ x: 750, y: 50 });
     expect(arrowCenter('h8', 'white')).toEqual({ x: 750, y: 50 });
     expect(arrowCenter('h8', 'black')).toEqual({ x: 50, y: 750 });
+  });
+
+  it('renders a fixed-size open arrowhead and all remaining routes', () => {
+    const arrows = toggleArrow(toggleArrow([], 'e2', 'e4'), 'g1', 'f3');
+    const html = renderToStaticMarkup(createElement(BoardArrows, { arrows, orientation: 'white' }));
+    expect(html).toContain('markerUnits="userSpaceOnUse"');
+    expect(html).toContain('markerWidth="18" markerHeight="18"');
+    expect(html).toContain('d="M 2 2 L 14 9 L 2 16" fill="none"');
+    expect((html.match(/<line /g) ?? [])).toHaveLength(2);
+    expect(renderToStaticMarkup(createElement(BoardArrows, {
+      arrows: toggleArrow(arrows, 'e2', 'e4'), orientation: 'white',
+    })).match(/<line /g)).toHaveLength(1);
   });
 });
