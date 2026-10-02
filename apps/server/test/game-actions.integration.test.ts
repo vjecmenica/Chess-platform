@@ -286,7 +286,8 @@ describe('guest game actions against PostgreSQL', () => {
     const late = await action(app, second.id, second.black, 'resign', 1);
     expect(late.json().error).toBe('flag_fell');
     expect((await read(app, second.id, second.white)).json()).toMatchObject({
-      pending: { kind: 'timeout', flaggedSide: 'black', deadlineMs: blackDeadline },
+      status: 'finished', result: { outcome: 'win', winner: 'white', reason: 'timeout',
+        flaggedSide: 'black', deadlineMs: blackDeadline },
       clocks: { phase: 'flagged', flaggedAtMs: blackDeadline },
     });
 

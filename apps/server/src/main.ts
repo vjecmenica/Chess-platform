@@ -13,10 +13,8 @@ async function main() {
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
   let timer: ReturnType<typeof setInterval> | null = null;
-  let adjudicationTimer: ReturnType<typeof setInterval> | null = null;
   app.addHook('onClose', async () => {
     if (timer !== null) clearInterval(timer);
-    if (adjudicationTimer !== null) clearInterval(adjudicationTimer);
     await gameService.stop();
     await pool.end();
   });
@@ -44,18 +42,8 @@ async function main() {
     catch (error) { app.log.error({ err: error }, 'Could not check due game clocks; the next poll will retry.'); }
     finally { polling = false; }
   };
-  let adjudicating = false;
-  const adjudicate = async () => {
-    if (adjudicating) return;
-    adjudicating = true;
-    try { await gameService.pollPendingTimeouts(); }
-    catch (error) { app.log.error({ err: error }, 'Could not adjudicate pending timeouts; the next poll will retry.'); }
-    finally { adjudicating = false; }
-  };
   timer = setInterval(() => { void poll(); }, 500);
-  adjudicationTimer = setInterval(() => { void adjudicate(); }, 500);
   void poll();
-  void adjudicate();
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

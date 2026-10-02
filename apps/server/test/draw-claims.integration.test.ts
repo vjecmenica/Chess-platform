@@ -257,6 +257,7 @@ describe('draw claims against PostgreSQL', () => {
     const exact = await claim(app, other.id, other.white, 2, 'fifty_move');
     expect(exact.json().error).toBe('flag_fell');
     expect((await read(app, other.id, other.white)).json()).toMatchObject({
-      status: 'pending_adjudication', claimDrawOffer: null });
+      status: 'finished', claimDrawOffer: null,
+      result: { outcome: 'win', winner: 'black', reason: 'timeout' } });
   });
 });

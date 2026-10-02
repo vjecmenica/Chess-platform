@@ -16,6 +16,26 @@ function unchanged(game: ChessGame, action: () => unknown, reason: string): void
 }
 
 describe('timeout adjudication', () => {
+  it('settles an unresolved flag under the explicit casual policy without a search', () => {
+    const game = createGame('casual_concession', 'casual_flag_forfeit');
+    expect(game.getMatingPossibility('black')).toBe('unresolved');
+    expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 300000,
+      mateLine: [{ from: 'e2', to: 'e4' }] })).toMatchObject({
+      accepted: true, game: { status: 'finished', result: { outcome: 'win', winner: 'black',
+        reason: 'timeout', flaggedSide: 'white', deadlineMs: 300000 } },
+    });
+    expect(game.getState()).not.toHaveProperty('adjudication');
+    unchanged(game, () => game.flagTimeout({ flaggedSide: 'white', deadlineMs: 300000 }), 'game_finished');
+  });
+
+  it('keeps a proven no-mate flag as a draw under the casual policy', () => {
+    const game = createGameFromPosition('4k3/8/8/8/8/8/8/R3K3 w - - 0 1',
+      'casual_concession', 'casual_flag_forfeit');
+    expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 42 })).toMatchObject({
+      accepted: true, game: { status: 'finished', result: { outcome: 'draw',
+        reason: 'timeout_no_mating_possibility' } },
+    });
+  });
   it('draws when the opponent is proven unable to mate', () => {
     const game = createGameFromPosition('4k3/8/8/8/8/8/8/R3K3 w - - 0 1');
     expect(game.flagTimeout({ flaggedSide: 'white', deadlineMs: 300000 })).toMatchObject({

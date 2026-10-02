@@ -283,8 +283,8 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     const exact = await move(otherApp, second.id, second.white, 2, 'e2', 'e4', requestId);
     expect(exact.json()).toMatchObject({ error: 'flag_fell', currentVersion: 3 });
     expect((await read(app, second.id, second.white)).json()).toMatchObject({
-      version: 3, status: 'pending_adjudication', history: [],
-      pending: { kind: 'timeout', flaggedSide: 'white', deadlineMs: deadline },
+      version: 3, status: 'finished', history: [],
+      result: { outcome: 'win', winner: 'black', reason: 'timeout', flaggedSide: 'white', deadlineMs: deadline },
       clocks: { phase: 'flagged', flaggedSide: 'white', flaggedAtMs: deadline,
         remainingMs: { white: 0, black: 300000 } },
     });
@@ -314,9 +314,9 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     expect(await restarted.pollDueGames()).toBeGreaterThanOrEqual(1);
     expect(await restarted.pollDueGames()).toBe(0);
     expect((await read(restartedApp, id, white)).json()).toMatchObject({
-      status: 'pending_adjudication', version: 3,
+      status: 'finished', version: 3,
       clocks: { phase: 'flagged', flaggedAtMs: deadline },
-      pending: { flaggedSide: 'white', deadlineMs: deadline },
+      result: { outcome: 'win', winner: 'black', reason: 'timeout', flaggedSide: 'white', deadlineMs: deadline },
     });
   });
 

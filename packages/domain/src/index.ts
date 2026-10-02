@@ -3,10 +3,10 @@ export type {
   Side, Promotion, MoveRequest, PositionSnapshot, MoveRecord, MoveRejection, MoveResult,
   LegalDestination, ChessPosition,
 } from './position.js';
-export { createGame } from './game.js';
+export { createGame, createGameFromPosition } from './game.js';
 export type {
   ChessGame, GameSnapshot, GameResult, SideCommand, GameRejection, CommandResult, GameMoveResult,
-  ResignationRuling, ResignationPolicy, MateRuling, TimeoutDetails, TimeoutCommand,
+  ResignationRuling, ResignationPolicy, TimeoutPolicy, MateRuling, TimeoutDetails, TimeoutCommand,
 } from './game.js';
 export type { DrawClaim, ClaimResult } from './game.js';
 export type { MatingPossibility } from './mating.js';

@@ -7,6 +7,7 @@ export interface SideCommand {
 }
 
 export type ResignationPolicy = 'casual_concession' | 'fide_proof_required';
+export type TimeoutPolicy = 'casual_flag_forfeit' | 'fide_proof_required';
 
 export type GameResult =
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'checkmate' | 'resignation' }
@@ -118,13 +119,15 @@ function reject(reason: GameRejection): Rejected<GameRejection> {
   return { accepted: false, reason, message: messages[reason] };
 }
 
-export function createGame(resignationPolicy: ResignationPolicy): ChessGame {
-  return createGameFromPosition(STANDARD_STARTING_FEN, resignationPolicy);
+export function createGame(resignationPolicy: ResignationPolicy,
+  timeoutPolicy: TimeoutPolicy = 'fide_proof_required'): ChessGame {
+  return createGameFromPosition(STANDARD_STARTING_FEN, resignationPolicy, timeoutPolicy);
 }
 
-// Internal setup for rule fixtures. Not exported by the package; no history is inferred from FEN.
+// A trusted starting position for saved games and rule fixtures; no history is inferred from FEN.
 export function createGameFromPosition(startingFen: string,
-  resignationPolicy: ResignationPolicy = 'casual_concession'): ChessGame {
+  resignationPolicy: ResignationPolicy = 'casual_concession',
+  timeoutPolicy: TimeoutPolicy = 'fide_proof_required'): ChessGame {
   const board = createPositionAdapter(startingFen);
   const position = board.position;
   let result: GameResult | null = null;
@@ -337,14 +340,16 @@ export function createGameFromPosition(startingFen: string,
       }
       const winner = command.flaggedSide === 'white' ? 'black' : 'white';
       const possibility = board.matingPossibility(winner);
+      const verifiedMateLine = command.mateLine !== undefined
+        && verifyMateLine(winner, command.mateLine);
       if (possibility === 'impossible') {
         finish({ outcome: 'draw', reason: 'timeout_no_mating_possibility',
           flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs });
-      } else if (possibility === 'possible' || command.mateLine !== undefined
-        && verifyMateLine(winner, command.mateLine)) {
+      } else if (possibility === 'possible' || timeoutPolicy === 'casual_flag_forfeit'
+        || verifiedMateLine) {
         finish({ outcome: 'win', winner, reason: 'timeout',
           flaggedSide: command.flaggedSide, deadlineMs: command.deadlineMs });
-        if (possibility !== 'possible' && command.mateLine !== undefined) {
+        if (possibility !== 'possible' && verifiedMateLine && command.mateLine !== undefined) {
           retainRuling({ verdict: 'mate_possible', mateLine: command.mateLine });
         }
       } else {
