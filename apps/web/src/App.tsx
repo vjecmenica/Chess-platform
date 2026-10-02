@@ -3,6 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
+import { availableClaimForPlayer } from './draw-claim-control';
 import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
   legalMoveHints, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
@@ -116,11 +117,6 @@ export function App() {
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [resignConfirmationVersion, setResignConfirmationVersion] = useState<number | null>(null);
-  const [claimRule, setClaimRule] = useState<'threefold_repetition' | 'fifty_move'>('threefold_repetition');
-  const [claimIntended, setClaimIntended] = useState(false);
-  const [claimFrom, setClaimFrom] = useState('');
-  const [claimTo, setClaimTo] = useState('');
-  const [claimPromotion, setClaimPromotion] = useState<'' | 'q' | 'r' | 'b' | 'n'>('');
   const [submitting, setSubmitting] = useState(false);
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
@@ -547,17 +543,11 @@ export function App() {
 
   function beginClaim() {
     const current = gameRef.current;
-    if (current === null || current.status !== 'active'
-      || current.position.sideToMove !== current.yourSeat
+    const rule = current === null ? null : availableClaimForPlayer(current);
+    if (current === null || rule === null
       || pendingRef.current || pendingActionRef.current || posting.current) return;
-    if (claimIntended && (!/^[a-h][1-8]$/.test(claimFrom) || !/^[a-h][1-8]$/.test(claimTo))) {
-      setGameError('Enter a legal source and destination square for the declared move.');
-      return;
-    }
     void submitAction({ requestId: crypto.randomUUID(), expectedVersion: current.version,
-      kind: 'claim_draw', rule: claimRule,
-      ...(claimIntended ? { intendedMove: { from: claimFrom as Square, to: claimTo as Square,
-        ...(claimPromotion ? { promotion: claimPromotion } : {}) } } : {}) });
+      kind: 'claim_draw', rule });
   }
 
   function confirmResignation() {
@@ -779,7 +769,6 @@ export function App() {
     const next = nextPremove(game.position.fen, game.yourSeat, queue);
     if (next === null) {
       updatePremoves([]);
-      setGameInfo('Queued premoves were cancelled because the next move is illegal in the confirmed position.');
       return;
     }
     premoveAttemptedVersion.current = game.version;
@@ -905,11 +894,10 @@ export function App() {
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
-              <p className="board-hint">{analysisOpen
+              {(analysisOpen || canMove || game.status === 'finished') && <p className="board-hint">{analysisOpen
                 ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move. Select or drag a piece.`
                 : canMove ? 'Select or drag one of your pieces.'
-                  : game.status === 'finished' ? 'Select Analysis to explore legal alternatives.'
-                    : 'Queue premoves while waiting, or drag to inspect pieces. Right-drag to draw an arrow.'}</p>
+                  : 'Select Analysis to explore legal alternatives.'}</p>}
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
@@ -966,17 +954,14 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {game.status === 'active' && premoves.length > 0 && <div className="premove-queue" role="status">
-                  <p>Queued premoves · sent only when legal on your turn</p>
-                  <ol>{premoves.map(move => <li key={move.id}>{move.from}–{move.to}{move.promotion ? `=${move.promotion.toUpperCase()}` : ''}</li>)}</ol>
-                  <p>Queue another move on the board, or left-click elsewhere to clear the queue.</p>
-                </div>}
                 {result !== null ? <div className="final-result" role="status">
                   <strong>{result.score}</strong><span>{result.explanation}</span>
                 </div> : <p className="turn" role="status">{game.status === 'pending_adjudication'
                   ? game.pending?.kind === 'resignation'
                     ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. Play and clocks are stopped while the result awaits a verified mating decision.`
-                    : 'A clock flagged. The game is frozen while its result awaits adjudication.'
+                    : game.timeoutAdjudication === 'unresolved'
+                      ? 'A clock flagged. Further adjudication is needed.'
+                      : 'A clock flagged. Checking the result.'
                   : game.clocks?.phase === 'awaiting_first_move'
                     ? 'Waiting for White’s first move. Both clocks stay at 5:00; Black’s clock starts after that move is saved.'
                   : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
@@ -1009,34 +994,9 @@ export function App() {
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('offer_draw')}>Offer draw</button>
                       : <p className="draw-offer" role="status">You can offer another draw after {offerPliesRemaining} more half-move{offerPliesRemaining === 1 ? '' : 's'}.</p>)}
-                    {game.position.sideToMove === game.yourSeat && <details className="draw-claim">
-                      <summary>Claim a draw</summary>
-                      <form onSubmit={event => { event.preventDefault(); beginClaim(); }}>
-                        <label>Rule <select value={claimRule} onChange={event =>
-                          setClaimRule(event.target.value as typeof claimRule)}>
-                          <option value="threefold_repetition">Threefold repetition</option>
-                          <option value="fifty_move">Fifty-move rule</option>
-                        </select></label>
-                        <label><input type="checkbox" checked={claimIntended}
-                          onChange={event => setClaimIntended(event.target.checked)} /> Declare an intended move</label>
-                        {claimIntended && <>
-                          <label>From <input value={claimFrom} maxLength={2} pattern="[a-h][1-8]"
-                            onChange={event => setClaimFrom(event.target.value.toLowerCase())} required /></label>
-                          <label>To <input value={claimTo} maxLength={2} pattern="[a-h][1-8]"
-                            onChange={event => setClaimTo(event.target.value.toLowerCase())} required /></label>
-                          <label>Promotion <select value={claimPromotion} onChange={event =>
-                            setClaimPromotion(event.target.value as typeof claimPromotion)}>
-                            <option value="">None</option><option value="q">Queen</option>
-                            <option value="r">Rook</option><option value="b">Bishop</option>
-                            <option value="n">Knight</option>
-                          </select></label>
-                        </>}
-                        <p>An incorrect claim gives your opponent one minute and offers a draw.
-                          A declared legal move will be played.</p>
-                        <button type="submit" className="secondary"
-                          disabled={submitting || pending !== null || pendingAction !== null}>Submit claim</button>
-                      </form>
-                    </details>}
+                    {availableClaimForPlayer(game) !== null && <button type="button" className="secondary"
+                      disabled={submitting || pending !== null || pendingAction !== null}
+                      onClick={beginClaim}>Claim draw</button>}
                     {resignConfirmationVersion === game.version
                       ? <div className="resign-confirmation" role="group" aria-label="Confirm resignation">
                         <p>Resign this game? This cannot be undone.</p>

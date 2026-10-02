@@ -83,7 +83,12 @@ describe('draw claims against PostgreSQL', () => {
   it('finishes a current or intended threefold claim without playing the intended move', async () => {
     const { app } = instance();
     const first = await challenge(app);
+    expect((await read(app, first.id, first.white)).json().availableDrawClaims).toEqual([]);
     await cycle(app, first.id, first.white, first.black, 8);
+    expect((await read(app, first.id, first.white)).json().availableDrawClaims)
+      .toEqual(['threefold_repetition']);
+    expect((await read(app, first.id, first.black)).json().availableDrawClaims)
+      .toEqual(['threefold_repetition']);
     const requestId = randomUUID();
     const accepted = await claim(app, first.id, first.white, 8, 'threefold_repetition', undefined, requestId);
     expect(accepted.json()).toMatchObject({ accepted: true, claimCorrect: true, bonusMs: 0,
@@ -129,6 +134,7 @@ describe('draw claims against PostgreSQL', () => {
       board.move(chosen.move);
       counts.set(chosen.identity, chosen.count + 1);
     }
+    expect((await read(app, id, white)).json().availableDrawClaims).toContain('fifty_move');
     const accepted = await claim(app, id, white, 100, 'fifty_move');
     expect(accepted.json()).toMatchObject({ claimCorrect: true, bonusMs: 0,
       game: { status: 'finished', result: { reason: 'fifty_move' } } });

@@ -78,6 +78,7 @@ export interface ChessGame {
   getDrawOfferNextEligiblePly(): Readonly<Record<Side, number>>;
   getMatingPossibility(side: Side): MatingPossibility;
   claimDraw(command: DrawClaim): ClaimResult;
+  getAvailableDrawClaims(): readonly DrawClaim['rule'][];
   /** Records the consequences of a legally formed claim whose threshold was not met. */
   recordIncorrectDrawClaim(command: DrawClaim): IncorrectClaimResult;
   submitMove(request: MoveRequest): GameMoveResult;
@@ -241,6 +242,13 @@ export function createGameFromPosition(startingFen: string,
     verifyMateLine,
     verifyResignationMateLine,
     verifyTimeoutMateLine,
+    getAvailableDrawClaims() {
+      if (getState().status !== 'active') return [];
+      const available: DrawClaim['rule'][] = [];
+      if ((occurrences.get(board.repetitionKey()) ?? 0) >= 3) available.push('threefold_repetition');
+      if (board.reversiblePlies() >= 100) available.push('fifty_move');
+      return available;
+    },
     getMatingPossibility: side => board.matingPossibility(side),
     claimDraw(command) {
       const rejection = validate(command);

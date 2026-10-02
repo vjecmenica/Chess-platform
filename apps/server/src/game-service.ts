@@ -1,8 +1,10 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { Worker } from 'node:worker_threads';
 import type pg from 'pg';
 import { createGame, FIVE_PLUS_THREE, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
+import type { MateSearchResult } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
   GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
 
@@ -35,6 +37,9 @@ interface GameRow {
   claim_draw_offer: Side | null;
   resignation_witness: readonly Omit<MoveRequest, 'side'>[] | null;
   timeout_witness: readonly Omit<MoveRequest, 'side'>[] | null;
+  timeout_search_exhausted_at: Date | null;
+  timeout_adjudicated_at: Date | null;
+  timeout_search_retry_after: Date | null;
   version: number;
   clock_mode: 'legacy_untimed' | 'five_plus_three';
   clock_start_mode: 'readiness' | 'first_move';
@@ -67,6 +72,29 @@ function now(clock: WallClock): number {
   const value = clock.nowMs();
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('The wall clock must return nonnegative integer milliseconds.');
   return value;
+}
+
+function searchTimeoutInWorker(history: readonly MoveRecord[], flaggedSide: Side,
+  deadlineMs: number, budget: { maxDepth: number; maxNodes: number }): Promise<MateSearchResult> {
+  const source = import.meta.url.endsWith('.ts');
+  const worker = new Worker(new URL(source ? './timeout-adjudication-worker.ts'
+    : './timeout-adjudication-worker.js', import.meta.url), {
+    workerData: { history: history.map(move => ({ from: move.from, to: move.to,
+      ...(move.promotion ? { promotion: move.promotion } : {}) })), flaggedSide, deadlineMs,
+    ...budget },
+    execArgv: source ? ['--import', 'tsx'] : [],
+  });
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      void worker.terminate();
+      reject(new Error('Timeout mate search exceeded its worker time limit.'));
+    }, 30_000);
+    worker.once('message', (result: MateSearchResult) => { clearTimeout(timer); resolve(result); });
+    worker.once('error', error => { clearTimeout(timer); reject(error); });
+    worker.once('exit', code => {
+      if (code !== 0) { clearTimeout(timer); reject(new Error(`Timeout mate worker exited with code ${code}.`)); }
+    });
+  });
 }
 
 function seat(row: GameRow, guestId: string): Side | null {
@@ -140,6 +168,8 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       ? Number(row.ready_white) + Number(row.ready_black) : 0)
       + Number(row.flagged_side !== null) : 0) + actions.length
     + Number(row.resignation_witness !== null)
+    + Number(row.timeout_search_exhausted_at !== null)
+    + Number(row.timeout_adjudicated_at !== null)
     - actions.filter(action => action.kind === 'claim_draw' && !action.payload.claimCorrect
       && action.payload.intendedMove !== undefined).length;
   const expectedStatus = row.status === 'waiting' ? 'active' : row.status;
@@ -193,6 +223,9 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
   const state = game.getState();
   return { id: row.id, version: row.version, status: row.status, position: state.position,
     result: row.result, drawOffer: state.drawOffer, claimDrawOffer: state.claimDrawOffer,
+    availableDrawClaims: game.getAvailableDrawClaims(),
+    timeoutAdjudication: row.status !== 'pending_adjudication' || row.pending?.kind !== 'timeout'
+      ? null : row.timeout_search_exhausted_at === null ? 'searching' : 'unresolved',
     drawOfferNextEligiblePly: game.getDrawOfferNextEligiblePly(),
     ...(row.pending === null ? {} : { pending: row.pending }),
     clocks: clockResponse(row, atMs),
@@ -212,6 +245,8 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       white_remaining_ms = $11, black_remaining_ms = $12, turn_started_at = $13,
       deadline_at = $14, flagged_side = $15, flagged_at = $16, timeout_witness = $17::jsonb,
       draw_offer = $18, resignation_witness = $19::jsonb, claim_draw_offer = $20,
+      timeout_search_exhausted_at = $21, timeout_adjudicated_at = $22,
+      timeout_search_retry_after = $23,
       updated_at = now() WHERE id = $1`,
     [row.id, row.fen, row.side_to_move, row.status,
       row.result === null ? null : JSON.stringify(row.result),
@@ -220,7 +255,8 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       row.turn_started_at, row.deadline_at, row.flagged_side, row.flagged_at,
       row.timeout_witness === null ? null : JSON.stringify(row.timeout_witness), row.draw_offer,
       row.resignation_witness === null ? null : JSON.stringify(row.resignation_witness),
-      row.claim_draw_offer],
+      row.claim_draw_offer, row.timeout_search_exhausted_at, row.timeout_adjudicated_at,
+      row.timeout_search_retry_after],
   );
   // PostgreSQL delivers this notification only if the surrounding transaction commits.
   await client.query("SELECT pg_notify('chess_game_updates', $1)",
@@ -272,12 +308,13 @@ export interface GameService {
   claim(id: string, guestId: string, requestId: string,
     body: ClaimBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
+  pollPendingTimeouts(): Promise<number>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
 
 export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
-  hooks: { afterMoveCommit?: () => Promise<void> } = {}): GameService {
+  hooks: { afterMoveCommit?: () => Promise<void>; timeoutSearchBudget?: { maxDepth: number; maxNodes: number } } = {}): GameService {
   const instanceId = randomUUID();
   const arrivals = new Map<symbol, number>();
   const queues = new Map<string, Promise<unknown>>();
@@ -786,6 +823,71 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       let flags = 0;
       for (const { id } of rows) flags += await advanceGame(id);
       return flags;
+    },
+    async pollPendingTimeouts() {
+      await start();
+      const { rows } = await pool.query<{ id: string }>(`SELECT id FROM chess.games
+        WHERE status = 'pending_adjudication' AND flagged_side IS NOT NULL
+          AND timeout_search_exhausted_at IS NULL AND timeout_adjudicated_at IS NULL
+          AND (timeout_search_retry_after IS NULL OR timeout_search_retry_after <= clock_timestamp())
+        ORDER BY flagged_at, id LIMIT 4`);
+      let resolved = 0;
+      for (const { id } of rows) {
+        const workerClient = await pool.connect();
+        let locked = false;
+        try {
+          const lock = await workerClient.query<{ acquired: boolean }>(
+            'SELECT pg_try_advisory_lock(28106, hashtext($1::text)) AS acquired', [id]);
+          locked = lock.rows[0]?.acquired === true;
+          if (!locked) continue;
+          const snapshot = await transaction(async client => {
+            const row = await loadGame(client, id);
+            if (row === null || row.status !== 'pending_adjudication'
+              || row.pending?.kind !== 'timeout' || row.timeout_search_exhausted_at !== null
+              || row.timeout_adjudicated_at !== null || row.flagged_at === null) return null;
+            const game = await reconstruct(client, row);
+            return { version: row.version, history: game.getHistory(),
+              flaggedSide: row.pending.flaggedSide, deadlineMs: row.pending.deadlineMs };
+          });
+          if (snapshot === null) continue;
+          const result = await searchTimeoutInWorker(snapshot.history, snapshot.flaggedSide,
+            snapshot.deadlineMs, hooks.timeoutSearchBudget ?? { maxDepth: 7, maxNodes: 5000 });
+          const applied = await transaction(async client => {
+            const row = await loadGame(client, id);
+            if (row === null || row.status !== 'pending_adjudication'
+              || row.pending?.kind !== 'timeout' || row.version !== snapshot.version) return false;
+            const game = await reconstruct(client, row);
+            if (result.status === 'found') {
+              const ruling = game.resolveTimeout({ verdict: 'mate_possible', mateLine: result.mateLine });
+              if (!ruling.accepted) throw new Error('The timeout worker returned an invalid mate witness.');
+              row.timeout_witness = result.mateLine;
+              row.timeout_adjudicated_at = new Date();
+              row.status = 'finished'; row.result = ruling.game.result; row.pending = null;
+            } else {
+              row.timeout_search_exhausted_at = new Date();
+            }
+            row.version += 1;
+            await saveGame(client, row);
+            return result.status === 'found';
+          });
+          if (applied) resolved++;
+        } catch (error) {
+          console.error(`Timeout adjudication failed for game ${id}; retrying later:`, error);
+          await transaction(async client => {
+            const row = await loadGame(client, id);
+            if (row !== null && row.status === 'pending_adjudication'
+              && row.pending?.kind === 'timeout') {
+              row.timeout_search_retry_after = new Date(Date.now() + 30_000);
+              await saveGame(client, row);
+            }
+          });
+        } finally {
+          if (locked) await workerClient.query(
+            'SELECT pg_advisory_unlock(28106, hashtext($1::text))', [id]);
+          workerClient.release();
+        }
+      }
+      return resolved;
     },
     async registerTimeoutWitness(id, line) {
       await start();

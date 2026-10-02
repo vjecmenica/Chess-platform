@@ -73,15 +73,19 @@ describe('repetition thresholds and claims', () => {
 
   it('rejects occurrence two, then permits the current third position without requiring an offer', () => {
     const game = createGame('casual_concession');
+    expect(game.getAvailableDrawClaims()).toEqual([]);
     play(game, ...cycle);
+    expect(game.getAvailableDrawClaims()).toEqual([]);
     unchanged(game, () => game.claimDraw({ side: 'white', rule: 'threefold_repetition' }), 'claim_not_available');
     play(game, ...cycle);
+    expect(game.getAvailableDrawClaims()).toEqual(['threefold_repetition']);
     const position = game.getState().position;
     expect(game.claimDraw({ side: 'white', rule: 'threefold_repetition' })).toMatchObject({
       accepted: true, game: { result: { outcome: 'draw', reason: 'threefold_repetition' } },
     });
     expect(game.getState().position).toEqual(position);
     expect(game.getHistory()).toHaveLength(8);
+    expect(game.getAvailableDrawClaims()).toEqual([]);
   });
 
   it('accepts an intended third occurrence without playing it or changing the turn', () => {
@@ -116,6 +120,7 @@ describe('move-count draws', () => {
 
   it('accepts the current 100-half-move position while leaving it unchanged', () => {
     const game = createGameFromPosition(`${start} w KQkq - 100 51`);
+    expect(game.getAvailableDrawClaims()).toEqual(['fifty_move']);
     const position = game.getState().position;
     expect(game.getState().status).toBe('active');
     expect(game.claimDraw({ side: 'white', rule: 'fifty_move' })).toMatchObject({ accepted: true,

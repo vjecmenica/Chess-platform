@@ -53,6 +53,8 @@ export interface GameState {
     readonly winner?: GameSide; readonly flaggedSide?: GameSide; readonly deadlineMs?: number } | null;
   readonly drawOffer: GameSide | null;
   readonly claimDrawOffer: GameSide | null;
+  readonly availableDrawClaims: readonly ('threefold_repetition' | 'fifty_move')[];
+  readonly timeoutAdjudication: 'searching' | 'unresolved' | null;
   readonly drawOfferNextEligiblePly: Readonly<Record<GameSide, number>>;
   readonly pending?: { readonly kind: 'timeout'; readonly flaggedSide: GameSide;
     readonly deadlineMs: number } | { readonly kind: 'resignation'; readonly resigningSide: GameSide };
