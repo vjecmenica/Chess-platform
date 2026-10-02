@@ -16,7 +16,7 @@ interface ChallengeRow {
   creator_guest_id: string;
   acceptor_guest_id: string | null;
   created_at: Date;
-  game_status: 'waiting' | 'active' | 'pending_adjudication' | 'finished' | null;
+  game_status: 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted' | null;
   clock_mode: 'legacy_untimed' | 'five_plus_three' | null;
 }
 
@@ -49,7 +49,8 @@ async function findChallenge(query: Pick<pg.Pool, 'query'>, id: string): Promise
   return row ?? null;
 }
 
-export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, secureCookies: boolean): void {
+export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
+  secureCookies: boolean, trustedNowMs: () => number): void {
   app.get<{ Reply: GuestSessionResponse }>('/guest-session', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const guest = await currentGuest(pool, request) ?? await createGuest(pool, reply, secureCookies);
@@ -106,12 +107,13 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool, sec
             RETURNING id`, [request.params.id, guest.id],
         );
         if (changed.rowCount === 1) {
+          const acceptedAtMs = trustedNowMs();
           await client.query(
             `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status,
-                clock_mode, clock_phase, clock_start_mode)
+                clock_mode, clock_phase, clock_start_mode, white_first_move_deadline_at)
               VALUES ($1, $2, $2, 'white', 'active', 'five_plus_three',
-                'awaiting_first_move', 'first_move')`,
-            [request.params.id, STANDARD_STARTING_FEN],
+                'awaiting_first_move', 'first_move_grace', $3)`,
+            [request.params.id, STANDARD_STARTING_FEN, new Date(acceptedAtMs + 30_000)],
           );
         }
         row = await findChallenge(client, request.params.id);
@@ -133,7 +135,8 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT id FROM chess.challenges LIMIT 0');
-    await pool.query('SELECT id, clock_mode, clock_start_mode, deadline_at FROM chess.games LIMIT 0');
+    await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,
+      white_first_move_deadline_at, black_first_move_deadline_at FROM chess.games LIMIT 0`);
     await pool.query('SELECT admission_id, applied FROM chess.game_move_receipts LIMIT 0');
     await pool.query('SELECT instance_id FROM chess.clock_ingress_watermarks LIMIT 0');
   } catch {

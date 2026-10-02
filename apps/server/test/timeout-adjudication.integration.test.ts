@@ -51,6 +51,8 @@ describe('casual timeout finalization against PostgreSQL', () => {
     const id = created.json().id as string;
     expect((await app.inject({ method: 'POST', url: `/challenges/${id}/accept`,
       headers: { cookie: black.cookie, 'x-csrf-token': black.csrf } })).statusCode).toBe(200);
+    await pool.query(`UPDATE chess.games SET clock_start_mode = 'first_move',
+      white_first_move_deadline_at = NULL WHERE id = $1`, [id]);
     return { id, white, black };
   }
   async function runningGame(app: FastifyInstance) {

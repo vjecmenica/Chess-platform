@@ -3,7 +3,7 @@ import type pg from 'pg';
 import type { ReadinessResponse } from '@chess/contracts';
 import { registerChallengeRoutes } from './challenge-routes.js';
 import { registerGameRoutes } from './game-routes.js';
-import type { GameService } from './game-service.js';
+import { createGameService, type GameService } from './game-service.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService }) {
@@ -21,8 +21,10 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   });
 
   if (challenges) {
-    registerChallengeRoutes(app, challenges.pool, challenges.secureCookies);
-    registerGameRoutes(app, challenges.pool, challenges.gameService);
+    const gameService = challenges.gameService ?? createGameService(challenges.pool);
+    registerChallengeRoutes(app, challenges.pool, challenges.secureCookies,
+      () => gameService.trustedNowMs());
+    registerGameRoutes(app, challenges.pool, gameService);
   }
 
   return app;

@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ClockState } from '@chess/contracts';
-import { ClockPanel, displayedMs, formatClock } from '../src/ClockPanel';
+import { ClockPanel, displayedMs, firstMoveRemainingMs, formatClock } from '../src/ClockPanel';
 
 const running: ClockState = {
   startMode: 'readiness', phase: 'running', ready: { white: true, black: true },
   remainingMs: { white: 300_000, black: 303_000 }, activeSide: 'white',
   deadlineMs: 1_000_300_000, flaggedSide: null, flaggedAtMs: null,
+  firstMoveDeadlineMs: { white: null, black: null },
   serverNowMs: 1_000_000_000, outagePolicy: 'continues_through_server_outage',
 };
 
@@ -36,6 +37,20 @@ describe('display clocks', () => {
     expect(html).toContain('05:00');
     expect(html).toContain('Clock paused');
     expect(html).not.toContain('Not ready');
+  });
+
+  it('shows a distinct first-move countdown from the authoritative deadline', () => {
+    const grace = { ...running, startMode: 'first_move_grace' as const,
+      phase: 'awaiting_first_move' as const, activeSide: null,
+      firstMoveDeadlineMs: { white: 1_000_030_000, black: null } };
+    expect(firstMoveRemainingMs(grace, 'white', 2_000)).toBe(28_000);
+    expect(firstMoveRemainingMs(grace, 'white', 40_000)).toBe(0);
+    expect(firstMoveRemainingMs(grace, 'black', 2_000)).toBeNull();
+    const html = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: grace, side: 'white', isYou: false }));
+    expect(html).toContain('First move <b aria-live="off">00:30</b>');
+    expect(html).toContain('White first-move deadline, 00:30 remaining');
+    expect(html).toContain('05:00');
   });
 
   it('labels the opponent and the player by side', () => {

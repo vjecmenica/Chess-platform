@@ -10,6 +10,8 @@ export type ResignationPolicy = 'casual_concession' | 'fide_proof_required';
 export type TimeoutPolicy = 'casual_flag_forfeit' | 'fide_proof_required';
 
 export type GameResult =
+  | { readonly outcome: 'aborted'; readonly reason: 'first_move_deadline';
+      readonly missedSide: Side; readonly deadlineMs: number }
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'checkmate' | 'resignation' }
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'timeout';
       readonly flaggedSide: Side; readonly deadlineMs: number }
@@ -33,6 +35,8 @@ export type GameSnapshot = { readonly position: PositionSnapshot } & (
   | { readonly status: 'finished'; readonly result: GameResult; readonly drawOffer: null;
       readonly claimDrawOffer: null;
       readonly adjudication?: MateRuling }
+  | { readonly status: 'aborted'; readonly result: Extract<GameResult, { outcome: 'aborted' }>;
+      readonly drawOffer: null; readonly claimDrawOffer: null }
 );
 
 export type GameRejection =
@@ -85,6 +89,7 @@ export interface ChessGame {
   submitMove(request: MoveRequest): GameMoveResult;
   resign(command: SideCommand): CommandResult;
   flagTimeout(command: TimeoutCommand): CommandResult;
+  abortFirstMove(command: { readonly missedSide: Side; readonly deadlineMs: number }): CommandResult;
   verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   resolveResignation(ruling: ResignationRuling): CommandResult;
@@ -141,6 +146,8 @@ export function createGameFromPosition(startingFen: string,
   const occurrences = new Map([[board.repetitionKey(), 1]]);
 
   const getState = (): GameSnapshot => {
+    if (result?.outcome === 'aborted') return { status: 'aborted', result: { ...result },
+      drawOffer: null, claimDrawOffer: null, position: position.getPosition() };
     if (result !== null) return { status: 'finished', result: { ...result }, drawOffer: null,
       claimDrawOffer: null,
       ...(adjudication === null ? {} : { adjudication: { verdict: 'mate_possible' as const,
@@ -357,6 +364,19 @@ export function createGameFromPosition(startingFen: string,
         drawOffer = null;
         claimDrawOffer = null;
       }
+      return { accepted: true, game: getState() };
+    },
+    abortFirstMove(command) {
+      if (result !== null) return reject('game_finished');
+      if (pendingResignation !== null || pendingTimeout !== null) return reject('adjudication_pending');
+      if (!command || (command.missedSide !== 'white' && command.missedSide !== 'black')
+        || command.missedSide !== position.getPosition().sideToMove
+        || ply !== (command.missedSide === 'white' ? 0 : 1)
+        || !Number.isSafeInteger(command.deadlineMs) || command.deadlineMs < 0) {
+        return reject('invalid_timeout');
+      }
+      finish({ outcome: 'aborted', reason: 'first_move_deadline',
+        missedSide: command.missedSide, deadlineMs: command.deadlineMs });
       return { accepted: true, game: getState() };
     },
     resolveResignation(ruling) {

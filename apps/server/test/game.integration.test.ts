@@ -47,7 +47,8 @@ describe('earlier untimed guest games against PostgreSQL', () => {
     expect(accepted.statusCode).toBe(200);
     // Exercise the migration's compatibility mode for games created before durable clocks.
     await pool.query(`UPDATE chess.games SET clock_mode = 'legacy_untimed',
-      clock_phase = 'legacy_untimed', status = 'active' WHERE id = $1`, [id]);
+      clock_phase = 'legacy_untimed', clock_start_mode = 'readiness', status = 'active',
+      white_first_move_deadline_at = NULL WHERE id = $1`, [id]);
     return { id, white, black };
   }
 

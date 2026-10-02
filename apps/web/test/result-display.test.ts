@@ -14,4 +14,10 @@ describe('finished game result display', () => {
       .toEqual({ score: '½–½', explanation: 'Draw: the opponent cannot possibly checkmate.' });
     expect(resultDisplay(null)).toBeNull();
   });
+
+  it('names an aborted game without awarding a score', () => {
+    expect(resultDisplay({ outcome: 'aborted', reason: 'first_move_deadline',
+      missedSide: 'black', deadlineMs: 30_000 })).toEqual({ score: 'Aborted',
+      explanation: 'Black did not make a first move in time. No win or loss was recorded.' });
+  });
 });

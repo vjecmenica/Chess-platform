@@ -69,7 +69,11 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
     expect(accepted.statusCode).toBe(200);
     if (oldReadiness) {
       await pool.query(`UPDATE chess.games SET clock_start_mode = 'readiness',
-        status = 'waiting', clock_phase = 'waiting' WHERE id = $1`, [id]);
+        status = 'waiting', clock_phase = 'waiting', white_first_move_deadline_at = NULL
+        WHERE id = $1`, [id]);
+    } else {
+      await pool.query(`UPDATE chess.games SET clock_start_mode = 'first_move',
+        white_first_move_deadline_at = NULL WHERE id = $1`, [id]);
     }
     return { id, white, black };
   }

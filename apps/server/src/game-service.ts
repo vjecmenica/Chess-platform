@@ -18,7 +18,7 @@ export interface ClaimBody extends ActionBody {
 }
 export interface ServiceResult { status: number; body: unknown }
 
-type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished';
+type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted';
 type ClockPhase = 'legacy_untimed' | 'waiting' | 'awaiting_first_move' | 'running' | 'handoff' | 'stopped' | 'flagged';
 interface GameRow {
   id: string;
@@ -40,7 +40,7 @@ interface GameRow {
   timeout_search_retry_after: Date | null;
   version: number;
   clock_mode: 'legacy_untimed' | 'five_plus_three';
-  clock_start_mode: 'readiness' | 'first_move';
+  clock_start_mode: 'readiness' | 'first_move' | 'first_move_grace';
   clock_phase: ClockPhase;
   ready_white: boolean;
   ready_black: boolean;
@@ -48,6 +48,8 @@ interface GameRow {
   black_remaining_ms: number;
   turn_started_at: Date | null;
   deadline_at: Date | null;
+  white_first_move_deadline_at: Date | null;
+  black_first_move_deadline_at: Date | null;
   flagged_side: Side | null;
   flagged_at: Date | null;
 }
@@ -136,11 +138,17 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       ...(row.timeout_witness === null ? {} : { mateLine: row.timeout_witness }) });
     if (!flagged.accepted) throw new Error('Saved flag cannot be replayed.');
   }
+  if (row.result?.outcome === 'aborted') {
+    const aborted = game.abortFirstMove({ missedSide: row.result.missedSide,
+      deadlineMs: row.result.deadlineMs });
+    if (!aborted.accepted) throw new Error('Saved first-move abort cannot be replayed.');
+  }
   const state = game.getState();
   const expectedVersion = rows.length + (row.clock_mode === 'five_plus_three'
     ? (row.clock_start_mode === 'readiness'
       ? Number(row.ready_white) + Number(row.ready_black) : 0)
       + Number(row.flagged_side !== null) : 0) + actions.length
+    + Number(row.result?.outcome === 'aborted')
     + Number(row.resignation_witness !== null)
     + Number(row.timeout_search_exhausted_at !== null)
     + Number(row.timeout_adjudicated_at !== null)
@@ -155,9 +163,10 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
     throw new Error('Saved game state does not match its history.');
   }
   if (row.clock_mode === 'five_plus_three') {
-    const firstMoveWaiting = row.clock_start_mode === 'first_move'
+    const firstMoveWaiting = row.clock_start_mode !== 'readiness'
       && row.clock_phase === 'awaiting_first_move';
-    if (row.clock_start_mode === 'first_move'
+    const graceMode = row.clock_start_mode === 'first_move_grace';
+    if (row.clock_start_mode !== 'readiness'
         && (row.ready_white || row.ready_black || row.status === 'waiting')
       || row.clock_start_mode === 'readiness' && row.clock_phase === 'awaiting_first_move'
       || firstMoveWaiting && (row.status !== 'active' || rows.length !== 0
@@ -167,12 +176,24 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       || row.status === 'waiting' && (row.clock_phase !== 'waiting' || row.ready_white && row.ready_black)
       || row.status === 'active' && !firstMoveWaiting && (row.clock_phase !== 'running' && row.clock_phase !== 'handoff'
         || row.clock_start_mode === 'readiness' && (!row.ready_white || !row.ready_black)
-        || row.clock_start_mode === 'first_move' && rows.length === 0
+        || row.clock_start_mode !== 'readiness' && rows.length === 0
         || row.clock_phase === 'running' && (row.turn_started_at === null || row.deadline_at === null)
         || row.clock_phase === 'handoff' && (row.turn_started_at !== null || row.deadline_at !== null))
       || row.flagged_side !== null && row.clock_phase !== 'flagged'
-      || (row.status === 'finished' || row.pending?.kind === 'resignation')
-        && row.flagged_side === null && row.clock_phase !== 'stopped') {
+      || (row.status === 'finished' || row.status === 'aborted' || row.pending?.kind === 'resignation')
+        && row.flagged_side === null && row.clock_phase !== 'stopped'
+      || !graceMode && (row.white_first_move_deadline_at !== null
+        || row.black_first_move_deadline_at !== null)
+      || graceMode && (row.status !== 'active' && (row.white_first_move_deadline_at !== null
+        || row.black_first_move_deadline_at !== null)
+        || row.status === 'active' && rows.length === 0
+          && (row.white_first_move_deadline_at === null || row.black_first_move_deadline_at !== null)
+        || row.status === 'active' && rows.length === 1
+          && (row.white_first_move_deadline_at !== null
+            || (row.clock_phase === 'running') !== (row.black_first_move_deadline_at !== null))
+        || row.status === 'active' && rows.length > 1
+          && (row.white_first_move_deadline_at !== null
+            || row.black_first_move_deadline_at !== null))) {
       throw new Error('Saved clock state is inconsistent.');
     }
   }
@@ -189,6 +210,8 @@ function clockResponse(row: GameRow, atMs: number): ClockState | null {
   return { startMode: row.clock_start_mode, phase: row.clock_phase as ClockState['phase'],
     ready: { white: row.ready_white, black: row.ready_black }, remainingMs: remaining,
     activeSide, deadlineMs: row.deadline_at?.getTime() ?? null,
+    firstMoveDeadlineMs: { white: row.white_first_move_deadline_at?.getTime() ?? null,
+      black: row.black_first_move_deadline_at?.getTime() ?? null },
     flaggedSide: row.flagged_side, flaggedAtMs: row.flagged_at?.getTime() ?? null,
     serverNowMs: atMs, outagePolicy: 'continues_through_server_outage' };
 }
@@ -220,7 +243,8 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       deadline_at = $14, flagged_side = $15, flagged_at = $16, timeout_witness = $17::jsonb,
       draw_offer = $18, resignation_witness = $19::jsonb, claim_draw_offer = $20,
       timeout_search_exhausted_at = $21, timeout_adjudicated_at = $22,
-      timeout_search_retry_after = $23,
+      timeout_search_retry_after = $23, white_first_move_deadline_at = $24,
+      black_first_move_deadline_at = $25,
       updated_at = now() WHERE id = $1`,
     [row.id, row.fen, row.side_to_move, row.status,
       row.result === null ? null : JSON.stringify(row.result),
@@ -230,7 +254,8 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       row.timeout_witness === null ? null : JSON.stringify(row.timeout_witness), row.draw_offer,
       row.resignation_witness === null ? null : JSON.stringify(row.resignation_witness),
       row.claim_draw_offer, row.timeout_search_exhausted_at, row.timeout_adjudicated_at,
-      row.timeout_search_retry_after],
+      row.timeout_search_retry_after, row.white_first_move_deadline_at,
+      row.black_first_move_deadline_at],
   );
   // PostgreSQL delivers this notification only if the surrounding transaction commits.
   await client.query("SELECT pg_notify('chess_game_updates', $1)",
@@ -264,12 +289,52 @@ async function expireIfDue(client: pg.PoolClient, row: GameRow, game: ChessGame,
   return true;
 }
 
+function firstMoveDeadline(row: GameRow): number | null {
+  if (row.status !== 'active' || row.clock_mode !== 'five_plus_three'
+    || row.clock_start_mode !== 'first_move_grace') return null;
+  return (row.side_to_move === 'white' ? row.white_first_move_deadline_at
+    : row.black_first_move_deadline_at)?.getTime() ?? null;
+}
+
+function nextDeadline(row: GameRow): { kind: 'grace' | 'clock'; atMs: number } | null {
+  const grace = firstMoveDeadline(row);
+  const clock = row.clock_phase === 'running' ? row.deadline_at?.getTime() ?? null : null;
+  if (grace !== null && (clock === null || grace <= clock)) return { kind: 'grace', atMs: grace };
+  return clock === null ? null : { kind: 'clock', atMs: clock };
+}
+
+async function abortIfDue(client: pg.PoolClient, row: GameRow, game: ChessGame,
+  atMs: number): Promise<boolean> {
+  const deadlineMs = firstMoveDeadline(row);
+  if (deadlineMs === null || atMs < deadlineMs) return false;
+  const decision = game.abortFirstMove({ missedSide: row.side_to_move, deadlineMs });
+  if (!decision.accepted) throw new Error(`Game ${row.id} could not be aborted at its first-move deadline: ${decision.reason}; history has ${game.getHistory().length} plies.`);
+  row.status = 'aborted';
+  row.result = decision.game.result;
+  row.draw_offer = null;
+  row.claim_draw_offer = null;
+  if (row.clock_phase === 'running' && row.turn_started_at !== null) {
+    const elapsed = Math.max(0, deadlineMs - row.turn_started_at.getTime());
+    if (row.side_to_move === 'white') row.white_remaining_ms = Math.max(0, row.white_remaining_ms - elapsed);
+    else row.black_remaining_ms = Math.max(0, row.black_remaining_ms - elapsed);
+  }
+  row.clock_phase = 'stopped';
+  row.turn_started_at = null;
+  row.deadline_at = null;
+  row.white_first_move_deadline_at = null;
+  row.black_first_move_deadline_at = null;
+  row.version += 1;
+  await saveGame(client, row);
+  return true;
+}
+
 export interface Arrival {
   readonly receivedAtMs: number;
   release(): Promise<void>;
 }
 
 export interface GameService {
+  trustedNowMs(): number;
   start(): Promise<void>;
   stop(): Promise<void>;
   heartbeat(): Promise<void>;
@@ -441,6 +506,10 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     row.turn_started_at = new Date(atMs);
     row.deadline_at = new Date(atMs + (row.side_to_move === 'white'
       ? row.white_remaining_ms : row.black_remaining_ms));
+    if (row.clock_start_mode === 'first_move_grace' && row.side_to_move === 'black'
+      && game.getHistory().length === 1) {
+      row.black_first_move_deadline_at = new Date(atMs + 30_000);
+    }
     await saveGame(client, row);
     const move = game.getHistory().at(-1);
     if (!move) throw new Error('Saved handoff has no accepted move.');
@@ -458,7 +527,10 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     if (yourSeat === null) throw new Error('Admitted move has no owning seat.');
     const body = receipt.payload;
     let result: ServiceResult;
-    if (row.flagged_at !== null && receivedAtMs >= row.flagged_at.getTime()) {
+    if (row.result?.outcome === 'aborted'
+      && receivedAtMs >= row.result.deadlineMs) {
+      result = { status: 409, body: { error: 'first_move_deadline_elapsed', currentVersion: row.version } };
+    } else if (row.flagged_at !== null && receivedAtMs >= row.flagged_at.getTime()) {
       result = { status: 409, body: { error: 'flag_fell', currentVersion: row.version } };
     } else if (row.status === 'waiting') {
       result = { status: 409, body: { error: 'clock_not_started' } };
@@ -466,7 +538,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       result = { status: 409, body: { error: 'stale_version', currentVersion: row.version } };
     } else if (row.status !== 'active') {
       result = { status: 409, body: { error: row.status === 'finished'
-        ? 'game_finished' : 'adjudication_pending' } };
+        ? 'game_finished' : row.status === 'aborted' ? 'game_aborted' : 'adjudication_pending' } };
     } else if (row.clock_mode === 'five_plus_three' && row.turn_started_at !== null
       && (receipt.kind === 'move' || receipt.kind === 'claim_draw')
       && receivedAtMs < row.turn_started_at.getTime()) {
@@ -490,8 +562,12 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         row.timeout_witness = null;
         row.version += 1;
         if (row.clock_mode === 'five_plus_three') {
-          const freeFirstMove = row.clock_start_mode === 'first_move'
+          const freeFirstMove = row.clock_start_mode !== 'readiness'
             && row.clock_phase === 'awaiting_first_move';
+          if (row.clock_start_mode === 'first_move_grace') {
+            if (yourSeat === 'white') row.white_first_move_deadline_at = null;
+            else row.black_first_move_deadline_at = null;
+          }
           if (!freeFirstMove) {
             const startedAtMs = row.turn_started_at?.getTime();
             if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
@@ -543,6 +619,10 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         const bonusMs = !correct && row.clock_mode === 'five_plus_three' ? 60_000 : 0;
         if (row.clock_mode === 'five_plus_three') {
           const freeFirstMove = row.clock_phase === 'awaiting_first_move';
+          if (moved && row.clock_start_mode === 'first_move_grace') {
+            if (yourSeat === 'white') row.white_first_move_deadline_at = null;
+            else row.black_first_move_deadline_at = null;
+          }
           if (row.clock_phase === 'running' && row.turn_started_at !== null) {
             const elapsed = Math.max(0, receivedAtMs - row.turn_started_at.getTime());
             if (yourSeat === 'white') row.white_remaining_ms = Math.max(0, row.white_remaining_ms - elapsed);
@@ -558,6 +638,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           }
           if (row.status !== 'active') {
             row.clock_phase = 'stopped'; row.turn_started_at = null; row.deadline_at = null;
+            row.white_first_move_deadline_at = null; row.black_first_move_deadline_at = null;
           } else if (moved) {
             row.clock_phase = 'handoff'; row.turn_started_at = null; row.deadline_at = null;
           } else if (!freeFirstMove) {
@@ -611,6 +692,8 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           row.clock_phase = 'stopped';
           row.turn_started_at = null;
           row.deadline_at = null;
+          row.white_first_move_deadline_at = null;
+          row.black_first_move_deadline_at = null;
         }
         await client.query(`INSERT INTO chess.game_actions (game_id, version, after_ply, side, kind)
           VALUES ($1, $2, $3, $4, $5)`, [row.id, row.version, game.getHistory().length,
@@ -641,20 +724,26 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
             WHERE game_id = $1 AND response IS NULL
             ORDER BY received_at, admission_id LIMIT 1`, [id]);
           const receipt = rows[0];
+          const deadline = nextDeadline(row);
           if (receipt) {
             const receiptMs = receipt.received_at.getTime();
             if (!await safeToDecide(client, receiptMs)) return 'blocked';
-            if (row.clock_phase === 'running' && row.deadline_at !== null
-              && receiptMs >= row.deadline_at.getTime()) {
-              if (!await safeToDecide(client, row.deadline_at.getTime() - 1)) return 'blocked';
-              if (await expireIfDue(client, row, game, Math.max(now(clock), receiptMs))) return 'flag';
+            if (deadline !== null && receiptMs >= deadline.atMs) {
+              if (!await safeToDecide(client, deadline.atMs - 1)) return 'blocked';
+              const due = deadline.kind === 'grace'
+                ? await abortIfDue(client, row, game, Math.max(now(clock), receiptMs))
+                : await expireIfDue(client, row, game, Math.max(now(clock), receiptMs));
+              if (due) return 'flag';
             }
             return await applyReceipt(client, row, game, receipt) ? 'handoff' : 'progress';
           }
-          if (row.clock_phase === 'running' && row.deadline_at !== null
-            && now(clock) >= row.deadline_at.getTime()
-            && await safeToDecide(client, row.deadline_at.getTime() - 1)
-            && await expireIfDue(client, row, game, now(clock))) return 'flag';
+          if (deadline !== null && now(clock) >= deadline.atMs
+            && await safeToDecide(client, deadline.atMs - 1)) {
+            const due = deadline.kind === 'grace'
+              ? await abortIfDue(client, row, game, now(clock))
+              : await expireIfDue(client, row, game, now(clock));
+            if (due) return 'flag';
+          }
           return 'idle';
         });
         if (step === 'handoff') await hooks.afterMoveCommit?.();
@@ -726,6 +815,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
 
   const service: GameService = {
     start, stop, heartbeat, beginReceipt,
+    trustedNowMs: () => now(clock),
     async read(id, guestId) {
       await start();
       await advanceGame(id);
@@ -751,7 +841,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         if (row.clock_mode !== 'five_plus_three') {
           return { status: 409, body: { error: 'legacy_untimed_game' } };
         }
-        if (row.clock_start_mode === 'first_move') {
+        if (row.clock_start_mode !== 'readiness') {
           return { status: 409, body: { error: 'ready_not_required' } };
         }
         const atMs = now(clock);
@@ -791,6 +881,9 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       const { rows } = await pool.query<{ id: string }>(`SELECT id FROM chess.games
         WHERE clock_phase = 'handoff'
           OR (clock_mode = 'five_plus_three' AND clock_phase = 'running' AND deadline_at <= $1)
+          OR (clock_mode = 'five_plus_three' AND clock_start_mode = 'first_move_grace'
+            AND status = 'active'
+            AND (white_first_move_deadline_at <= $1 OR black_first_move_deadline_at <= $1))
           OR EXISTS (SELECT 1 FROM chess.game_move_receipts r
             WHERE r.game_id = games.id AND r.response IS NULL)`, [new Date(now(clock))]);
       let flags = 0;

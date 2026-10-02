@@ -23,6 +23,7 @@ import { MoveTree } from './MoveTree';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
+const challengePollIntervalMs = 1_000;
 const pieceNames: Record<string, string> = {
   k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn',
 };
@@ -39,6 +40,8 @@ const errors: Record<string, string> = {
   illegal_move: 'That move is not legal in the confirmed position.',
   promotion_required: 'Choose a promotion piece before moving.',
   game_finished: 'The game has finished. The position will be refreshed.',
+  game_aborted: 'The game was aborted. The position will be refreshed.',
+  first_move_deadline_elapsed: 'The first-move deadline passed. The game was aborted.',
   request_id_conflict: 'This retry ID was used for a different move. Refresh the page.',
   clock_not_started: 'Both guests must press Ready before White’s clock starts.',
   received_before_turn: 'This move arrived before your turn began. The position will be refreshed.',
@@ -311,7 +314,7 @@ export function App() {
   useEffect(() => {
     if (session === null || challengeId === null || challenge?.status === 'accepted') return;
     void refreshChallenge();
-    const timer = window.setInterval(() => { void refreshChallenge(); }, pollIntervalMs);
+    const timer = window.setInterval(() => { void refreshChallenge(); }, challengePollIntervalMs);
     const onFocus = () => { void refreshChallenge(); };
     const onVisible = () => { if (!document.hidden) void refreshChallenge(); };
     window.addEventListener('focus', onFocus);
@@ -452,7 +455,8 @@ export function App() {
       if (cause instanceof ApiError && cause.status < 500) {
         clearPending();
         stale = cause.code === 'stale_version';
-        shouldRefresh = stale || ['wrong_turn', 'game_finished', 'flag_fell',
+        shouldRefresh = stale || ['wrong_turn', 'game_finished', 'game_aborted',
+          'first_move_deadline_elapsed', 'flag_fell',
           'clock_not_started', 'received_before_turn', 'adjudication_pending'].includes(cause.code);
         if (command.premoveId !== undefined && !stale
           && !['wrong_turn', 'received_before_turn'].includes(cause.code)) updatePremoves([]);

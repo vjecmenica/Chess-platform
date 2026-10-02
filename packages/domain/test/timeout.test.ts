@@ -16,6 +16,23 @@ function unchanged(game: ChessGame, action: () => unknown, reason: string): void
 }
 
 describe('timeout adjudication', () => {
+  it('aborts only a side’s missing first move without assigning a win or loss', () => {
+    const white = createGame('casual_concession', 'casual_flag_forfeit');
+    expect(white.abortFirstMove({ missedSide: 'white', deadlineMs: 30_000 })).toMatchObject({
+      accepted: true, game: { status: 'aborted', result: { outcome: 'aborted',
+        reason: 'first_move_deadline', missedSide: 'white', deadlineMs: 30_000 } },
+    });
+    unchanged(white, () => white.submitMove({ side: 'white', from: 'e2', to: 'e4' }), 'game_finished');
+    const black = createGame('casual_concession', 'casual_flag_forfeit');
+    expect(black.abortFirstMove({ missedSide: 'black', deadlineMs: 30_000 })).toMatchObject({
+      accepted: false, reason: 'invalid_timeout',
+    });
+    expect(black.submitMove({ side: 'white', from: 'e2', to: 'e4' }).accepted).toBe(true);
+    expect(black.abortFirstMove({ missedSide: 'black', deadlineMs: 45_000 })).toMatchObject({
+      accepted: true, game: { status: 'aborted', result: { missedSide: 'black' } },
+    });
+    unchanged(black, () => black.abortFirstMove({ missedSide: 'black', deadlineMs: 45_000 }), 'game_finished');
+  });
   it('settles an unresolved flag under the explicit casual policy without a search', () => {
     const game = createGame('casual_concession', 'casual_flag_forfeit');
     expect(game.getMatingPossibility('black')).toBe('unresolved');
