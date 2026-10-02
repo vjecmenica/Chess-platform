@@ -24,6 +24,7 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
 import { ClockPanel } from './ClockPanel';
 import { MoveTree } from './MoveTree';
+import { EnginePanel } from './EnginePanel';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -1002,6 +1003,7 @@ export function App() {
                 isYou={topSide === game.yourSeat}
                 materialAdvantage={material?.side === topSide ? material.points : null} />
               <div className="move-panel">
+                {analysisOpen && displayedFen !== null && <EnginePanel fen={displayedFen} />}
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
                     ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
