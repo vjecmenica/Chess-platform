@@ -1003,7 +1003,13 @@ export function App() {
                 isYou={topSide === game.yourSeat}
                 materialAdvantage={material?.side === topSide ? material.points : null} />
               <div className="move-panel">
-                {analysisOpen && displayedFen !== null && <EnginePanel fen={displayedFen} />}
+                {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                  fen={displayedFen}
+                  selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                  onSelectPly={ply => {
+                    setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                    setSelected(null);
+                  }} />}
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
                     ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`

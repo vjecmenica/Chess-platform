@@ -45,15 +45,21 @@ On the analysis board, players can turn the engine on, see position evaluations,
 
 ### Full game review
 
-A separate review analyzes the whole game, calculates accuracy, and labels the quality of individual moves. Before displaying those scores or labels, document and validate the methodology:
+The first review runs locally in the browser after a finished game. A player starts it explicitly. It evaluates the initial position and every saved main-line position with Stockfish.js 19 lite single-threaded, one worker, depth at most 14, and at most 1.2 seconds per position, with a short pause between searches. Cached evaluations under those same engine settings are reused. The player sees progress and can cancel; completed positions remain cached, but a partial review is not presented as a complete result. Variations are excluded. No game data or review result is sent to the server.
 
-- Engine version, analysis budget, and evaluation perspective.
-- How mate scores are handled and how evaluations become accuracy scores.
-- How scores are aggregated across a game, including any excluded positions.
-- The meaning and thresholds of each move label, with ordinary and boundary examples.
-- A methodology version stored with each result, so a later formula change does not silently reinterpret old reviews.
+The first methodology is `local-cpl-v1`. Each UCI score is converted from the side-to-move perspective to White's perspective. For a move, convert the evaluations before and after it to the moving player's perspective, subtract after from before, and clamp a negative result to zero. This is **centipawn loss (CPL)**. A White move from +0.50 to +0.20 loses 30 cp; a Black move that changes White's score from +0.20 to +0.90 loses 70 cp. Search variation can make the value unstable, so these labels are rough training cues, not a verdict on the move.
 
-The formula, label names, and thresholds are still open. They must not be arbitrary values borrowed from another service or presented as a universal standard. A fixed collection of games should produce results within a documented tolerance, and retrying a review job must not create duplicate results.
+| CPL | First-version label |
+| --- | --- |
+| 0–20 | Strong |
+| 21–60 | Good |
+| 61–120 | Inaccuracy |
+| 121–250 | Mistake |
+| 251 or more | Blunder |
+
+The graph shows White's evaluation after every half-move, visually clipped at ±10 pawns. Mate scores sit at the corresponding graph edge; a `mate 0` score means the side to move is checkmated. A move whose before or after evaluation is a mate score has no numeric CPL and is labeled **Mate score**. We do not convert a mate distance into invented centipawns. The review displays its methodology version and keeps the saved game unchanged. These thresholds are this project's explicit, provisional choices, not values borrowed from or endorsed by another chess service.
+
+Numerical accuracy, aggregation across a game, richer move-quality labels, multi-line engine comparison, persistent review records, and a server background job remain open. Before adding accuracy, define its formula, exclusions, mate handling, versioning, and validation games. A server job will also need durable retry and deduplication behavior.
 
 Engine and AI advice must not be available to players during an active game. This must be enforced at server entry points as well as in the interface. The exact scope of restrictions on other analysis pages, and the limits of controlling browser engines or outside tools, need an explicit fair-play policy.
 
