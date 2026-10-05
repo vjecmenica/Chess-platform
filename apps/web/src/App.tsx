@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
@@ -25,6 +25,9 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
 import { ClockPanel } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
+import { EvaluationBar } from './EvaluationBar';
+import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
+import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -115,6 +118,8 @@ export function App() {
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
+  const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
+  const [analysisBoardSize, setAnalysisBoardSize] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
@@ -142,6 +147,8 @@ export function App() {
   const pendingRef = useRef<PendingMove | null>(null);
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const gameLayoutRef = useRef<HTMLDivElement | null>(null);
+  const resizeGesture = useRef<{ id: number; x: number; y: number; size: number } | null>(null);
   const analysisOpenRef = useRef(false);
   analysisOpenRef.current = analysisOpen;
   const premovesRef = useRef<Premove[]>([]);
@@ -871,6 +878,22 @@ export function App() {
   [showHints, selected, displayedFen, hintSide]);
   const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
   const offerPliesRemaining = game === null ? 0 : Math.max(0, offerNextPly - game.history.length);
+  const selectedEvaluation = displayedFen === null || !analysisOpen ? null
+    : positionEvaluation?.fen === displayedFen ? positionEvaluation
+      : gameReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
+
+  function resizeLimit() {
+    const width = gameLayoutRef.current?.clientWidth ?? 1140;
+    return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches);
+  }
+
+  function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
+    if (resizeGesture.current?.id !== event.pointerId) return;
+    resizeGesture.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    event.stopPropagation();
+  }
 
   return (
     <main className={challengeId === null ? 'home-page' : 'challenge-page'}>
@@ -918,9 +941,17 @@ export function App() {
         {game === null && gameError === null && <p role="status">Loading the confirmed position…</p>}
         {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
-          <div className="game-layout">
+          <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
+            ref={gameLayoutRef}
+            style={analysisOpen && analysisBoardSize !== null ? {
+              '--analysis-board-size': `${analysisBoardSize}px`,
+              '--analysis-column-size': `${analysisBoardSize + 34}px`,
+            } as CSSProperties : undefined}>
             <div className="play-column">
-              <div className="board-frame">
+              <div className="board-stage">
+                {analysisOpen && displayedFen !== null &&
+                  <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
+                <div className="board-frame">
                 <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
@@ -959,6 +990,35 @@ export function App() {
                   <span key={rank}>{rank}</span>)}</div>
                 <div className="board-files" aria-hidden="true">{coordinates?.files.map(file =>
                   <span key={file}>{file}</span>)}</div>
+                {analysisOpen && <button type="button" className="board-resize-grip"
+                  aria-label="Resize analysis board" title="Drag to resize board; use arrow keys for small steps"
+                  onPointerDown={event => {
+                    if (event.button !== 0 && event.pointerType === 'mouse') return;
+                    event.preventDefault(); event.stopPropagation();
+                    resizeGesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY,
+                      size: (boardRef.current?.clientWidth ?? 0) + 14 };
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerMove={event => {
+                    const active = resizeGesture.current;
+                    if (active?.id !== event.pointerId) return;
+                    setAnalysisBoardSize(resizedBoardSize(active.size, event.clientX - active.x,
+                      event.clientY - active.y, resizeLimit()));
+                    event.stopPropagation();
+                  }}
+                  onPointerUp={finishResize} onPointerCancel={finishResize}
+                  onLostPointerCapture={event => {
+                    if (resizeGesture.current?.id === event.pointerId) resizeGesture.current = null;
+                  }}
+                  onKeyDown={event => {
+                    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 20
+                      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -20 : null;
+                    if (delta === null) return;
+                    event.preventDefault(); event.stopPropagation();
+                    setAnalysisBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
+                      delta, delta, resizeLimit()));
+                  }} onClick={event => event.stopPropagation()} />}
+                </div>
               </div>
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
@@ -999,13 +1059,6 @@ export function App() {
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
-              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-                fen={displayedFen}
-                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
               <ClockPanel clock={game.clocks} side={topSide}
@@ -1127,6 +1180,8 @@ export function App() {
                         setAnalysis(selectMain(analysis, game, selectedReplayPly));
                       setAnalysisOpen(!analysisOpen);
                       setGameReview(null);
+                      setPositionEvaluation(null);
+                      resizeGesture.current = null;
                       setAnalysisTool('move'); setAnnotationFrom(null);
                       setSelected(null); setPromotion(null); setAnalysisError(null);
                     }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
@@ -1172,6 +1227,13 @@ export function App() {
               <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                 materialAdvantage={material?.side === bottomSide ? material.points : null} />
             </aside>
+            {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+              fen={displayedFen}
+              selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+              onSelectPly={ply => {
+                setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                setSelected(null);
+              }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
           </div>
         </>}
       </section>}

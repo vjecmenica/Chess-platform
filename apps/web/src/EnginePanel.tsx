@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
-  evaluationLabel, variationSan, type EngineState, type EngineWorker } from './engine-analysis';
+  evaluationLabel, variationSan, type EngineEvaluation, type EngineState,
+  type EngineWorker } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
@@ -35,10 +36,12 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   </svg>;
 }
 
-export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange }: {
+export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
+  onEvaluationChange }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
+  readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
@@ -61,6 +64,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, []);
 
   useEffect(() => { if (enabled) controller.current?.setPosition(fen); }, [enabled, fen]);
+  useEffect(() => {
+    const cached = cache.current?.get(fen);
+    if (cached) onEvaluationChange(cached);
+  }, [fen, onEvaluationChange]);
 
   function startReview() {
     if (cache.current === null || review.kind === 'running') return;
@@ -90,6 +97,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const evaluation = state.kind === 'done' && state.evaluation.fen === fen
     ? state.evaluation : null;
   const line = evaluation === null ? [] : variationSan(fen, evaluation.variation);
+
+  useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
+    [evaluation, onEvaluationChange]);
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
