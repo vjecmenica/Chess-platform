@@ -119,8 +119,8 @@ export function App() {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
-  const [analysisBoardSize, setAnalysisBoardSize] = useState<number | null>(null);
-  const [analysisRowHeight, setAnalysisRowHeight] = useState<number | null>(null);
+  const [boardSize, setBoardSize] = useState<number | null>(null);
+  const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
@@ -886,13 +886,13 @@ export function App() {
 
   useEffect(() => {
     const frame = boardFrameRef.current;
-    if (!analysisOpen || frame === null) return;
-    const update = () => setAnalysisRowHeight(Math.round(frame.getBoundingClientRect().height));
+    if (frame === null) return;
+    const update = () => setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
     update();
     const observer = new ResizeObserver(update);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [analysisOpen]);
+  }, [analysisOpen, game?.id]);
 
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
@@ -957,19 +957,20 @@ export function App() {
         {game !== null && rows !== null && <>
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
             ref={gameLayoutRef}
-            style={analysisOpen ? {
-              ...(analysisBoardSize === null ? {} : {
-                '--analysis-board-size': `${analysisBoardSize}px`,
-                '--analysis-column-size': `${analysisBoardSize + 34}px`,
+            style={{
+              ...(boardSize === null ? {} : {
+                '--board-size': `${boardSize}px`,
+                '--board-column-size': `${boardSize + 34}px`,
               }),
-              ...(analysisRowHeight === null ? {} : {
-                '--analysis-row-height': `${analysisRowHeight}px`,
+              ...(boardRowHeight === null ? {} : {
+                '--board-row-height': `${boardRowHeight}px`,
               }),
-            } as CSSProperties : undefined}>
+            } as CSSProperties}>
             <div className="play-column">
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
+                {!analysisOpen && <div className="evaluation-spacer" aria-hidden="true" />}
                 <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
@@ -1009,8 +1010,8 @@ export function App() {
                   <span key={rank}>{rank}</span>)}</div>
                 <div className="board-files" aria-hidden="true">{coordinates?.files.map(file =>
                   <span key={file}>{file}</span>)}</div>
-                {analysisOpen && <button type="button" className="board-resize-grip"
-                  aria-label="Resize analysis board" title="Drag to resize board; use arrow keys for small steps"
+                <button type="button" className="board-resize-grip"
+                  aria-label="Resize board" title="Drag to resize board; use arrow keys for small steps"
                   onPointerDown={event => {
                     if (event.button !== 0 && event.pointerType === 'mouse') return;
                     event.preventDefault(); event.stopPropagation();
@@ -1021,7 +1022,7 @@ export function App() {
                   onPointerMove={event => {
                     const active = resizeGesture.current;
                     if (active?.id !== event.pointerId) return;
-                    setAnalysisBoardSize(resizedBoardSize(active.size, event.clientX - active.x,
+                    setBoardSize(resizedBoardSize(active.size, event.clientX - active.x,
                       event.clientY - active.y, resizeLimit()));
                     event.stopPropagation();
                   }}
@@ -1034,9 +1035,9 @@ export function App() {
                       : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -20 : null;
                     if (delta === null) return;
                     event.preventDefault(); event.stopPropagation();
-                    setAnalysisBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
+                    setBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
                       delta, delta, resizeLimit()));
-                  }} onClick={event => event.stopPropagation()} />}
+                  }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
@@ -1197,6 +1198,8 @@ export function App() {
                       if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
                       else if (analysis !== null && selectedReplayPly !== null)
                         setAnalysis(selectMain(analysis, game, selectedReplayPly));
+                      if (!analysisOpen)
+                        setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
                       setAnalysisOpen(!analysisOpen);
                       setGameReview(null);
                       setPositionEvaluation(null);

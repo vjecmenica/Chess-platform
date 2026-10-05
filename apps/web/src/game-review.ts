@@ -43,6 +43,13 @@ export function reviewSummary(review: GameReview, side: 'white' | 'black') {
   };
 }
 
+export function nextReviewedMovePly(review: GameReview, side: 'white' | 'black',
+  label: 'Inaccuracy' | 'Mistake' | 'Blunder', currentPly: number | null): number | null {
+  const plies = review.moves.filter(move => move.side === side && move.label === label)
+    .map(move => move.ply);
+  return plies.find(ply => ply > (currentPly ?? 0)) ?? plies[0] ?? null;
+}
+
 export function reviewPositions(game: GameReadResponse): string[] {
   if (game.status !== 'finished') throw new Error('Only finished games can be reviewed.');
   replayFen(game, game.history.length);

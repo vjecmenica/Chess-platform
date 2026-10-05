@@ -3,7 +3,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   evaluationLabel, variationSan, type EngineEvaluation, type EngineState,
   type EngineWorker } from './engine-analysis';
-import { buildGameReview, GameReviewRunner, graphCentipawns, reviewMethodVersion, reviewSummary,
+import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
 type ReviewState = { readonly kind: 'idle' | 'cancelled' }
@@ -19,12 +19,47 @@ export function reviewGraphY(whiteCentipawns: number): number {
   return 80 - Math.asinh(whiteCentipawns / 120) / Math.asinh(1000 / 120) * 70;
 }
 
+export function reviewPositionText(review: GameReview, index: number): string {
+  const evaluation = review.evaluations[index];
+  if (!evaluation) return '';
+  const move = review.moves[index - 1];
+  const position = index === 0 ? 'Initial position'
+    : `After ${Math.ceil(index / 2)}${index % 2 === 0 ? '...' : '.'} ${move?.san ?? ''}`;
+  const score = evaluation.score.kind === 'mate' && evaluation.score.value === 0
+    ? `${graphCentipawns(evaluation) > 0 ? 'White' : 'Black'} wins by mate`
+    : evaluationLabel(evaluation);
+  return `${position} · Stockfish, White perspective: ${score}`;
+}
+
+export function reviewAdvantageSegments(scores: readonly number[], width: number):
+  { side: 'white' | 'black'; points: string }[] {
+  const segments: { side: 'white' | 'black'; points: string }[] = [];
+  const x = (index: number) => reviewGraphX(index, scores.length, width);
+  const add = (side: 'white' | 'black', x1: number, y1: number, x2: number, y2: number) => {
+    segments.push({ side, points: `${x1},80 ${x1},${y1} ${x2},${y2} ${x2},80` });
+  };
+  for (let index = 0; index < scores.length - 1; index++) {
+    const x1 = x(index), x2 = x(index + 1);
+    const y1 = reviewGraphY(scores[index]!), y2 = reviewGraphY(scores[index + 1]!);
+    if (y1 === 80 && y2 === 80) continue;
+    if ((y1 <= 80 && y2 <= 80) || (y1 >= 80 && y2 >= 80)) {
+      add((y1 + y2) / 2 < 80 ? 'white' : 'black', x1, y1, x2, y2);
+    } else {
+      const crossing = Math.round((x1 + (80 - y1) / (y2 - y1) * (x2 - x1)) * 1000) / 1000;
+      add(y1 < 80 ? 'white' : 'black', x1, y1, crossing, 80);
+      add(y2 < 80 ? 'white' : 'black', crossing, 80, x2, y2);
+    }
+  }
+  return segments;
+}
+
 export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   readonly review: GameReview; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
 }) {
   const graphRef = useRef<SVGSVGElement | null>(null);
   const [width, setWidth] = useState(320);
+  const [hoveredPly, setHoveredPly] = useState<number | null>(null);
   useEffect(() => {
     const element = graphRef.current;
     if (element === null || typeof ResizeObserver === 'undefined') return;
@@ -40,25 +75,39 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
     reviewGraphY(graphCentipawns(evaluation));
   const points = review.evaluations.map((evaluation, index) => `${x(index)},${y(evaluation)}`).join(' ');
   const selected = selectedPly === null ? null : review.evaluations[selectedPly];
-  return <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} role="group"
+  const fills = reviewAdvantageSegments(review.evaluations.map(graphCentipawns), width);
+  return <div className="review-graph-wrap">
+    <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} role="group"
     aria-label="White-perspective evaluation by half-move, nonlinear scale clipped at plus or minus ten pawns; mate at the edge">
+    {fills.map((fill, index) => <polygon key={index} points={fill.points}
+      className={`review-fill-${fill.side}`} />)}
     <line x1="10" x2={width - 10} y1="80" y2="80" className="review-zero" />
+    <polyline points={points} fill="none" className="review-plot-outline" />
     <polyline points={points} fill="none" className="review-plot" />
-    {review.evaluations.map((evaluation, index) => {
+    {review.evaluations.map((_, index) => {
       const left = index === 0 ? 0 : (x(index - 1) + x(index)) / 2;
       const right = index === review.evaluations.length - 1 ? width
         : (x(index) + x(index + 1)) / 2;
       return <rect key={index} x={left} y="0" width={right - left}
         height="160" className="review-hit"
-        role="button" tabIndex={0} aria-label={`${index === 0 ? 'Show starting position'
-          : `Show position after ${review.moves[index - 1]?.san}`}, evaluation ${evaluationLabel(evaluation)}`}
+        role="button" tabIndex={0} aria-label={`Show ${reviewPositionText(review, index)}`}
+        onPointerEnter={() => setHoveredPly(index)} onFocus={() => setHoveredPly(index)}
+        onPointerLeave={() => setHoveredPly(current => current === index ? null : current)}
+        onBlur={() => setHoveredPly(current => current === index ? null : current)}
         onClick={() => onSelectPly(index)}
         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault(); onSelectPly(index);
         } }} />;
     })}
+    {hoveredPly !== null && <line x1={x(hoveredPly)} x2={x(hoveredPly)} y1="8" y2="152"
+      className="review-hover-line" />}
     {selected && <circle cx={x(selectedPly!)} cy={y(selected)} r="3" className="review-selected" />}
-  </svg>;
+    </svg>
+    {hoveredPly !== null && <span className="review-tooltip" role="tooltip"
+      style={{ left: `${Math.max(13, Math.min(87, x(hoveredPly) / width * 100))}%` }}>
+      {reviewPositionText(review, hoveredPly)}
+    </span>}
+  </div>;
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
@@ -172,11 +221,11 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
             <span className="review-average"><b>{summary.averageLossCp === null ? '—'
               : `${summary.averageLossCp} cp`}</b><small>Average centipawn loss</small></span>
             {(['inaccuracy', 'mistake', 'blunder'] as const).map(kind => {
-              const matching = review.review.moves.find(move => move.side === side
-                && move.label.toLowerCase() === kind);
+              const label = (kind[0]!.toUpperCase() + kind.slice(1)) as 'Inaccuracy' | 'Mistake' | 'Blunder';
+              const next = nextReviewedMovePly(review.review, side, label, selectedPly);
               return <button key={kind} type="button" className={`review-count review-${kind}`}
-                disabled={matching === undefined} onClick={() => matching && onSelectPly(matching.ply)}
-                title={matching ? `Show first ${kind} by ${side}` : `No ${kind} moves by ${side}`}>
+                disabled={next === null} onClick={() => { if (next !== null) onSelectPly(next); }}
+                title={next === null ? `No ${kind} moves by ${side}` : `Show next ${kind} by ${side}`}>
                 <strong>{summary[kind]}</strong>
                 <span>{kind === 'inaccuracy' ? 'inaccuracies' : `${kind}s`}</span>
               </button>;

@@ -1,11 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createPosition, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ReviewGraph, reviewGraphX, reviewGraphY } from '../src/EnginePanel';
+import { ReviewGraph, reviewAdvantageSegments, reviewGraphX, reviewGraphY,
+  reviewPositionText } from '../src/EnginePanel';
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
-import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel,
+import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel, nextReviewedMovePly,
   reviewGlyph, reviewMethodVersion, reviewPositions, reviewSummary,
   type ReviewProgress } from '../src/game-review';
 
@@ -88,6 +90,11 @@ describe('browser-local full-game review', () => {
     expect(markup).toContain('role="button"');
     expect(markup).toContain('class="review-hit"');
     expect(markup).not.toContain('class="review-point"');
+    expect(markup).toContain('review-fill-black');
+    expect(reviewPositionText(review, 0)).toContain('Initial position · Stockfish, White perspective');
+    expect(reviewPositionText(review, 1)).toBe('After 1. e4 · Stockfish, White perspective: Mate -2');
+    expect(reviewPositionText({ ...review, evaluations: [review.evaluations[0]!, checkmatedBlack,
+      review.evaluations[2]!] }, 1)).toContain('White wins by mate');
   });
 
   it('uses the measured chart width and a readable nonlinear vertical scale', () => {
@@ -98,6 +105,32 @@ describe('browser-local full-game review', () => {
     expect(reviewGraphY(1000)).toBeCloseTo(10);
     expect(reviewGraphY(-1000)).toBeCloseTo(150);
     expect(reviewGraphY(100)).toBeLessThan(65);
+    const crossing = reviewAdvantageSegments([200, -200], 320);
+    expect(crossing.map(segment => segment.side)).toEqual(['white', 'black']);
+    expect(crossing[0]?.points).toContain('160,80');
+    expect(crossing[1]?.points).toContain('160,80');
+    expect(reviewAdvantageSegments([-100, -200], 320).map(segment => segment.side))
+      .toEqual(['black']);
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.review-fill-white\s*\{[^}]*fill: #eee9d9/);
+    expect(css).toMatch(/\.review-fill-black\s*\{[^}]*fill: #333b36/);
+  });
+
+  it('cycles each player’s review category in ply order and wraps around', () => {
+    const base = buildGameReview(gameWithMoves(), reviewPositions(gameWithMoves())
+      .map(fen => evaluation(fen, 0)));
+    const review = { ...base, moves: [
+      { ply: 1, side: 'white' as const, san: 'e4', lossCp: 90, label: 'Inaccuracy' as const },
+      { ply: 2, side: 'black' as const, san: 'e5', lossCp: 300, label: 'Blunder' as const },
+      { ply: 3, side: 'white' as const, san: 'Nf3', lossCp: 150, label: 'Mistake' as const },
+      { ply: 5, side: 'white' as const, san: 'Bc4', lossCp: 80, label: 'Inaccuracy' as const },
+    ] };
+    expect(nextReviewedMovePly(review, 'white', 'Inaccuracy', null)).toBe(1);
+    expect(nextReviewedMovePly(review, 'white', 'Inaccuracy', 1)).toBe(5);
+    expect(nextReviewedMovePly(review, 'white', 'Inaccuracy', 5)).toBe(1);
+    expect(nextReviewedMovePly(review, 'white', 'Mistake', 5)).toBe(3);
+    expect(nextReviewedMovePly(review, 'black', 'Blunder', 2)).toBe(2);
+    expect(nextReviewedMovePly(review, 'black', 'Inaccuracy', 2)).toBeNull();
   });
 
   it('summarizes each player without treating mate scores as centipawn loss', () => {

@@ -13,8 +13,8 @@ export function EvaluationBar({ evaluation, fen }: {
       : Math.round((state.whitePercent - 50) * 20) / 100}
     aria-valuetext={state?.label}>
     <div className={`evaluation-track${state === null ? ' unevaluated' : ''}`}>
-      {state !== null && <div className="evaluation-white"
-        style={{ height: `${state.whitePercent}%` }} />}
+      <div className="evaluation-white" aria-hidden="true"
+        style={{ height: `${state?.whitePercent ?? 0}%` }} />
     </div>
     <span className="evaluation-tooltip" role="tooltip">
       {state?.label ?? 'No evaluation for this position'}
