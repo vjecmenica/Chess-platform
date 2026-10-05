@@ -884,7 +884,8 @@ export function App() {
 
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
-    return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches);
+    return Math.min(availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches),
+      window.innerHeight - 72);
   }
 
   function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
@@ -896,7 +897,8 @@ export function App() {
   }
 
   return (
-    <main className={challengeId === null ? 'home-page' : 'challenge-page'}>
+    <main className={challengeId === null ? 'home-page'
+      : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
       </header>

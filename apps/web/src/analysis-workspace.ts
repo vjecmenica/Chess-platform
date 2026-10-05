@@ -2,7 +2,7 @@ import { evaluationLabel, type EngineEvaluation } from './engine-analysis';
 import { graphCentipawns } from './game-review';
 
 export const minimumAnalysisBoardSize = 240;
-export const maximumAnalysisBoardSize = 720;
+export const maximumAnalysisBoardSize = 1080;
 
 export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean): number {
   // Reserve the evaluation bar in both layouts, and the move panel and gap on desktop.
@@ -10,8 +10,8 @@ export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boo
 }
 
 export function resizedBoardSize(startSize: number, deltaX: number, deltaY: number,
-  availableWidth: number): number {
-  const maximum = Math.max(0, Math.min(maximumAnalysisBoardSize, availableWidth));
+  availableWidth: number, availableHeight = maximumAnalysisBoardSize): number {
+  const maximum = Math.max(0, Math.min(maximumAnalysisBoardSize, availableWidth, availableHeight));
   const minimum = Math.min(minimumAnalysisBoardSize, maximum);
   return Math.round(Math.max(minimum,
     Math.min(maximum, startSize + (deltaX + deltaY) / 2)));

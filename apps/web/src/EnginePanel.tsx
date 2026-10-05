@@ -11,28 +11,53 @@ type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
 
+export function reviewGraphX(index: number, count: number, width: number): number {
+  return 10 + index * (width - 20) / Math.max(1, count - 1);
+}
+
+export function reviewGraphY(whiteCentipawns: number): number {
+  return 80 - Math.asinh(whiteCentipawns / 120) / Math.asinh(1000 / 120) * 70;
+}
+
 export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   readonly review: GameReview; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
 }) {
-  const x = (index: number) => 10 + index * 300 / Math.max(1, review.evaluations.length - 1);
+  const graphRef = useRef<SVGSVGElement | null>(null);
+  const [width, setWidth] = useState(320);
+  useEffect(() => {
+    const element = graphRef.current;
+    if (element === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(entries => {
+      const next = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (next > 0) setWidth(next);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const x = (index: number) => reviewGraphX(index, review.evaluations.length, width);
   const y = (evaluation: GameReview['evaluations'][number]) =>
-    48 - graphCentipawns(evaluation) * 4 / 100;
+    reviewGraphY(graphCentipawns(evaluation));
   const points = review.evaluations.map((evaluation, index) => `${x(index)},${y(evaluation)}`).join(' ');
   const selected = selectedPly === null ? null : review.evaluations[selectedPly];
-  return <svg className="review-graph" viewBox="0 0 320 96" role="group"
-    aria-label="White-perspective evaluation by half-move, clipped at plus or minus ten pawns; mate at the edge">
-    <line x1="10" x2="310" y1="48" y2="48" className="review-zero" />
+  return <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} role="group"
+    aria-label="White-perspective evaluation by half-move, nonlinear scale clipped at plus or minus ten pawns; mate at the edge">
+    <line x1="10" x2={width - 10} y1="80" y2="80" className="review-zero" />
     <polyline points={points} fill="none" className="review-plot" />
-    {review.evaluations.map((evaluation, index) =>
-      <circle key={index} cx={x(index)} cy={y(evaluation)} r="5" className="review-point"
+    {review.evaluations.map((evaluation, index) => {
+      const left = index === 0 ? 0 : (x(index - 1) + x(index)) / 2;
+      const right = index === review.evaluations.length - 1 ? width
+        : (x(index) + x(index + 1)) / 2;
+      return <rect key={index} x={left} y="0" width={right - left}
+        height="160" className="review-hit"
         role="button" tabIndex={0} aria-label={`${index === 0 ? 'Show starting position'
           : `Show position after ${review.moves[index - 1]?.san}`}, evaluation ${evaluationLabel(evaluation)}`}
         onClick={() => onSelectPly(index)}
         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault(); onSelectPly(index);
-        } }} />)}
-    {selected && <circle cx={x(selectedPly!)} cy={y(selected)} r="4" className="review-selected" />}
+        } }} />;
+    })}
+    {selected && <circle cx={x(selectedPly!)} cy={y(selected)} r="3" className="review-selected" />}
   </svg>;
 }
 
@@ -138,20 +163,22 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
-      <small>White perspective · mate at graph edge · {reviewMethodVersion}</small>
+      <small>White perspective · nonlinear display scale · mate at graph edge · {reviewMethodVersion}</small>
       <div className="review-summary" aria-label="Review summary">
         {(['white', 'black'] as const).map(side => {
           const summary = reviewSummary(review.review, side);
           return <div key={side} className="review-player">
             <strong>{side === 'white' ? 'White' : 'Black'}</strong>
-            <span>Average loss: {summary.averageLossCp === null ? '—' : `${summary.averageLossCp} cp`}</span>
+            <span className="review-average"><b>{summary.averageLossCp === null ? '—'
+              : `${summary.averageLossCp} cp`}</b><small>Average centipawn loss</small></span>
             {(['inaccuracy', 'mistake', 'blunder'] as const).map(kind => {
               const matching = review.review.moves.find(move => move.side === side
                 && move.label.toLowerCase() === kind);
               return <button key={kind} type="button" className={`review-count review-${kind}`}
                 disabled={matching === undefined} onClick={() => matching && onSelectPly(matching.ply)}
                 title={matching ? `Show first ${kind} by ${side}` : `No ${kind} moves by ${side}`}>
-                {summary[kind]} {kind === 'inaccuracy' ? 'inaccuracies' : `${kind}s`}
+                <strong>{summary[kind]}</strong>
+                <span>{kind === 'inaccuracy' ? 'inaccuracies' : `${kind}s`}</span>
               </button>;
             })}
           </div>;

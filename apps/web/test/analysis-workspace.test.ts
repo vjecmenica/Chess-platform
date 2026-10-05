@@ -23,6 +23,8 @@ describe('analysis workspace sizing', () => {
     expect(resizedBoardSize(500, -1000, -1000, 680)).toBe(240);
     expect(resizedBoardSize(500, 1000, 1000, 320)).toBe(320);
     expect(resizedBoardSize(500, -1000, -1000, 220)).toBe(220);
+    expect(resizedBoardSize(700, 400, 400, 1000, 900)).toBe(900);
+    expect(resizedBoardSize(700, 400, 400, 1200, 1200)).toBe(1080);
     // The limit comes from the workspace, so shrinking the board cannot trap it at that size.
     expect(resizedBoardSize(300, 200, 200, availableAnalysisBoardWidth(1140, false))).toBe(500);
   });
@@ -32,6 +34,8 @@ describe('analysis workspace sizing', () => {
     expect(css).toMatch(/\.analysis-workspace \.engine-panel\s*\{[^}]*grid-column: 1 \/ -1/);
     expect(css).toMatch(/\.analysis-workspace \.game-sidebar\s*\{[^}]*height: auto/);
     expect(css).toMatch(/\.board-resize-grip\s*\{[^}]*touch-action: none/);
+    expect(css).toMatch(/\.challenge-page\.analysis-page\s*\{[^}]*max-width: 1660px/);
+    expect(css).toMatch(/\.analysis-workspace \.board-stage \.board-frame\s*\{[^}]*1080px/);
   });
 });
 

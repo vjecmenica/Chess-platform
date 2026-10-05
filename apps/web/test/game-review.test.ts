@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createPosition, STANDARD_STARTING_FEN } from '@chess/domain';
 import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ReviewGraph } from '../src/EnginePanel';
+import { ReviewGraph, reviewGraphX, reviewGraphY } from '../src/EnginePanel';
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel,
   reviewGlyph, reviewMethodVersion, reviewPositions, reviewSummary,
@@ -86,6 +86,18 @@ describe('browser-local full-game review', () => {
     expect(markup).toContain('White-perspective evaluation');
     expect(markup).toContain('class="review-selected"');
     expect(markup).toContain('role="button"');
+    expect(markup).toContain('class="review-hit"');
+    expect(markup).not.toContain('class="review-point"');
+  });
+
+  it('uses the measured chart width and a readable nonlinear vertical scale', () => {
+    expect(reviewGraphX(0, 3, 1000)).toBe(10);
+    expect(reviewGraphX(1, 3, 1000)).toBe(500);
+    expect(reviewGraphX(2, 3, 1000)).toBe(990);
+    expect(reviewGraphY(0)).toBe(80);
+    expect(reviewGraphY(1000)).toBeCloseTo(10);
+    expect(reviewGraphY(-1000)).toBeCloseTo(150);
+    expect(reviewGraphY(100)).toBeLessThan(65);
   });
 
   it('summarizes each player without treating mate scores as centipawn loss', () => {
