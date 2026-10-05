@@ -36,6 +36,7 @@ export interface ClockState {
 export interface SavedMove {
   readonly ply: number;
   readonly side: GameSide;
+  readonly remainingMsAfterMove: number | null;
   readonly from: string;
   readonly to: string;
   readonly promotion?: 'q' | 'r' | 'b' | 'n';

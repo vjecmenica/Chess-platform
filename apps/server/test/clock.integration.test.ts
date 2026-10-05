@@ -154,6 +154,44 @@ describe('durable 5+3 guest clocks against PostgreSQL', () => {
         remainingMs: { white: 300000, black: 302000 }, activeSide: 'white' } } });
   });
 
+  it('saves authoritative post-move clocks with each move and reads legacy nulls after restart', async () => {
+    const { app, time } = fixture();
+    const { id, white, black } = await challenge(app);
+    const first = await move(app, id, white, 0, 'e2', 'e4');
+    expect(first.json().move.remainingMsAfterMove).toBe(300_000);
+    time.set(time.value + 1_250);
+    const second = await move(app, id, black, 1, 'e7', 'e5');
+    expect(second.json().move.remainingMsAfterMove).toBe(301_750);
+    time.set(time.value + 500);
+    const third = await move(app, id, white, 2, 'g1', 'f3');
+    expect(third.json().move.remainingMsAfterMove).toBe(302_500);
+    expect((await read(app, id, black)).json().history.map(
+      (entry: { remainingMsAfterMove: number | null }) => entry.remainingMsAfterMove))
+      .toEqual([300_000, 301_750, 302_500]);
+    const stored = await pool.query<{ ply: number; remaining_ms_after_move: number | null }>(
+      'SELECT ply, remaining_ms_after_move FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [id]);
+    expect(stored.rows.map(row => row.remaining_ms_after_move))
+      .toEqual([300_000, 301_750, 302_500]);
+    await pool.query(`UPDATE chess.game_moves SET remaining_ms_after_move = NULL
+      WHERE game_id = $1 AND ply = 2`, [id]);
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
+    const { app: restarted } = anotherInstance(time);
+    expect((await read(restarted, id, white)).json().history.map(
+      (entry: { remainingMsAfterMove: number | null }) => entry.remainingMsAfterMove))
+      .toEqual([300_000, null, 302_500]);
+  });
+
+  it('records the increment on the first move of an older readiness game', async () => {
+    const { app, time } = fixture();
+    const { id, white, black } = await start(app);
+    time.set(time.value + 1_200);
+    const accepted = await move(app, id, white, 2, 'e2', 'e4');
+    expect(accepted.json().move.remainingMsAfterMove).toBe(301_800);
+    expect((await read(app, id, black)).json().history[0].remainingMsAfterMove)
+      .toBe(301_800);
+  });
+
   it('ignores a crashed instance watermark immediately instead of stalling the first move', async () => {
     const { app } = fixture();
     const { id, white, black } = await challenge(app);

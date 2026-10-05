@@ -4,7 +4,7 @@ import type pg from 'pg';
 import { createGameFromPosition, FIVE_PLUS_THREE } from '@chess/domain';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
-  GameReadResponse, GameState, MoveAcceptedResponse } from '@chess/contracts';
+  GameReadResponse, GameState, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
 
 export interface WallClock { nowMs(): number }
 export const systemClock: WallClock = { nowMs: () => Date.now() };
@@ -231,8 +231,21 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
     rated: false, yourSeat };
 }
 
-function gameRead(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number): GameReadResponse {
-  return { ...gameState(row, game, yourSeat, atMs), history: game.getHistory() };
+function savedMove(record: MoveRecord, remainingMsAfterMove: number | null): SavedMove {
+  return { ...record, remainingMsAfterMove };
+}
+
+async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
+  yourSeat: Side, atMs: number): Promise<GameReadResponse> {
+  const { rows } = await client.query<{ ply: number; remaining_ms_after_move: number | null }>(
+    'SELECT ply, remaining_ms_after_move FROM chess.game_moves WHERE game_id = $1 ORDER BY ply',
+    [row.id]);
+  const history = game.getHistory();
+  if (rows.length !== history.length || rows.some((move, index) => move.ply !== index + 1)) {
+    throw new Error('Saved clock history does not match game history.');
+  }
+  return { ...gameState(row, game, yourSeat, atMs),
+    history: history.map((move, index) => savedMove(move, rows[index]!.remaining_ms_after_move)) };
 }
 
 async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
@@ -511,8 +524,13 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       row.black_first_move_deadline_at = new Date(atMs + 30_000);
     }
     await saveGame(client, row);
-    const move = game.getHistory().at(-1);
-    if (!move) throw new Error('Saved handoff has no accepted move.');
+    const record = game.getHistory().at(-1);
+    if (!record) throw new Error('Saved handoff has no accepted move.');
+    const { rows: saved } = await client.query<{ remaining_ms_after_move: number | null }>(
+      'SELECT remaining_ms_after_move FROM chess.game_moves WHERE game_id = $1 AND ply = $2',
+      [row.id, record.ply]);
+    if (saved.length !== 1) throw new Error('Saved handoff has no move clock.');
+    const move = savedMove(record, saved[0]!.remaining_ms_after_move);
     const response: MoveAcceptedResponse | GameClaimAcceptedResponse = receipt.kind === 'claim_draw'
       ? { accepted: true, claimCorrect: false, bonusMs: 60_000, move,
         game: gameState(row, game, yourSeat, atMs) }
@@ -581,15 +599,18 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           row.deadline_at = null;
           row.clock_phase = row.status === 'active' ? 'handoff' : 'stopped';
         }
-        await client.query('INSERT INTO chess.game_moves (game_id, ply, record) VALUES ($1, $2, $3::jsonb)',
-          [row.id, submitted.move.ply, JSON.stringify(submitted.move)]);
+        const move = savedMove(submitted.move, row.clock_mode === 'five_plus_three'
+          ? yourSeat === 'white' ? row.white_remaining_ms : row.black_remaining_ms : null);
+        await client.query(`INSERT INTO chess.game_moves
+          (game_id, ply, record, remaining_ms_after_move) VALUES ($1, $2, $3::jsonb, $4)`,
+          [row.id, move.ply, JSON.stringify(submitted.move), move.remainingMsAfterMove]);
         await saveGame(client, row);
         if (row.clock_phase === 'handoff') {
           await client.query('UPDATE chess.game_move_receipts SET applied = true WHERE admission_id = $1',
             [receipt.admission_id]);
           return true;
         }
-        const response: MoveAcceptedResponse = { accepted: true, move: submitted.move,
+        const response: MoveAcceptedResponse = { accepted: true, move,
           game: gameState(row, game, yourSeat, Math.max(receivedAtMs, now(clock))) };
         result = { status: 200, body: response };
       }
@@ -648,9 +669,11 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
               ? row.white_remaining_ms : row.black_remaining_ms));
           }
         }
-        if (moved) await client.query(
-          'INSERT INTO chess.game_moves (game_id, ply, record) VALUES ($1, $2, $3::jsonb)',
-          [row.id, moved.ply, JSON.stringify(moved)]);
+        const savedClaimMove = moved ? savedMove(moved, row.clock_mode === 'five_plus_three'
+          ? yourSeat === 'white' ? row.white_remaining_ms : row.black_remaining_ms : null) : undefined;
+        if (savedClaimMove) await client.query(`INSERT INTO chess.game_moves
+          (game_id, ply, record, remaining_ms_after_move) VALUES ($1, $2, $3::jsonb, $4)`,
+          [row.id, moved!.ply, JSON.stringify(moved), savedClaimMove.remainingMsAfterMove]);
         await client.query(`INSERT INTO chess.game_actions
           (game_id, version, after_ply, side, kind, payload)
           VALUES ($1, $2, $3, $4, 'claim_draw', $5::jsonb)`,
@@ -664,7 +687,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           return true;
         }
         const response: GameClaimAcceptedResponse = { accepted: true, claimCorrect: correct,
-          bonusMs, ...(moved ? { move: moved } : {}),
+          bonusMs, ...(savedClaimMove ? { move: savedClaimMove } : {}),
           game: gameState(row, game, yourSeat, Math.max(receivedAtMs, now(clock))) };
         result = { status: 200, body: response };
       }
@@ -826,7 +849,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         if (yourSeat === null) return notParticipant;
         const game = await reconstruct(client, row);
         const atMs = now(clock);
-        return { status: 200, body: gameRead(row, game, yourSeat, atMs) };
+        return { status: 200, body: await gameRead(client, row, game, yourSeat, atMs) };
       });
     },
     async ready(id, guestId) {
@@ -857,7 +880,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           }
           await saveGame(client, row);
         }
-        return { status: 200, body: gameRead(row, game, yourSeat, atMs) };
+        return { status: 200, body: await gameRead(client, row, game, yourSeat, atMs) };
       }));
     },
     async move(id, guestId, requestId, body, arrival) {

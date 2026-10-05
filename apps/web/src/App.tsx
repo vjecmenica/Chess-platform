@@ -22,7 +22,7 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
   lastMainPosition, mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, promoteVariation, restoreAnalysis,
   selectBranch, selectMain, serializeAnalysis, setMoveNote,
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
-import { ClockPanel } from './ClockPanel';
+import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
@@ -1083,6 +1083,8 @@ export function App() {
             <aside className="game-sidebar" aria-label="Game controls and moves">
               <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
+                historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
+                  game.timeControl.initialMs, game.clocks !== null) : undefined}
                 materialAdvantage={material?.side === topSide ? material.points : null} />
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
@@ -1247,6 +1249,8 @@ export function App() {
                 </details>
               </div>
               <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
+                  game.timeControl.initialMs, game.clocks !== null) : undefined}
                 materialAdvantage={material?.side === bottomSide ? material.points : null} />
             </aside>
             {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}

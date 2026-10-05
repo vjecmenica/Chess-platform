@@ -68,11 +68,11 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .evaluation-bar:focus-visible { outline: 3px solid #a47a37; outline-offset: 3px; }
 .evaluation-track { position: relative; flex: 1; min-height: 0; background: #333b36;
   border-radius: 3px; overflow: hidden; }
-.evaluation-track.unevaluated { background: repeating-linear-gradient(135deg,
-  #e4e4dc 0 7px, #d4d7ce 7px 14px); }
+.evaluation-track.unevaluated::after { content: ''; position: absolute; inset: 0;
+  background: repeating-linear-gradient(135deg, #e4e4dc 0 7px, #d4d7ce 7px 14px);
+  opacity: .92; }
 .evaluation-white { position: absolute; bottom: 0; left: 0; right: 0; background: #eee9d9;
-  border-top: 1px solid #708074; transition: height 220ms ease; }
-.evaluation-track.unevaluated .evaluation-white { visibility: hidden; transition: none; }
+  border-top: 1px solid #708074; transition: height 250ms cubic-bezier(.2, .8, .2, 1); }
 @media (prefers-reduced-motion: reduce) {
   .evaluation-white { transition: none; }
 }

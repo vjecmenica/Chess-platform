@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { EvaluationBar } from '../src/EvaluationBar';
+import { EvaluationBar, evaluationFillPercent } from '../src/EvaluationBar';
 import { availableAnalysisBoardWidth, evaluationBarState,
   resizedBoardSize } from '../src/analysis-workspace';
 import type { EngineEvaluation } from '../src/engine-analysis';
@@ -58,16 +58,19 @@ describe('White-perspective evaluation bar', () => {
     expect(html).toContain('No evaluation for this position');
     expect(html).not.toContain('+0.50');
     expect(html).toContain('evaluation-track unevaluated');
-    expect(html).toContain('height:0%');
+    expect(html).toContain('height:50%');
     expect(html).toContain('tabindex="0"');
     expect(html).toContain('class="evaluation-tooltip"');
     expect(html).not.toContain('evaluation-score');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.evaluation-tooltip\s*\{[^}]*visibility: hidden/);
     expect(css).toMatch(/\.evaluation-bar:focus-visible \.evaluation-tooltip\s*\{[^}]*visibility: visible/);
-    expect(css).toMatch(/\.evaluation-white\s*\{[^}]*transition: height 220ms ease/);
+    expect(css).toMatch(/\.evaluation-white\s*\{[^}]*transition: height 250ms cubic-bezier\(\.2, \.8, \.2, 1\)/);
     expect(css).toMatch(/prefers-reduced-motion: reduce/);
-    expect(css).toMatch(/\.evaluation-track\.unevaluated \.evaluation-white\s*\{[^}]*visibility: hidden/);
+    expect(css).toMatch(/\.evaluation-track\.unevaluated::after\s*\{[^}]*background: repeating-linear-gradient/);
+    expect(evaluationFillPercent(72, 50)).toBe(72);
+    expect(evaluationFillPercent(null, 72)).toBe(72);
+    expect(evaluationFillPercent(35, 72)).toBe(35);
     const current = renderToStaticMarkup(createElement(EvaluationBar,
       { evaluation: evaluation(), fen: STANDARD_STARTING_FEN }));
     expect(current).toContain('White perspective +0.50');

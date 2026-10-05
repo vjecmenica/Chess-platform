@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { ClockState } from '@chess/contracts';
-import { ClockPanel, displayedMs, firstMoveRemainingMs, formatClock } from '../src/ClockPanel';
+import type { ClockState, SavedMove } from '@chess/contracts';
+import { ClockPanel, displayedMs, firstMoveRemainingMs, formatClock,
+  historicalClockMs } from '../src/ClockPanel';
 
 const running: ClockState = {
   startMode: 'readiness', phase: 'running', ready: { white: true, black: true },
@@ -21,9 +22,10 @@ describe('display clocks', () => {
   });
 
   it('shows remaining seconds without rounding away the final fraction', () => {
-    expect(formatClock(300_000)).toBe('05:00');
-    expect(formatClock(1)).toBe('00:01');
-    expect(formatClock(0)).toBe('00:00');
+    expect(formatClock(300_000)).toBe('05:00.00');
+    expect(formatClock(1)).toBe('00:00.01');
+    expect(formatClock(12_345)).toBe('00:12.35');
+    expect(formatClock(0)).toBe('00:00.00');
   });
 
   it('shows paused initial clocks without Ready labels for new games', () => {
@@ -48,8 +50,8 @@ describe('display clocks', () => {
     expect(firstMoveRemainingMs(grace, 'black', 2_000)).toBeNull();
     const html = renderToStaticMarkup(createElement(ClockPanel,
       { clock: grace, side: 'white', isYou: false }));
-    expect(html).toContain('First move <b aria-live="off">00:30</b>');
-    expect(html).toContain('White first-move deadline, 00:30 remaining');
+    expect(html).toContain('First move <b aria-live="off">00:30.00</b>');
+    expect(html).toContain('White first-move deadline, 00:30.00 remaining');
     expect(html).toContain('05:00');
   });
 
@@ -72,5 +74,27 @@ describe('display clocks', () => {
     expect(leader).toContain('>+3</span>');
     expect(leader).toContain('black leads by 3 material points');
     expect(other).not.toContain('material-advantage');
+  });
+
+  it('shows only recorded post-move balances while navigating history', () => {
+    const history = [
+      { ply: 1, side: 'white', remainingMsAfterMove: 300_000 },
+      { ply: 2, side: 'black', remainingMsAfterMove: 302_250 },
+      { ply: 3, side: 'white', remainingMsAfterMove: null },
+    ] as SavedMove[];
+    expect(historicalClockMs(history, 0, 'white', 300_000, true)).toBe(300_000);
+    expect(historicalClockMs(history, 1, 'black', 300_000, true)).toBe(300_000);
+    expect(historicalClockMs(history, 2, 'black', 300_000, true)).toBe(302_250);
+    expect(historicalClockMs(history, 3, 'white', 300_000, true)).toBeNull();
+    expect(historicalClockMs(history, 2, 'white', 300_000, false)).toBeNull();
+    const shown = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
+    expect(shown).toContain('05:02.25');
+    expect(shown).toContain('At selected move');
+    expect(shown).not.toContain('clock-active');
+    const unavailable = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: running, side: 'white', isYou: true, historicalMs: null }));
+    expect(unavailable).toContain('Time unavailable');
+    expect(unavailable).toContain('>—</strong>');
   });
 });
