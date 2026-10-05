@@ -65,7 +65,7 @@ describe('White-perspective evaluation bar', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.evaluation-tooltip\s*\{[^}]*visibility: hidden/);
     expect(css).toMatch(/\.evaluation-bar:focus-visible \.evaluation-tooltip\s*\{[^}]*visibility: visible/);
-    expect(css).toMatch(/\.evaluation-white\s*\{[^}]*transition: height 250ms cubic-bezier\(\.2, \.8, \.2, 1\)/);
+    expect(css).toMatch(/\.evaluation-white\s*\{[^}]*transition: height 900ms cubic-bezier\(\.16, 1, \.3, 1\)/);
     expect(css).toMatch(/prefers-reduced-motion: reduce/);
     expect(css).toMatch(/\.evaluation-track\.unevaluated::after\s*\{[^}]*background: repeating-linear-gradient/);
     expect(evaluationFillPercent(72, 50)).toBe(72);

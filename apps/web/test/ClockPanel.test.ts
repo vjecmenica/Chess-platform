@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ClockState, SavedMove } from '@chess/contracts';
@@ -22,7 +23,10 @@ describe('display clocks', () => {
   });
 
   it('shows remaining seconds without rounding away the final fraction', () => {
-    expect(formatClock(300_000)).toBe('05:00.00');
+    expect(formatClock(300_000)).toBe('05:00');
+    expect(formatClock(30_001)).toBe('00:31');
+    expect(formatClock(30_000)).toBe('00:30.00');
+    expect(formatClock(29_999)).toBe('00:30.00');
     expect(formatClock(1)).toBe('00:00.01');
     expect(formatClock(12_345)).toBe('00:12.35');
     expect(formatClock(0)).toBe('00:00.00');
@@ -50,7 +54,7 @@ describe('display clocks', () => {
     expect(firstMoveRemainingMs(grace, 'black', 2_000)).toBeNull();
     const html = renderToStaticMarkup(createElement(ClockPanel,
       { clock: grace, side: 'white', isYou: false }));
-    expect(html).toContain('First move <b aria-live="off">00:30.00</b>');
+    expect(html).toContain('First move <b aria-live="off"><span>00:30</span><span class="clock-hundredths">.00</span></b>');
     expect(html).toContain('White first-move deadline, 00:30.00 remaining');
     expect(html).toContain('05:00');
   });
@@ -89,12 +93,29 @@ describe('display clocks', () => {
     expect(historicalClockMs(history, 2, 'white', 300_000, false)).toBeNull();
     const shown = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
-    expect(shown).toContain('05:02.25');
+    expect(shown).toContain('05:03');
+    expect(shown).not.toContain('clock-hundredths');
     expect(shown).toContain('At selected move');
     expect(shown).not.toContain('clock-active');
     const unavailable = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'white', isYou: true, historicalMs: null }));
     expect(unavailable).toContain('Time unavailable');
     expect(unavailable).toContain('>—</strong>');
+  });
+
+  it('warns at thirty seconds in live and historical clocks with smaller hundredths', () => {
+    const live = renderToStaticMarkup(createElement(ClockPanel, { clock: {
+      ...running, remainingMs: { ...running.remainingMs, white: 30_000 },
+    }, side: 'white', isYou: true }));
+    const history = renderToStaticMarkup(createElement(ClockPanel, {
+      clock: running, side: 'black', isYou: false, historicalMs: 29_450,
+    }));
+    expect(live).toContain('clock-active clock-warning');
+    expect(live).toContain('clock-hundredths');
+    expect(history).toContain('clock-warning');
+    expect(history).toContain('<span>00:29</span><span class="clock-hundredths">.45</span>');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.clock-warning[^}]*background: #fff0e9/);
+    expect(css).toMatch(/\.clock-hundredths[^}]*font-size: \.58em/);
   });
 });

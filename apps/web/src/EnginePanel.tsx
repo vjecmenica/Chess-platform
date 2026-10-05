@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   evaluationLabel, variationSan, type EngineEvaluation, type EngineState,
-  type EngineWorker } from './engine-analysis';
+  type EngineWorker, type MultiPvCount } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
@@ -10,6 +10,16 @@ type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
+
+export function candidateLines(evaluation: EngineEvaluation):
+  { rank: number; score: string; san: string[] }[] {
+  const lines = evaluation.lines ?? [{ rank: 1, score: evaluation.score,
+    variation: evaluation.variation }];
+  return lines.map(line => ({ rank: line.rank,
+    score: evaluationLabel({ ...evaluation, score: line.score }),
+    san: variationSan(evaluation.fen, line.variation.length === 0 && line.rank === 1
+      && evaluation.bestMove !== null ? [evaluation.bestMove] : line.variation) }));
+}
 
 export function reviewGraphX(index: number, count: number, width: number): number {
   return 10 + index * (width - 20) / Math.max(1, count - 1);
@@ -118,6 +128,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
 }) {
   const [enabled, setEnabled] = useState(false);
+  const [lineCount, setLineCount] = useState<MultiPvCount>(1);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const controller = useRef<EngineController | null>(null);
@@ -138,10 +149,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, []);
 
   useEffect(() => { if (enabled) controller.current?.setPosition(fen); }, [enabled, fen]);
-  useEffect(() => {
-    const cached = cache.current?.get(fen);
-    if (cached) onEvaluationChange(cached);
-  }, [fen, onEvaluationChange]);
+  useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount) ?? null); },
+    [fen, lineCount, onEvaluationChange]);
 
   function startReview() {
     if (cache.current === null || review.kind === 'running') return;
@@ -170,7 +179,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   const evaluation = state.kind === 'done' && state.evaluation.fen === fen
     ? state.evaluation : null;
-  const line = evaluation === null ? [] : variationSan(fen, evaluation.variation);
+  const lines = evaluation === null ? [] : candidateLines(evaluation);
 
   useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
     [evaluation, onEvaluationChange]);
@@ -178,6 +187,17 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
       <strong>Stockfish</strong>
+      <label className="engine-line-setting">Lines
+        <select value={lineCount} disabled={review.kind === 'running'}
+          aria-label="Candidate lines" onChange={event => {
+            const count = Number(event.target.value) as MultiPvCount;
+            setLineCount(count);
+            controller.current?.setLineCount(count);
+            onEvaluationChange(null);
+          }}>
+          {[1, 2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
+        </select>
+      </label>
       <button type="button" className="secondary" aria-pressed={enabled}
         disabled={review.kind === 'running'}
         onClick={() => {
@@ -186,16 +206,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           else { controller.current?.start(fen); setEnabled(true); }
         }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
     </div>
+    <small className="engine-budget">More lines share the 1.2-second search budget and may be shallower.</small>
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
     {enabled && state.kind === 'searching' && <span role="status">Evaluating position…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && evaluation !== null && <div className="engine-result" role="status">
-      <span className="engine-score" aria-label={`Evaluation from White's perspective ${evaluationLabel(evaluation)}`}>
-        {evaluationLabel(evaluation)}</span>
-      <span>Best: {line[0] ?? (evaluation.bestMove === null ? 'No legal move' : evaluation.bestMove)}</span>
       <small>Depth {evaluation.depth}{state.kind === 'done' && state.cached ? ' · cached' : ''}</small>
-      {line.length > 0 && <span className="engine-line" aria-label={`Principal variation ${line.join(' ')}`}>
-        {line.join(' ')}</span>}
+      {lines.map(line => <div className="engine-candidate" key={line.rank}
+        aria-label={`Line ${line.rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
+        <span className="engine-rank">{line.rank}.</span>
+        <span className="engine-score">{line.score}</span>
+        <span className="engine-line">{line.san.join(' ') || 'No legal move'}</span>
+      </div>)}
     </div>}
     <div className="review-control">
       <button type="button" className="secondary" onClick={() => {

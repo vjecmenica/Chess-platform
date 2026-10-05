@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
+import { candidateLines } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -41,9 +42,11 @@ function finish(worker: FakeWorker, pv = 'e2e4 e7e5 g1f3') {
 describe('browser Stockfish controller', () => {
   it('parses UCI output and presents a legal SAN line from the selected position', () => {
     expect(parseSearchInfo('info depth 14 score mate -2 nodes 30 pv e7e5 g1f3'))
-      .toEqual({ depth: 14, score: { kind: 'mate', value: -2 }, pv: ['e7e5', 'g1f3'] });
+      .toEqual({ depth: 14, rank: 1, score: { kind: 'mate', value: -2 }, pv: ['e7e5', 'g1f3'] });
     expect(parseSearchInfo('info depth 0 score mate 0')).toEqual({ depth: 0,
-      score: { kind: 'mate', value: 0 }, pv: [] });
+      rank: 1, score: { kind: 'mate', value: 0 }, pv: [] });
+    expect(parseSearchInfo('info depth 12 multipv 3 score cp -51 pv g1f3'))
+      .toEqual({ depth: 12, rank: 3, score: { kind: 'cp', value: -51 }, pv: ['g1f3'] });
     expect(parseSearchInfo('info depth 14 score cp 20 upperbound pv e2e4')).toBeNull();
     expect(variationSan(start, ['e2e4', 'e7e5', 'g1f3'])).toEqual(['e4', 'e5', 'Nf3']);
     expect(variationSan(start, ['e2e4', 'a1a8'])).toEqual(['e4']);
@@ -116,5 +119,73 @@ describe('browser Stockfish controller', () => {
       state => states.push(state), new EngineCache());
     broken.start(start);
     expect(states.at(-1)?.kind).toBe('error');
+  });
+
+  it('groups MultiPV ranks at one complete depth and presents legal White-perspective lines', () => {
+    const { engine, workers, states } = setup();
+    engine.setLineCount(2);
+    engine.start(afterE4);
+    const worker = workers[0]!;
+    ready(worker);
+    expect(worker.commands).toContain('setoption name MultiPV value 2');
+    worker.emit('info depth 10 multipv 1 score cp 32 pv e7e5 g1f3');
+    worker.emit('info depth 10 multipv 2 score mate -3 pv c7c5 g1f3');
+    worker.emit('info depth 11 multipv 1 score cp 45 pv e7e5');
+    worker.emit('bestmove e7e5');
+    const completed = states.at(-1);
+    expect(completed).toMatchObject({ kind: 'done', evaluation: { depth: 10,
+      lines: [{ rank: 1, score: { kind: 'cp', value: 32 } },
+        { rank: 2, score: { kind: 'mate', value: -3 } }] } });
+    if (completed?.kind !== 'done') throw new Error('Expected completed search.');
+    expect(candidateLines(completed.evaluation)).toEqual([
+      { rank: 1, score: '-0.32', san: ['e5', 'Nf3'] },
+      { rank: 2, score: 'Mate +3', san: ['c5', 'Nf3'] },
+    ]);
+  });
+
+  it('cancels old settings and keeps each line count in a separate cache entry', () => {
+    const saved = new Map<string, string>();
+    const storage = { getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => { saved.set(key, value); } };
+    const { engine, workers, states, cache } = setup(storage);
+    engine.start(start);
+    const worker = workers[0]!;
+    ready(worker);
+    engine.setLineCount(2);
+    expect(worker.commands.at(-1)).toBe('stop');
+    worker.emit('info depth 12 score cp 99 pv e2e4');
+    worker.emit('bestmove e2e4');
+    worker.emit('readyok');
+    expect(worker.commands.slice(-3)).toEqual(['setoption name MultiPV value 2',
+      `position fen ${start}`, 'go depth 14 movetime 1200']);
+    worker.emit('info depth 8 multipv 1 score cp 34 pv e2e4 e7e5');
+    worker.emit('info depth 8 multipv 2 score cp 17 pv d2d4 d7d5');
+    worker.emit('bestmove e2e4');
+    expect(states.at(-1)?.kind).toBe('done');
+    expect(cache.get(start, 1)).toBeUndefined();
+    expect(cache.get(start, 2)?.lines).toHaveLength(2);
+    expect(new EngineCache(storage).get(start, 2)?.lines).toHaveLength(2);
+    engine.setLineCount(1);
+    expect(states.at(-1)?.kind).toBe('searching');
+    expect(worker.commands.at(-1)).toBe('isready');
+  });
+
+  it('keeps only usable ranks from incomplete engine output', () => {
+    const saved = new Map<string, string>();
+    const storage = { getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => { saved.set(key, value); } };
+    const { engine, workers, states } = setup(storage);
+    engine.setLineCount(3);
+    engine.start(start);
+    const worker = workers[0]!;
+    ready(worker);
+    worker.emit('info depth 7 multipv 1 score mate 2 pv e2e4');
+    worker.emit('info depth 7 multipv 2 score cp 10 pv d2d4');
+    worker.emit('info depth 8 multipv 2 score cp 20 pv d2d4');
+    worker.emit('bestmove e2e4');
+    expect(states.at(-1)).toMatchObject({ kind: 'done', evaluation: {
+      depth: 7, score: { kind: 'mate', value: 2 }, lines: [{ rank: 1 }, { rank: 2 }],
+    } });
+    expect(new EngineCache(storage).get(start, 3)?.lines).toHaveLength(2);
   });
 });

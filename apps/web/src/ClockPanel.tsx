@@ -24,8 +24,17 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
 
 export function formatClock(milliseconds: number): string {
   const hundredths = Math.ceil(Math.max(0, milliseconds) / 10);
-  const seconds = Math.floor(hundredths / 100);
-  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}.${String(hundredths % 100).padStart(2, '0')}`;
+  const seconds = milliseconds > 30_000 ? Math.ceil(milliseconds / 1000)
+    : Math.floor(hundredths / 100);
+  const main = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  return milliseconds <= 30_000 ? `${main}.${String(hundredths % 100).padStart(2, '0')}` : main;
+}
+
+function ClockValue({ milliseconds }: { milliseconds: number }) {
+  const value = formatClock(milliseconds);
+  const [main, fraction] = value.split('.');
+  return <><span>{main}</span>{fraction !== undefined &&
+    <span className="clock-hundredths">.{fraction}</span>}</>;
 }
 
 export function ClockPanel({ clock, side, isYou, materialAdvantage, historicalMs }: {
@@ -41,22 +50,32 @@ export function ClockPanel({ clock, side, isYou, materialAdvantage, historicalMs
     setElapsedMs(0);
     if (historicalMs !== undefined || clock === null || (clock.activeSide !== side
       && clock.firstMoveDeadlineMs[side] === null)) return;
-    const timer = window.setInterval(() => setElapsedMs(performance.now() - observedAt), 50);
-    return () => window.clearInterval(timer);
+    let timer: number;
+    const tick = () => {
+      const elapsed = performance.now() - observedAt;
+      setElapsedMs(elapsed);
+      const clockLeft = displayedMs(clock, side, elapsed);
+      const graceLeft = firstMoveRemainingMs(clock, side, elapsed);
+      timer = window.setTimeout(tick, clockLeft <= 0 && (graceLeft === null || graceLeft <= 0)
+        ? 1_000 : clockLeft <= 30_000 || graceLeft !== null && graceLeft <= 30_000 ? 50 : 250);
+    };
+    timer = window.setTimeout(tick, 50);
+    return () => window.clearTimeout(timer);
   }, [clock, side, historicalMs]);
 
   const graceMs = historicalMs !== undefined || clock === null ? null
     : firstMoveRemainingMs(clock, side, elapsedMs);
-  return <div className={`clock ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''}`}
+  const valueMs = historicalMs !== undefined ? historicalMs
+    : clock === null ? null : displayedMs(clock, side, elapsedMs);
+  return <div className={`clock ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
       <span className="player-label">{isYou ? 'You' : 'Opponent'}
         {materialAdvantage != null && materialAdvantage > 0 &&
           <span className="material-advantage" aria-label={`${side} leads by ${materialAdvantage} material points`}>
             +{materialAdvantage}</span>}
         <b>{side === 'white' ? 'White' : 'Black'}</b></span>
-      <strong aria-live="off">{historicalMs !== undefined
-        ? historicalMs === null ? '—' : formatClock(historicalMs)
-        : clock === null ? 'Untimed' : formatClock(displayedMs(clock, side, elapsedMs))}</strong>
+      <strong aria-live="off">{valueMs === null
+        ? historicalMs !== undefined ? '—' : 'Untimed' : <ClockValue milliseconds={valueMs} />}</strong>
       <small>{historicalMs !== undefined ? historicalMs === null ? 'Time unavailable' : 'At selected move'
         : clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'
         ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
@@ -64,7 +83,7 @@ export function ClockPanel({ clock, side, isYou, materialAdvantage, historicalMs
         : clock.ready[side] ? 'Ready' : 'Not ready'}</small>
       {graceMs !== null && <span className="first-move-countdown"
         aria-label={`${side === 'white' ? 'White' : 'Black'} first-move deadline, ${formatClock(graceMs)} remaining`}>
-        First move <b aria-live="off">{formatClock(graceMs)}</b>
+        First move <b aria-live="off"><ClockValue milliseconds={graceMs} /></b>
       </span>}
   </div>;
 }
