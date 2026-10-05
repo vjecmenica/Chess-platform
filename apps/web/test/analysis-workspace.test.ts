@@ -29,10 +29,12 @@ describe('analysis workspace sizing', () => {
     expect(resizedBoardSize(300, 200, 200, availableAnalysisBoardWidth(1140, false))).toBe(500);
   });
 
-  it('keeps the engine beneath both columns and the move list at its normal font size', () => {
+  it('keeps the engine beneath both columns and scrolls moves within a board-height sidebar', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.analysis-workspace \.engine-panel\s*\{[^}]*grid-column: 1 \/ -1/);
-    expect(css).toMatch(/\.analysis-workspace \.game-sidebar\s*\{[^}]*height: auto/);
+    expect(css).toMatch(/\.analysis-workspace \.game-sidebar\s*\{[^}]*height: var\(--analysis-row-height/);
+    expect(css).toMatch(/\.moves\s*\{[^}]*overflow-y: auto/);
+    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.analysis-workspace \.game-sidebar\s*\{[^}]*height: auto/);
     expect(css).toMatch(/\.board-resize-grip\s*\{[^}]*touch-action: none/);
     expect(css).toMatch(/\.challenge-page\.analysis-page\s*\{[^}]*max-width: 1660px/);
     expect(css).toMatch(/\.analysis-workspace \.board-stage \.board-frame\s*\{[^}]*1080px/);
@@ -55,6 +57,15 @@ describe('White-perspective evaluation bar', () => {
     expect(html).not.toContain('+0.50');
     expect(html).toContain('evaluation-track unevaluated');
     expect(html).not.toContain('evaluation-white');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('class="evaluation-tooltip"');
+    expect(html).not.toContain('evaluation-score');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.evaluation-tooltip\s*\{[^}]*visibility: hidden/);
+    expect(css).toMatch(/\.evaluation-bar:focus-visible \.evaluation-tooltip\s*\{[^}]*visibility: visible/);
+    const current = renderToStaticMarkup(createElement(EvaluationBar,
+      { evaluation: evaluation(), fen: STANDARD_STARTING_FEN }));
+    expect(current).toContain('White perspective +0.50');
   });
 
   it('places mate at the correct edge, including a checkmated side to move', () => {

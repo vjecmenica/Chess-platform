@@ -120,6 +120,7 @@ export function App() {
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
   const [analysisBoardSize, setAnalysisBoardSize] = useState<number | null>(null);
+  const [analysisRowHeight, setAnalysisRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
@@ -147,6 +148,7 @@ export function App() {
   const pendingRef = useRef<PendingMove | null>(null);
   const pendingActionRef = useRef<PendingAction | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const boardFrameRef = useRef<HTMLDivElement | null>(null);
   const gameLayoutRef = useRef<HTMLDivElement | null>(null);
   const resizeGesture = useRef<{ id: number; x: number; y: number; size: number } | null>(null);
   const analysisOpenRef = useRef(false);
@@ -882,6 +884,16 @@ export function App() {
     : positionEvaluation?.fen === displayedFen ? positionEvaluation
       : gameReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
 
+  useEffect(() => {
+    const frame = boardFrameRef.current;
+    if (!analysisOpen || frame === null) return;
+    const update = () => setAnalysisRowHeight(Math.round(frame.getBoundingClientRect().height));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [analysisOpen]);
+
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
     return Math.min(availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches),
@@ -945,15 +957,20 @@ export function App() {
         {game !== null && rows !== null && <>
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
             ref={gameLayoutRef}
-            style={analysisOpen && analysisBoardSize !== null ? {
-              '--analysis-board-size': `${analysisBoardSize}px`,
-              '--analysis-column-size': `${analysisBoardSize + 34}px`,
+            style={analysisOpen ? {
+              ...(analysisBoardSize === null ? {} : {
+                '--analysis-board-size': `${analysisBoardSize}px`,
+                '--analysis-column-size': `${analysisBoardSize + 34}px`,
+              }),
+              ...(analysisRowHeight === null ? {} : {
+                '--analysis-row-height': `${analysisRowHeight}px`,
+              }),
             } as CSSProperties : undefined}>
             <div className="play-column">
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
-                <div className="board-frame">
+                <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
