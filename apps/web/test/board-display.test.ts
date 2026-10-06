@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -6,7 +7,8 @@ import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { createAnalysisTree, playAnalysisMove, selectMain, selectBranch } from '../src/analysis-model';
 import { boardCoordinates, capturedPieces, highlightedMove, materialAdvantage } from '../src/board-display';
-import { CapturedRow, MaterialTotal } from '../src/CapturedMaterial';
+import { CapturedRow, MaterialTotal, signedMaterial } from '../src/CapturedMaterial';
+import { pieceImage } from '../src/board-interaction';
 
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const afterE5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
@@ -95,8 +97,34 @@ describe('board display', () => {
       { side: 'black', pieces: captures.black, placement: 'bottom' }));
     expect(blackTop).toContain('Captured black rook');
     expect(blackBottom).toContain('Captured white knight');
+    expect(whiteTop).toContain(pieceImage('N'));
+    const emptyTop = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'white', pieces: [], placement: 'top' }));
+    const emptyBottom = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'black', pieces: [], placement: 'bottom' }));
+    expect(emptyTop).toContain('captured-top');
+    expect(emptyBottom).toContain('captured-bottom');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.captured-row \{[^}]*height: 27px/);
+    expect(css).toMatch(/\.material-below \{[^}]*height: 30px/);
+  });
+
+  it('signs the material balance for the bottom side and hides equal material', () => {
+    const lead = { side: 'white' as const, points: 6 };
+    expect(signedMaterial(lead, 'white')).toBe(6);
+    expect(signedMaterial(lead, 'black')).toBe(-6);
+    expect(signedMaterial(null, 'white')).toBeNull();
+    const whiteBottom = renderToStaticMarkup(createElement(MaterialTotal,
+      { advantage: lead, bottomSide: 'white' }));
+    const blackBottom = renderToStaticMarkup(createElement(MaterialTotal,
+      { advantage: lead, bottomSide: 'black' }));
+    expect(whiteBottom).toContain('>+6</span>');
+    expect(whiteBottom).toContain('material-positive');
+    expect(blackBottom).toContain('>-6</span>');
+    expect(blackBottom).toContain('material-negative');
+    expect(whiteBottom).not.toContain('White +6');
     expect(renderToStaticMarkup(createElement(MaterialTotal,
-      { advantage: { side: 'white', points: 2 } }))).toContain('White +2');
+      { advantage: null, bottomSide: 'white' }))).toBe('');
   });
 
   it('calculates material from the displayed position after a capture, equal trade, and promotion', () => {

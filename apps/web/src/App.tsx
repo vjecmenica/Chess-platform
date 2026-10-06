@@ -1045,10 +1045,10 @@ export function App() {
                   }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
-              {captured !== null && (captured[bottomSide].length > 0 || material !== null) &&
+              {captured !== null &&
                 <div className="material-below">
                   <CapturedRow side={bottomSide} pieces={captured[bottomSide]} placement="bottom" />
-                  <MaterialTotal advantage={material} />
+                  <MaterialTotal advantage={material} bottomSide={bottomSide} />
                 </div>}
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
