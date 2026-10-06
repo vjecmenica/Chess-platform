@@ -10,7 +10,7 @@ export function CapturedRow({ side, pieces, placement }: {
   side: GameSide; pieces: readonly CapturedPiece[]; placement: 'top' | 'bottom';
 }) {
   const opponent = side === 'white' ? 'black' : 'white';
-  return <div className={`captured-row captured-${placement}`}
+  return <div className={`captured-row captured-${placement} captured-${opponent}`}
     aria-label={pieces.length > 0 ? `${side === 'white' ? 'White' : 'Black'} captured pieces` : undefined}>
     {pieces.map((piece, index) => <img key={`${piece}-${index}`}
       src={pieceImage((opponent === 'white' ? piece.toUpperCase() : piece) as Parameters<typeof pieceImage>[0])}

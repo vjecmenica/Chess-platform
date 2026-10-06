@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   defaultSearchLimits, evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
-  type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
+  type EngineLine, type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
@@ -22,10 +22,19 @@ export function candidateLines(evaluation: EngineEvaluation):
   { rank: number; score: string; san: string[] }[] {
   const lines = evaluation.lines ?? [{ rank: 1, score: evaluation.score,
     variation: evaluation.variation }];
-  return lines.map(line => ({ rank: line.rank,
-    score: evaluationLabel({ ...evaluation, score: line.score }),
-    san: variationSan(evaluation.fen, line.variation.length === 0 && line.rank === 1
-      && evaluation.bestMove !== null ? [evaluation.bestMove] : line.variation) }));
+  return lines.map(line => candidateLine(evaluation.fen, line, evaluation.bestMove));
+}
+
+function candidateLine(fen: string, line: EngineLine, bestMove: string | null = null) {
+  return { rank: line.rank, score: evaluationLabel({ fen, depth: 0, score: line.score,
+    bestMove, variation: line.variation }),
+  san: variationSan(fen, line.variation.length === 0 && line.rank === 1 && bestMove !== null
+    ? [bestMove] : line.variation) };
+}
+
+export function engineLineRows<T extends { rank: number }>(lines: readonly T[], count: MultiPvCount):
+  (T | null)[] {
+  return Array.from({ length: count }, (_, index) => lines.find(line => line.rank === index + 1) ?? null);
 }
 
 export function reviewGraphX(index: number, count: number, width: number): number {
@@ -200,7 +209,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const evaluation = (state.kind === 'done' || state.kind === 'searching')
     && state.evaluation?.fen === fen
     ? state.evaluation : null;
-  const lines = evaluation === null ? [] : candidateLines(evaluation);
+  const lines = state.kind === 'searching' && state.fen === fen && state.lines
+    ? state.lines.map(line => candidateLine(fen, line))
+    : evaluation === null ? [] : candidateLines(evaluation);
 
   useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
     [evaluation, onEvaluationChange]);
@@ -256,17 +267,25 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       {searchMode === 'infinite' && <small>Runs until stopped or the position changes.</small>}
     </div>
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
-    {enabled && state.kind === 'searching' && evaluation === null && <span role="status">Evaluating position…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
-    {enabled && evaluation !== null && <div className="engine-result" role="status">
-      <small>Depth {evaluation.depth}{state.kind === 'done' && state.cached ? ' · cached'
-        : state.kind === 'searching' ? ' · searching' : ''}</small>
-      {lines.map(line => <div className="engine-candidate" key={line.rank}
-        aria-label={`Line ${line.rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
-        <span className="engine-rank">{line.rank}.</span>
-        <span className="engine-score">{line.score}</span>
-        <span className="engine-line">{line.san.join(' ') || 'No legal move'}</span>
-      </div>)}
+    {enabled && (state.kind === 'searching' || state.kind === 'done') &&
+      <div className="engine-result" role="group" aria-label="Engine lines">
+      {evaluation !== null && <small>Depth {evaluation.depth}
+        {state.kind === 'done' && state.cached ? ' · cached'
+          : state.kind === 'searching' ? ' · searching' : ''}</small>}
+      {engineLineRows(lines, lineCount).map((line, index) => {
+        const rank = index + 1;
+        return line ? <div className="engine-candidate" key={rank}
+          aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
+          <span className="engine-rank">{rank}.</span>
+          <span className="engine-score">{line.score}</span>
+          <span className="engine-line">{line.san.join(' ') || 'No legal move'}</span>
+        </div> : <div className="engine-candidate engine-candidate-pending" key={rank}
+          aria-label={`Line ${rank}, waiting for Stockfish`}>
+          <span className="engine-rank">{rank}.</span><span className="engine-score">—</span>
+          <span className="engine-line">Pending…</span>
+        </div>;
+      })}
     </div>}
     <div className="review-control">
       <button type="button" className="secondary" onClick={() => {

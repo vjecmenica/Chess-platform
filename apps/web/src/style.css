@@ -60,6 +60,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .captured-row img { display: block; width: 32px; height: 32px; min-width: 0;
   flex: 0 1 32px; margin-right: -8px; }
 .captured-row img:last-child { margin-right: 0; }
+.captured-top.captured-black img { transform: translateY(2px); }
+.captured-bottom.captured-black img { transform: translateY(-2px); }
 .material-total { margin-left: auto; font-size: 15px; font-weight: 750;
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .material-positive { color: #205d3d; }
@@ -197,6 +199,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   font-variant-numeric: tabular-nums; }
 .engine-search-settings small { color: #617163; }
 .engine-result { display: grid; gap: 5px; min-width: 0; }
+.engine-candidate-pending { color: #7d887e; }
 .engine-candidate { display: grid; grid-template-columns: 20px 60px minmax(0, 1fr);
   align-items: baseline; gap: 6px; min-width: 0; }
 .engine-rank { color: #617163; font-variant-numeric: tabular-nums; }

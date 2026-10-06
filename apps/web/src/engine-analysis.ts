@@ -42,7 +42,8 @@ export interface EngineEvaluation {
 }
 
 export type EngineState = { readonly kind: 'off' | 'loading' }
-  | { readonly kind: 'searching'; readonly evaluation?: EngineEvaluation }
+  | { readonly kind: 'searching'; readonly fen: string; readonly evaluation?: EngineEvaluation;
+    readonly lines?: readonly EngineLine[] }
   | { readonly kind: 'done'; readonly evaluation: EngineEvaluation; readonly cached: boolean }
   | { readonly kind: 'error'; readonly message: string };
 
@@ -180,6 +181,8 @@ export class EngineController {
   private limits: SearchLimits = defaultSearchLimits;
   private activeLimits: SearchLimits = defaultSearchLimits;
   private readonly infos = new Map<number, Map<number, SearchInfo>>();
+  private lastShown: { evaluation: EngineEvaluation; count: MultiPvCount; profile: string } | null = null;
+  private lastLiveSignature = '';
 
   constructor(private readonly makeWorker: () => EngineWorker,
     private readonly onState: (state: EngineState) => void,
@@ -203,8 +206,10 @@ export class EngineController {
   private restartForSettings(): void {
     if (!this.enabled || this.requestedFen === null) return;
     const cached = this.cache.get(this.requestedFen, this.lineCount, searchProfile(this.limits));
+    const previous = this.previousEvaluation(this.requestedFen);
     this.onState(cached ? { kind: 'done', evaluation: cached, cached: true }
-      : { kind: this.ready ? 'searching' : 'loading' });
+      : this.ready ? { kind: 'searching', fen: this.requestedFen, ...(previous ? {
+        evaluation: previous, lines: previous.lines } : {}) } : { kind: 'loading' });
     if (this.worker && this.ready && !this.waitingReady && !this.waitingStop) this.resetSearch();
     else if (!this.worker && !cached) this.openWorker();
   }
@@ -213,8 +218,10 @@ export class EngineController {
     if (!this.enabled || fen === this.requestedFen) return;
     this.requestedFen = fen;
     const cached = this.cache.get(fen, this.lineCount, searchProfile(this.limits));
+    const previous = this.previousEvaluation(fen);
     if (cached) this.onState({ kind: 'done', evaluation: cached, cached: true });
-    else this.onState({ kind: this.ready ? 'searching' : 'loading' });
+    else this.onState(this.ready ? { kind: 'searching', fen, ...(previous ? {
+      evaluation: previous, lines: previous.lines } : {}) } : { kind: 'loading' });
     if (this.worker) {
       if (this.ready && !this.waitingReady && !this.waitingStop) this.resetSearch();
     } else if (!cached) this.openWorker();
@@ -285,7 +292,10 @@ export class EngineController {
     this.activeLineCount = this.lineCount;
     this.activeLimits = this.limits;
     this.infos.clear();
-    this.onState({ kind: 'searching' });
+    this.lastLiveSignature = '';
+    const previous = this.previousEvaluation(fen);
+    this.onState({ kind: 'searching', fen, ...(previous ? {
+      evaluation: previous, lines: previous.lines } : {}) });
     this.worker.postMessage(`setoption name MultiPV value ${this.lineCount}`);
     this.worker.postMessage(`position fen ${fen}`);
     this.worker.postMessage(searchCommand(this.activeLimits));
@@ -319,13 +329,7 @@ export class EngineController {
             const oldest = [...this.infos.keys()].sort((a, b) => a - b)[0];
             if (oldest !== undefined) this.infos.delete(oldest);
           }
-          if (this.activeLimits.mode === 'infinite') {
-            const evaluation = this.evaluationAtBestDepth();
-            if (evaluation && this.requestedFen === this.activeFen
-              && this.lineCount === this.activeLineCount
-              && searchProfile(this.limits) === searchProfile(this.activeLimits))
-              this.onState({ kind: 'searching', evaluation });
-          }
+          this.publishLiveSearch();
         }
         if (line.startsWith('bestmove ')) this.finishSearch(line);
       }
@@ -342,10 +346,42 @@ export class EngineController {
       return;
     }
     this.cache.put(evaluation, this.activeLineCount, searchProfile(this.activeLimits));
+    this.lastShown = { evaluation, count: this.activeLineCount,
+      profile: searchProfile(this.activeLimits) };
     if (this.requestedFen === fen && this.lineCount === this.activeLineCount
       && searchProfile(this.limits) === searchProfile(this.activeLimits))
       this.onState({ kind: 'done', evaluation, cached: false });
     this.infos.clear();
+  }
+
+  private previousEvaluation(fen: string): EngineEvaluation | null {
+    return this.lastShown?.evaluation.fen === fen && this.lastShown.count === this.lineCount
+      && this.lastShown.profile === searchProfile(this.limits) ? this.lastShown.evaluation : null;
+  }
+
+  private publishLiveSearch(): void {
+    const fen = this.activeFen;
+    if (!fen || this.requestedFen !== fen || this.lineCount !== this.activeLineCount
+      || searchProfile(this.limits) !== searchProfile(this.activeLimits)) return;
+    const lines: EngineLine[] = [];
+    for (let rank = 1; rank <= this.activeLineCount; rank++) {
+      const latest = [...this.infos.keys()].sort((a, b) => b - a)
+        .map(depth => this.infos.get(depth)?.get(rank)).find(Boolean);
+      if (latest) lines.push({ rank, score: latest.score, variation: latest.pv });
+    }
+    const primaryDepth = [...this.infos.keys()].sort((a, b) => b - a)
+      .find(depth => this.infos.get(depth)?.has(1));
+    const signature = JSON.stringify({ primaryDepth, lines });
+    if (signature === this.lastLiveSignature) return;
+    this.lastLiveSignature = signature;
+    const primary = lines.find(line => line.rank === 1);
+    const evaluation: EngineEvaluation | undefined = primary === undefined ? undefined
+      : { fen, depth: primaryDepth!, score: primary.score,
+        bestMove: primary.variation[0] ?? null, variation: primary.variation,
+        ...(this.activeLineCount === 1 ? {} : { lines }) };
+    if (evaluation) this.lastShown = { evaluation, count: this.activeLineCount,
+      profile: searchProfile(this.activeLimits) };
+    this.onState({ kind: 'searching', fen, lines, ...(evaluation ? { evaluation } : {}) });
   }
 
   private evaluationAtBestDepth(bestMove: string | null | undefined = undefined): EngineEvaluation | null {

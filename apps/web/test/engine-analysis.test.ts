@@ -5,7 +5,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, searchCommand,
   searchProfile, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
-import { candidateLines, EnginePanel, interactiveLimits } from '../src/EnginePanel';
+import { candidateLines, EnginePanel, engineLineRows, interactiveLimits } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -122,6 +122,57 @@ describe('browser Stockfish controller', () => {
     engine.dispose();
     replacement.emit('uciok');
     expect(replacement.terminated).toBe(true);
+  });
+
+  it('shows real bounded-search lines before completion and updates MultiPV ranks independently', () => {
+    const { engine, workers, states } = setup();
+    engine.setLineCount(3);
+    engine.setSearchLimits(interactiveLimits('time', 14, 15_000));
+    engine.start(start);
+    const worker = workers[0]!;
+    ready(worker);
+    expect(worker.commands.at(-1)).toBe('go movetime 15000');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', fen: start });
+    worker.emit('info depth 2 multipv 2 score cp 12 pv d2d4 d7d5');
+    const secondOnly = states.at(-1);
+    expect(secondOnly).toMatchObject({ kind: 'searching', fen: start,
+      lines: [{ rank: 2, score: { kind: 'cp', value: 12 } }] });
+    if (secondOnly?.kind !== 'searching') throw new Error('Expected live search.');
+    expect(secondOnly.evaluation).toBeUndefined();
+    expect(engineLineRows(secondOnly.lines ?? [], 3).map(line => line?.rank ?? null))
+      .toEqual([null, 2, null]);
+    worker.emit('info depth 3 multipv 1 score cp 25 pv e2e4 e7e5');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { depth: 3,
+      score: { kind: 'cp', value: 25 } }, lines: [{ rank: 1 }, { rank: 2 }] });
+    worker.emit('info depth 4 multipv 2 score cp 18 pv g1f3 d7d5');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching',
+      lines: [{ rank: 1, score: { value: 25 } }, { rank: 2, score: { value: 18 } }] });
+    worker.emit('info depth 3 multipv 3 score cp 5 pv c2c4 e7e5');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', lines: [
+      { rank: 1 }, { rank: 2 }, { rank: 3, score: { value: 5 } },
+    ] });
+    expect(worker.commands).not.toContain('stop');
+  });
+
+  it('keeps a same-position evaluation on infinite restart until new info arrives', () => {
+    const { engine, workers, states } = setup();
+    engine.setSearchLimits({ mode: 'infinite' });
+    engine.start(start);
+    ready(workers[0]!);
+    workers[0]!.emit('info depth 7 score cp 30 pv e2e4');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { depth: 7 } });
+    engine.stop();
+    engine.start(start);
+    expect(states.at(-1)).toMatchObject({ kind: 'loading' });
+    ready(workers[1]!);
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { depth: 7 } });
+    workers[1]!.emit('info depth 2 score cp 10 pv d2d4');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { depth: 2,
+      score: { value: 10 } } });
+    engine.setPosition(afterE4);
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', fen: afterE4 });
+    if (states.at(-1)?.kind !== 'searching') throw new Error('Expected live search.');
+    expect(states.at(-1)).not.toHaveProperty('evaluation');
   });
 
   it('parses UCI output and presents a legal SAN line from the selected position', () => {

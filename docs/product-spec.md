@@ -45,6 +45,8 @@ On the analysis board, players can turn the engine on, see position evaluations,
 
 Interactive search defaults to one line with depth 14 and 1.2-second limits; whichever limit arrives first ends the search. Players may instead use depth-only or time-only limits, or explicitly start unlimited analysis until they stop it or leave the position. Longer searches can use significant CPU and battery on mobile devices. These controls do not change the fixed full-game review method.
 
+The selected position's score and each available candidate line update as Stockfish reports them. A line with no reported result stays pending; changing position or stopping the engine must not leave an old line attached to the new position.
+
 ### Full game review
 
 The first review runs locally in the browser after a finished game. A player starts it explicitly. It evaluates the initial position and every saved main-line position with Stockfish.js 19 lite single-threaded, one worker, depth at most 14, and at most 1.2 seconds per position, with a short pause between searches. Cached evaluations under those same engine settings are reused. The player sees progress and can cancel; completed positions remain cached, but a partial review is not presented as a complete result. Variations are excluded. No game data or review result is sent to the server.
