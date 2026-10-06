@@ -6,7 +6,8 @@ import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, 
 import { availableClaimForPlayer } from './draw-claim-control';
 import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
   legalMoveHints, pieceAt, pieceImage } from './board-interaction';
-import { boardCoordinates, highlightedMove, materialAdvantage } from './board-display';
+import { boardCoordinates, capturedPieces, highlightedMove, materialAdvantage } from './board-display';
+import { CapturedRow, MaterialTotal } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows } from './BoardArrows';
 import { analysisBoardStorageKey, annotationColors, boardOrientation,
@@ -864,6 +865,8 @@ export function App() {
     ...(arrowPreview === null ? [] : [arrowPreview])];
   const marks = new Map(boardNotes?.marks.map(mark => [mark.square, mark.color]) ?? []);
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
+  const captured = game === null ? null : capturedPieces(game, displayedPly,
+    analysisOpen ? analysis : null);
   const coordinates = game === null ? null : boardCoordinates(orientation);
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
@@ -967,6 +970,8 @@ export function App() {
               }),
             } as CSSProperties}>
             <div className="play-column">
+              {captured !== null && <CapturedRow side={topSide} pieces={captured[topSide]}
+                placement="top" />}
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
@@ -1040,6 +1045,11 @@ export function App() {
                   }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
+              {captured !== null && (captured[bottomSide].length > 0 || material !== null) &&
+                <div className="material-below">
+                  <CapturedRow side={bottomSide} pieces={captured[bottomSide]} placement="bottom" />
+                  <MaterialTotal advantage={material} />
+                </div>}
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
@@ -1084,8 +1094,7 @@ export function App() {
               <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined}
-                materialAdvantage={material?.side === topSide ? material.points : null} />
+                  game.timeControl.initialMs, game.clocks !== null) : undefined} />
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
@@ -1250,8 +1259,7 @@ export function App() {
               </div>
               <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined}
-                materialAdvantage={material?.side === bottomSide ? material.points : null} />
+                  game.timeControl.initialMs, game.clocks !== null) : undefined} />
             </aside>
             {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
               fen={displayedFen}

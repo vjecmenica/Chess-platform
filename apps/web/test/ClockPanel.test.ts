@@ -70,14 +70,11 @@ describe('display clocks', () => {
     expect(player).not.toContain('clock-active');
   });
 
-  it('shows a material lead only on the leading player’s clock', () => {
-    const leader = renderToStaticMarkup(createElement(ClockPanel,
-      { clock: running, side: 'black', isYou: false, materialAdvantage: 3 }));
-    const other = renderToStaticMarkup(createElement(ClockPanel,
-      { clock: running, side: 'white', isYou: true, materialAdvantage: null }));
-    expect(leader).toContain('>+3</span>');
-    expect(leader).toContain('black leads by 3 material points');
-    expect(other).not.toContain('material-advantage');
+  it('keeps the clock panels free of material counts', () => {
+    const html = renderToStaticMarkup(createElement(ClockPanel,
+      { clock: running, side: 'black', isYou: false }));
+    expect(html).not.toContain('material-total');
+    expect(html).not.toContain('material points');
   });
 
   it('shows only recorded post-move balances while navigating history', () => {

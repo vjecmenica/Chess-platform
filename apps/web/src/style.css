@@ -51,6 +51,18 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .game-layout.analysis-workspace { align-items: stretch; }
 .play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
 .board-stage { display: flex; justify-content: flex-end; align-items: flex-start; width: 100%; min-width: 0; }
+.captured-top, .material-below { width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
+  padding-left: 14px; }
+.captured-top { margin-bottom: 3px; }
+.material-below { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; min-width: 0; margin-top: 3px; }
+.captured-row { display: flex; align-items: center; gap: 2px; min-width: 0; height: 20px;
+  color: #526157; font-size: 11px; white-space: nowrap; }
+.captured-row img { display: block; width: clamp(14px, 4vw, 18px);
+  height: clamp(14px, 4vw, 18px); flex: 0 0 clamp(14px, 4vw, 18px); }
+.captured-player { margin-right: 4px; }
+.material-total { margin-left: auto; color: #143d30; font-size: 12px;
+  font-weight: 700; white-space: nowrap; }
 .evaluation-spacer { flex: 0 0 28px; margin-right: 6px; }
 .board-stage .board-frame {
   position: relative;
@@ -154,7 +166,6 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .clock-warning small { color: #752820; }
 .player-label { font-size: 14px; font-weight: 600; }
 .player-label b { display: block; color: #526157; font-size: 12px; font-weight: 500; }
-.material-advantage { margin-left: 5px; color: #143d30; font-weight: 700; }
 .clock strong { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; font-size: clamp(24px, 2.5vw, 32px); line-height: 1; }
 .clock-hundredths { font-size: .58em; font-weight: 600; opacity: .76; }
 .clock small { color: #526157; font-size: 11px; }

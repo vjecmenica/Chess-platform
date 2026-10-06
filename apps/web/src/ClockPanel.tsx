@@ -37,11 +37,10 @@ function ClockValue({ milliseconds }: { milliseconds: number }) {
     <span className="clock-hundredths">.{fraction}</span>}</>;
 }
 
-export function ClockPanel({ clock, side, isYou, materialAdvantage, historicalMs }: {
+export function ClockPanel({ clock, side, isYou, historicalMs }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
-  materialAdvantage?: number | null;
   historicalMs?: number | null | undefined;
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -70,9 +69,6 @@ export function ClockPanel({ clock, side, isYou, materialAdvantage, historicalMs
   return <div className={`clock ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
       <span className="player-label">{isYou ? 'You' : 'Opponent'}
-        {materialAdvantage != null && materialAdvantage > 0 &&
-          <span className="material-advantage" aria-label={`${side} leads by ${materialAdvantage} material points`}>
-            +{materialAdvantage}</span>}
         <b>{side === 'white' ? 'White' : 'Black'}</b></span>
       <strong aria-live="off">{valueMs === null
         ? historicalMs !== undefined ? '—' : 'Untimed' : <ClockValue milliseconds={valueMs} />}</strong>

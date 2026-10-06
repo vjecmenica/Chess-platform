@@ -1,9 +1,12 @@
 import { Chess } from 'chess.js';
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { createAnalysisTree, playAnalysisMove, selectMain } from '../src/analysis-model';
-import { boardCoordinates, highlightedMove, materialAdvantage } from '../src/board-display';
+import { createAnalysisTree, playAnalysisMove, selectMain, selectBranch } from '../src/analysis-model';
+import { boardCoordinates, capturedPieces, highlightedMove, materialAdvantage } from '../src/board-display';
+import { CapturedRow, MaterialTotal } from '../src/CapturedMaterial';
 
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const afterE5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
@@ -21,7 +24,81 @@ const game: GameReadResponse = {
   rated: false, yourSeat: 'white', history,
 };
 
+function playedGame(moves: readonly string[], fen?: string): GameReadResponse {
+  const board = new Chess(fen);
+  const saved: SavedMove[] = moves.map((san, index) => {
+    const beforeFen = board.fen();
+    const move = board.move(san);
+    if (!move) throw new Error(`Illegal test move: ${san}`);
+    return { ply: index + 1, side: move.color === 'w' ? 'white' : 'black',
+      from: move.from, to: move.to, san: move.san, uci: `${move.from}${move.to}${move.promotion ?? ''}`,
+      beforeFen, afterFen: board.fen(), remainingMsAfterMove: null };
+  });
+  return { ...game, version: saved.length, history: saved,
+    position: { fen: board.fen(), sideToMove: board.turn() === 'w' ? 'white' : 'black' } };
+}
+
 describe('board display', () => {
+  it('cancels equal captures by type and keeps repeated uncancelled captures', () => {
+    const exchanged = playedGame(['e4', 'd5', 'exd5', 'Qxd5']);
+    expect(capturedPieces(exchanged, 3, null)).toEqual({ white: ['p'], black: [] });
+    expect(capturedPieces(exchanged, 4, null)).toEqual({ white: [], black: [] });
+    const twoPawns = playedGame(['e4', 'd5', 'exd5', 'c6', 'dxc6']);
+    expect(capturedPieces(twoPawns, 5, null)).toEqual({ white: ['p', 'p'], black: [] });
+    const repeated = playedGame(['e4', 'd5', 'exd5', 'Qxd5', 'Nc3', 'Qd8', 'd4', 'c5', 'dxc5']);
+    expect(capturedPieces(repeated, 9, null)).toEqual({ white: ['p'], black: [] });
+    expect(materialAdvantage(repeated.position.fen)).toEqual({ side: 'white', points: 1 });
+  });
+
+  it('keeps different captured types and calculates the net exchange', () => {
+    const exchange = playedGame(['Rxa8', 'Rxh1+'],
+      'r7/4k3/8/8/8/8/1PP4r/R3K2N w Q - 0 1');
+    expect(capturedPieces(exchange, 2, null)).toEqual({ white: ['r'], black: ['n'] });
+    expect(materialAdvantage(exchange.position.fen)).toEqual({ side: 'white', points: 2 });
+  });
+
+  it('counts en passant as a captured pawn and preserves promotion material', () => {
+    const enPassant = playedGame(['e4', 'a6', 'e5', 'd5', 'exd6']);
+    expect(capturedPieces(enPassant, 5, null)).toEqual({ white: ['p'], black: [] });
+    const promotion = playedGame(['a8=Q'], '4k3/P7/8/8/8/8/8/4K3 w - - 0 1');
+    expect(capturedPieces(promotion, 1, null)).toEqual({ white: [], black: [] });
+    expect(materialAdvantage(promotion.position.fen)).toEqual({ side: 'white', points: 9 });
+  });
+
+  it('follows the selected main or variation path instead of the saved final position', () => {
+    const saved = playedGame(['e4', 'd5', 'exd5', 'Qxd5']);
+    const tree = selectMain(createAnalysisTree(saved), saved, 2);
+    const alternative = playAnalysisMove(tree, saved, 'g1', 'f3');
+    expect(alternative.accepted).toBe(true);
+    if (!alternative.accepted) return;
+    const capture = playAnalysisMove(alternative.tree, saved, 'd5', 'e4');
+    expect(capture.accepted).toBe(true);
+    if (!capture.accepted) return;
+    expect(capturedPieces(saved, 4, capture.tree)).toEqual({ white: [], black: ['p'] });
+    expect(capturedPieces(saved, 4, selectBranch(capture.tree, alternative.tree.cursor.kind === 'branch'
+      ? alternative.tree.cursor.id : -1))).toEqual({ white: [], black: [] });
+    expect(capturedPieces(saved, 4, selectMain(capture.tree, saved, 3)))
+      .toEqual({ white: ['p'], black: [] });
+  });
+
+  it('renders captured opponent icons on the side matching board orientation', () => {
+    const captures = { white: ['r' as const], black: ['n' as const] };
+    const whiteTop = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'black', pieces: captures.black, placement: 'top' }));
+    const whiteBottom = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'white', pieces: captures.white, placement: 'bottom' }));
+    expect(whiteTop).toContain('Captured white knight');
+    expect(whiteBottom).toContain('Captured black rook');
+    const blackTop = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'white', pieces: captures.white, placement: 'top' }));
+    const blackBottom = renderToStaticMarkup(createElement(CapturedRow,
+      { side: 'black', pieces: captures.black, placement: 'bottom' }));
+    expect(blackTop).toContain('Captured black rook');
+    expect(blackBottom).toContain('Captured white knight');
+    expect(renderToStaticMarkup(createElement(MaterialTotal,
+      { advantage: { side: 'white', points: 2 } }))).toContain('White +2');
+  });
+
   it('calculates material from the displayed position after a capture, equal trade, and promotion', () => {
     const board = new Chess();
     expect(materialAdvantage(board.fen())).toBeNull();
