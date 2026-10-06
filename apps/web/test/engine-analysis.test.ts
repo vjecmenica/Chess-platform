@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, variationSan,
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import type { GameReadResponse } from '@chess/contracts';
+import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, searchCommand,
+  searchProfile, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
-import { candidateLines } from '../src/EnginePanel';
+import { candidateLines, EnginePanel, interactiveLimits } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -40,6 +44,86 @@ function finish(worker: FakeWorker, pv = 'e2e4 e7e5 g1f3') {
 }
 
 describe('browser Stockfish controller', () => {
+  it('shows bounded interactive controls without changing the review budget', () => {
+    const game = { id: 'test', status: 'finished', history: [], position: { fen: start,
+      sideToMove: 'white' }, result: { outcome: 'draw', reason: 'agreement' } } as GameReadResponse;
+    const html = renderToStaticMarkup(createElement(EnginePanel, { game, fen: start,
+      selectedPly: 0, onSelectPly: () => {}, onReviewChange: () => {},
+      onEvaluationChange: () => {} }));
+    expect(html).toContain('Depth and time');
+    expect(html).toContain('Depth only');
+    expect(html).toContain('Time only');
+    expect(html).toContain('Unlimited');
+    expect(html).toContain('Candidate lines');
+    expect(html).toContain('Start engine');
+    expect(html).not.toContain('More lines share the 1.2-second search budget');
+  });
+
+  it('uses the first depth or time limit and requires explicit infinite mode', () => {
+    expect(searchCommand(interactiveLimits('both', 18, 2400))).toBe('go depth 18 movetime 2400');
+    expect(searchCommand(interactiveLimits('depth', 18, 2400))).toBe('go depth 18');
+    expect(searchCommand(interactiveLimits('time', 18, 2400))).toBe('go movetime 2400');
+    expect(searchCommand(interactiveLimits('infinite', 18, 2400))).toBe('go infinite');
+    expect(() => searchCommand({ mode: 'bounded', depth: null, timeMs: null })).toThrow();
+    expect(searchProfile(interactiveLimits('both', 14, 1200))).toBe('default');
+  });
+
+  it('restarts with the latest limits, ignores replaced output, and separates cache profiles', () => {
+    const { engine, workers, states, cache } = setup();
+    engine.setSearchLimits(interactiveLimits('depth', 18, 1200));
+    engine.start(start);
+    const worker = workers[0]!;
+    ready(worker);
+    expect(worker.commands.at(-1)).toBe('go depth 18');
+    engine.setSearchLimits(interactiveLimits('time', 18, 2400));
+    expect(worker.commands.at(-1)).toBe('stop');
+    worker.emit('info depth 18 score cp 88 pv e2e4');
+    worker.emit('bestmove e2e4');
+    expect(states.some(state => state.kind === 'done')).toBe(false);
+    worker.emit('readyok');
+    expect(worker.commands.at(-1)).toBe('go movetime 2400');
+    finish(worker);
+    expect(cache.get(start, 1)).toBeUndefined();
+    expect(cache.get(start, 1, searchProfile(interactiveLimits('time', 18, 2400))))
+      .toMatchObject({ bestMove: 'e2e4' });
+    engine.setSearchLimits(interactiveLimits('both', 14, 1200));
+    expect(worker.commands.at(-1)).toBe('isready');
+    worker.emit('readyok');
+    expect(worker.commands.at(-1)).toBe('go depth 14 movetime 1200');
+  });
+
+  it('streams coherent infinite output and drops it after stop, position change, or disposal', () => {
+    const { engine, workers, states } = setup();
+    engine.setLineCount(2);
+    engine.setSearchLimits({ mode: 'infinite' });
+    engine.start(start);
+    const worker = workers[0]!;
+    ready(worker);
+    expect(worker.commands.at(-1)).toBe('go infinite');
+    worker.emit('info depth 10 multipv 1 score cp 22 pv e2e4');
+    worker.emit('info depth 10 multipv 2 score cp 10 pv d2d4');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { depth: 10,
+      lines: [{ rank: 1 }, { rank: 2 }] } });
+    engine.setPosition(afterE4);
+    const count = states.length;
+    worker.emit('info depth 11 multipv 1 score cp 99 pv e2e4');
+    expect(states).toHaveLength(count);
+    worker.emit('bestmove e2e4'); worker.emit('readyok');
+    expect(worker.commands.at(-1)).toBe('go infinite');
+    worker.emit('info depth 4 multipv 1 score cp -32 pv e7e5');
+    expect(states.at(-1)).toMatchObject({ kind: 'searching', evaluation: { fen: afterE4 } });
+    engine.stop();
+    expect(worker.terminated).toBe(true);
+    const stoppedCount = states.length;
+    worker.emit('info depth 20 score cp 999 pv e7e5');
+    expect(states).toHaveLength(stoppedCount);
+    engine.start(afterE4);
+    const replacement = workers[1]!;
+    engine.dispose();
+    replacement.emit('uciok');
+    expect(replacement.terminated).toBe(true);
+  });
+
   it('parses UCI output and presents a legal SAN line from the selected position', () => {
     expect(parseSearchInfo('info depth 14 score mate -2 nodes 30 pv e7e5 g1f3'))
       .toEqual({ depth: 14, rank: 1, score: { kind: 'mate', value: -2 }, pv: ['e7e5', 'g1f3'] });

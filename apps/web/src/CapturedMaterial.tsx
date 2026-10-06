@@ -12,7 +12,6 @@ export function CapturedRow({ side, pieces, placement }: {
   const opponent = side === 'white' ? 'black' : 'white';
   return <div className={`captured-row captured-${placement}`}
     aria-label={pieces.length > 0 ? `${side === 'white' ? 'White' : 'Black'} captured pieces` : undefined}>
-    {pieces.length > 0 && <span className="captured-player">{side === 'white' ? 'White' : 'Black'}</span>}
     {pieces.map((piece, index) => <img key={`${piece}-${index}`}
       src={pieceImage((opponent === 'white' ? piece.toUpperCase() : piece) as Parameters<typeof pieceImage>[0])}
       alt={`Captured ${opponent} ${names[piece]}`} draggable={false} />)}

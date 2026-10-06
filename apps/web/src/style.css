@@ -55,13 +55,11 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   padding-left: 14px; }
 .captured-top { margin-bottom: 3px; }
 .material-below { display: flex; align-items: center; justify-content: space-between;
-  gap: 6px; min-width: 0; height: 30px; margin-top: 3px; }
-.captured-row { display: flex; align-items: center; min-width: 0; height: 27px; max-width: 100%;
-  color: #526157; font-size: 11px; white-space: nowrap; }
-.captured-row img { display: block; width: 26px; height: 26px; min-width: 0;
-  flex: 0 1 26px; margin-right: -6px; }
+  gap: 6px; min-width: 0; height: 36px; margin-top: 3px; }
+.captured-row { display: flex; align-items: center; min-width: 0; height: 33px; max-width: 100%; }
+.captured-row img { display: block; width: 32px; height: 32px; min-width: 0;
+  flex: 0 1 32px; margin-right: -8px; }
 .captured-row img:last-child { margin-right: 0; }
-.captured-player { margin-right: 6px; flex: 0 0 auto; }
 .material-total { margin-left: auto; font-size: 15px; font-weight: 750;
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .material-positive { color: #205d3d; }
@@ -183,12 +181,21 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .analysis-workspace .engine-panel { grid-column: 1 / -1; width: 100%; margin-top: 0; }
 .analysis-workspace .engine-panel button { min-height: 36px; padding: 7px 11px; font-size: 13px; }
 .engine-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.engine-heading > strong { font-size: 18px; line-height: 1.2; }
+.engine-heading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .engine-heading button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
-.engine-line-setting { display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+.engine-line-setting { display: inline-flex; align-items: center; gap: 5px; margin: 0;
   color: #526157; font-size: 12px; }
-.engine-line-setting select { min-height: 32px; padding: 3px 7px; border: 1px solid #b8c7b5;
+.engine-line-setting select, .engine-mode-setting select { min-height: 32px; padding: 3px 7px; border: 1px solid #b8c7b5;
   border-radius: 5px; background: #fffdf8; color: #26382f; }
-.engine-budget { color: #617163; font-size: 11px; }
+.engine-search-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-width: 0; }
+.engine-search-settings label { display: inline-flex; align-items: center; gap: 7px; margin: 0;
+  color: #526157; font-size: 12px; }
+.engine-range-setting { flex: 1 1 170px; min-width: 150px; }
+.engine-range-setting input { width: 100%; min-width: 70px; padding: 0; margin: 0; accent-color: #526157; }
+.engine-range-setting output { min-width: 35px; text-align: right; color: #26382f;
+  font-variant-numeric: tabular-nums; }
+.engine-search-settings small { color: #617163; }
 .engine-result { display: grid; gap: 5px; min-width: 0; }
 .engine-candidate { display: grid; grid-template-columns: 20px 60px minmax(0, 1fr);
   align-items: baseline; gap: 6px; min-width: 0; }

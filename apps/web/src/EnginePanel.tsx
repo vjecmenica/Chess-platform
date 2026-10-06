@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
-  evaluationLabel, variationSan, type EngineEvaluation, type EngineState,
-  type EngineWorker, type MultiPvCount } from './engine-analysis';
+  defaultSearchLimits, evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
+  type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 
@@ -10,6 +10,13 @@ type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
+type SearchMode = 'both' | 'depth' | 'time' | 'infinite';
+
+export function interactiveLimits(mode: SearchMode, depth: number, timeMs: number): SearchLimits {
+  return mode === 'infinite' ? { mode: 'infinite' }
+    : { mode: 'bounded', depth: mode === 'time' ? null : depth,
+      timeMs: mode === 'depth' ? null : timeMs };
+}
 
 export function candidateLines(evaluation: EngineEvaluation):
   { rank: number; score: string; san: string[] }[] {
@@ -129,11 +136,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 }) {
   const [enabled, setEnabled] = useState(false);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
+  const [searchMode, setSearchMode] = useState<SearchMode>('both');
+  const [depth, setDepth] = useState(defaultSearchLimits.mode === 'bounded'
+    ? defaultSearchLimits.depth ?? 14 : 14);
+  const [timeMs, setTimeMs] = useState(defaultSearchLimits.mode === 'bounded'
+    ? defaultSearchLimits.timeMs ?? 1200 : 1200);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
   const cache = useRef<EngineCache | null>(null);
+  const limits = interactiveLimits(searchMode, depth, timeMs);
+  const profile = searchProfile(limits);
 
   useEffect(() => {
     let storage: Storage | undefined;
@@ -149,8 +163,14 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, []);
 
   useEffect(() => { if (enabled) controller.current?.setPosition(fen); }, [enabled, fen]);
-  useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount) ?? null); },
-    [fen, lineCount, onEvaluationChange]);
+  useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount, profile) ?? null); },
+    [fen, lineCount, profile, onEvaluationChange]);
+
+  function updateLimits(mode: SearchMode, nextDepth: number, nextTimeMs: number) {
+    setSearchMode(mode); setDepth(nextDepth); setTimeMs(nextTimeMs);
+    controller.current?.setSearchLimits(interactiveLimits(mode, nextDepth, nextTimeMs));
+    onEvaluationChange(null);
+  }
 
   function startReview() {
     if (cache.current === null || review.kind === 'running') return;
@@ -177,7 +197,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     } catch { setReview({ kind: 'error', message: 'The saved main line could not be reviewed.' }); }
   }
 
-  const evaluation = state.kind === 'done' && state.evaluation.fen === fen
+  const evaluation = (state.kind === 'done' || state.kind === 'searching')
+    && state.evaluation?.fen === fen
     ? state.evaluation : null;
   const lines = evaluation === null ? [] : candidateLines(evaluation);
 
@@ -187,31 +208,59 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
       <strong>Stockfish</strong>
-      <label className="engine-line-setting">Lines
-        <select value={lineCount} disabled={review.kind === 'running'}
-          aria-label="Candidate lines" onChange={event => {
-            const count = Number(event.target.value) as MultiPvCount;
-            setLineCount(count);
-            controller.current?.setLineCount(count);
-            onEvaluationChange(null);
-          }}>
-          {[1, 2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
+      <div className="engine-heading-actions">
+        <label className="engine-line-setting">Lines
+          <select value={lineCount} disabled={review.kind === 'running'}
+            aria-label="Candidate lines" onChange={event => {
+              const count = Number(event.target.value) as MultiPvCount;
+              setLineCount(count);
+              controller.current?.setLineCount(count);
+              onEvaluationChange(null);
+            }}>
+            {[1, 2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
+          </select>
+        </label>
+        <button type="button" className="secondary" aria-pressed={enabled}
+          disabled={review.kind === 'running'}
+          onClick={() => {
+            if (enabled && state.kind === 'error') controller.current?.start(fen);
+            else if (enabled) { controller.current?.stop(); setEnabled(false); }
+            else { controller.current?.start(fen); setEnabled(true); }
+          }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
+      </div>
+    </div>
+    <div className="engine-search-settings" role="group" aria-label="Interactive search limits">
+      <label className="engine-mode-setting">Search
+        <select aria-label="Search limit mode" value={searchMode}
+          disabled={review.kind === 'running'}
+          onChange={event => updateLimits(event.target.value as SearchMode, depth, timeMs)}>
+          <option value="both">Depth and time</option>
+          <option value="depth">Depth only</option>
+          <option value="time">Time only</option>
+          <option value="infinite">Unlimited</option>
         </select>
       </label>
-      <button type="button" className="secondary" aria-pressed={enabled}
-        disabled={review.kind === 'running'}
-        onClick={() => {
-          if (enabled && state.kind === 'error') controller.current?.start(fen);
-          else if (enabled) { controller.current?.stop(); setEnabled(false); }
-          else { controller.current?.start(fen); setEnabled(true); }
-        }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
+      {(searchMode === 'both' || searchMode === 'depth') &&
+        <label className="engine-range-setting">Depth
+          <input type="range" min="1" max="40" value={depth} disabled={review.kind === 'running'}
+            onChange={event => updateLimits(searchMode, Number(event.target.value), timeMs)} />
+          <output>{depth}</output>
+        </label>}
+      {(searchMode === 'both' || searchMode === 'time') &&
+        <label className="engine-range-setting">Search time
+          <input type="range" min="200" max="30000" step="100" value={timeMs}
+            disabled={review.kind === 'running'}
+            onChange={event => updateLimits(searchMode, depth, Number(event.target.value))} />
+          <output>{(timeMs / 1000).toFixed(1)}s</output>
+        </label>}
+      {searchMode === 'infinite' && <small>Runs until stopped or the position changes.</small>}
     </div>
-    <small className="engine-budget">More lines share the 1.2-second search budget and may be shallower.</small>
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
-    {enabled && state.kind === 'searching' && <span role="status">Evaluating position…</span>}
+    {enabled && state.kind === 'searching' && evaluation === null && <span role="status">Evaluating position…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && evaluation !== null && <div className="engine-result" role="status">
-      <small>Depth {evaluation.depth}{state.kind === 'done' && state.cached ? ' · cached' : ''}</small>
+      <small>Depth {evaluation.depth}{state.kind === 'done' && state.cached ? ' · cached'
+        : state.kind === 'searching' ? ' · searching' : ''}</small>
       {lines.map(line => <div className="engine-candidate" key={line.rank}
         aria-label={`Line ${line.rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
         <span className="engine-rank">{line.rank}.</span>

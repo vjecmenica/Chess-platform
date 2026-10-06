@@ -4,6 +4,27 @@ export const engineBuild = 'Stockfish 19 lite single-threaded';
 export const engineWorkerUrl = '/engine/stockfish-19-lite-single.js';
 const cacheKey = 'chess-engine:stockfish-19-lite-single:depth14-time1200:v1';
 export type MultiPvCount = 1 | 2 | 3 | 4 | 5;
+export type SearchLimits = { readonly mode: 'bounded'; readonly depth: number | null;
+  readonly timeMs: number | null } | { readonly mode: 'infinite' };
+export const defaultSearchLimits: SearchLimits = { mode: 'bounded', depth: 14, timeMs: 1200 };
+
+export function searchCommand(limits: SearchLimits): string {
+  if (limits.mode === 'infinite') return 'go infinite';
+  if (limits.depth === null && limits.timeMs === null)
+    throw new Error('A bounded search needs a depth or time limit.');
+  if (limits.depth !== null && (!Number.isInteger(limits.depth) || limits.depth < 1 || limits.depth > 40))
+    throw new RangeError('Search depth must be between 1 and 40.');
+  if (limits.timeMs !== null && (!Number.isInteger(limits.timeMs) || limits.timeMs < 200
+    || limits.timeMs > 30_000)) throw new RangeError('Search time must be between 0.2 and 30 seconds.');
+  return `go${limits.depth === null ? '' : ` depth ${limits.depth}`}${limits.timeMs === null
+    ? '' : ` movetime ${limits.timeMs}`}`;
+}
+
+export function searchProfile(limits: SearchLimits): string {
+  return limits.mode === 'infinite' ? 'infinite'
+    : limits.depth === 14 && limits.timeMs === 1200 ? 'default'
+      : `d${limits.depth ?? 'none'}-t${limits.timeMs ?? 'none'}`;
+}
 
 export interface EngineLine {
   readonly rank: number;
@@ -20,7 +41,8 @@ export interface EngineEvaluation {
   readonly lines?: readonly EngineLine[];
 }
 
-export type EngineState = { readonly kind: 'off' | 'loading' | 'searching' }
+export type EngineState = { readonly kind: 'off' | 'loading' }
+  | { readonly kind: 'searching'; readonly evaluation?: EngineEvaluation }
   | { readonly kind: 'done'; readonly evaluation: EngineEvaluation; readonly cached: boolean }
   | { readonly kind: 'error'; readonly message: string };
 
@@ -96,37 +118,50 @@ function validEvaluation(value: unknown): value is EngineEvaluation {
 
 export class EngineCache {
   private readonly memory = new Map<string, EngineEvaluation>();
+  private readonly loaded = new Set<string>();
 
-  private key(fen: string, count: MultiPvCount): string { return `${count}:${fen}`; }
-  private storageKey(count: MultiPvCount): string {
-    return count === 1 ? cacheKey : `${cacheKey}:multipv${count}:v1`;
+  private key(fen: string, count: MultiPvCount, profile: string): string {
+    return `${profile}:${count}:${fen}`;
+  }
+  private storageKey(count: MultiPvCount, profile: string): string {
+    const base = count === 1 ? cacheKey : `${cacheKey}:multipv${count}:v1`;
+    return profile === 'default' ? base : `${base}:${profile}`;
   }
 
   constructor(private readonly storage?: EngineStorage) {
+    for (const count of [1, 2, 3, 4, 5] as const) this.load(count, 'default');
+  }
+
+  private load(count: MultiPvCount, profile: string): void {
+    const storageKey = this.storageKey(count, profile);
+    if (this.loaded.has(storageKey)) return;
+    this.loaded.add(storageKey);
     try {
-      for (const count of [1, 2, 3, 4, 5] as const) {
-        const raw = storage?.getItem(this.storageKey(count));
-        if (!raw || raw.length > 250_000) continue;
-        const entries: unknown = JSON.parse(raw);
-        if (!Array.isArray(entries)) continue;
-        for (const item of entries.slice(-200)) if (validEvaluation(item)
-          && (count === 1 || item.lines !== undefined
-            && item.lines.length > 0 && item.lines.length <= count))
-          this.memory.set(this.key(item.fen, count), item);
-      }
+      const raw = this.storage?.getItem(storageKey);
+      if (!raw || raw.length > 250_000) return;
+      const entries: unknown = JSON.parse(raw);
+      if (!Array.isArray(entries)) return;
+      for (const item of entries.slice(-200)) if (validEvaluation(item)
+        && (count === 1 || item.lines !== undefined
+          && item.lines.length > 0 && item.lines.length <= count))
+        this.memory.set(this.key(item.fen, count, profile), item);
     } catch { /* Storage is optional. */ }
   }
 
-  get(fen: string, count: MultiPvCount = 1): EngineEvaluation | undefined {
-    return this.memory.get(this.key(fen, count));
+  get(fen: string, count: MultiPvCount = 1, profile = 'default'): EngineEvaluation | undefined {
+    if (profile === 'infinite') return undefined;
+    this.load(count, profile);
+    return this.memory.get(this.key(fen, count, profile));
   }
 
-  put(evaluation: EngineEvaluation, count: MultiPvCount = 1): void {
-    this.memory.delete(this.key(evaluation.fen, count));
-    this.memory.set(this.key(evaluation.fen, count), evaluation);
+  put(evaluation: EngineEvaluation, count: MultiPvCount = 1, profile = 'default'): void {
+    if (profile === 'infinite') return;
+    this.load(count, profile);
+    this.memory.delete(this.key(evaluation.fen, count, profile));
+    this.memory.set(this.key(evaluation.fen, count, profile), evaluation);
     while (this.memory.size > 500) this.memory.delete(this.memory.keys().next().value!);
-    try { this.storage?.setItem(this.storageKey(count), JSON.stringify(
-      [...this.memory.entries()].filter(([key]) => key.startsWith(`${count}:`))
+    try { this.storage?.setItem(this.storageKey(count, profile), JSON.stringify(
+      [...this.memory.entries()].filter(([key]) => key.startsWith(`${profile}:${count}:`))
         .slice(-200).map(([, value]) => value))); }
     catch { /* Keep the in-memory cache when browser storage is unavailable. */ }
   }
@@ -142,6 +177,8 @@ export class EngineController {
   private activeFen: string | null = null;
   private lineCount: MultiPvCount = 1;
   private activeLineCount: MultiPvCount = 1;
+  private limits: SearchLimits = defaultSearchLimits;
+  private activeLimits: SearchLimits = defaultSearchLimits;
   private readonly infos = new Map<number, Map<number, SearchInfo>>();
 
   constructor(private readonly makeWorker: () => EngineWorker,
@@ -150,11 +187,22 @@ export class EngineController {
 
   start(fen: string): void { this.enabled = true; this.setPosition(fen); }
 
+  setSearchLimits(limits: SearchLimits): void {
+    searchCommand(limits);
+    if (searchProfile(limits) === searchProfile(this.limits)) return;
+    this.limits = limits;
+    this.restartForSettings();
+  }
+
   setLineCount(count: MultiPvCount): void {
     if (count === this.lineCount) return;
     this.lineCount = count;
+    this.restartForSettings();
+  }
+
+  private restartForSettings(): void {
     if (!this.enabled || this.requestedFen === null) return;
-    const cached = this.cache.get(this.requestedFen, count);
+    const cached = this.cache.get(this.requestedFen, this.lineCount, searchProfile(this.limits));
     this.onState(cached ? { kind: 'done', evaluation: cached, cached: true }
       : { kind: this.ready ? 'searching' : 'loading' });
     if (this.worker && this.ready && !this.waitingReady && !this.waitingStop) this.resetSearch();
@@ -164,7 +212,7 @@ export class EngineController {
   setPosition(fen: string): void {
     if (!this.enabled || fen === this.requestedFen) return;
     this.requestedFen = fen;
-    const cached = this.cache.get(fen, this.lineCount);
+    const cached = this.cache.get(fen, this.lineCount, searchProfile(this.limits));
     if (cached) this.onState({ kind: 'done', evaluation: cached, cached: true });
     else this.onState({ kind: this.ready ? 'searching' : 'loading' });
     if (this.worker) {
@@ -232,14 +280,15 @@ export class EngineController {
   private beginSearch(): void {
     const fen = this.requestedFen;
     if (!this.worker || !this.ready || !this.enabled || !fen
-      || this.cache.get(fen, this.lineCount)) return;
+      || this.cache.get(fen, this.lineCount, searchProfile(this.limits))) return;
     this.activeFen = fen;
     this.activeLineCount = this.lineCount;
+    this.activeLimits = this.limits;
     this.infos.clear();
     this.onState({ kind: 'searching' });
     this.worker.postMessage(`setoption name MultiPV value ${this.lineCount}`);
     this.worker.postMessage(`position fen ${fen}`);
-    this.worker.postMessage('go depth 14 movetime 1200');
+    this.worker.postMessage(searchCommand(this.activeLimits));
   }
 
   private handleMessage(message: string): void {
@@ -266,6 +315,17 @@ export class EngineController {
           const atDepth = this.infos.get(info.depth) ?? new Map<number, SearchInfo>();
           if (info.pv.length >= (atDepth.get(info.rank)?.pv.length ?? 0)) atDepth.set(info.rank, info);
           this.infos.set(info.depth, atDepth);
+          if (this.activeLimits.mode === 'infinite' && this.infos.size > 4) {
+            const oldest = [...this.infos.keys()].sort((a, b) => a - b)[0];
+            if (oldest !== undefined) this.infos.delete(oldest);
+          }
+          if (this.activeLimits.mode === 'infinite') {
+            const evaluation = this.evaluationAtBestDepth();
+            if (evaluation && this.requestedFen === this.activeFen
+              && this.lineCount === this.activeLineCount
+              && searchProfile(this.limits) === searchProfile(this.activeLimits))
+              this.onState({ kind: 'searching', evaluation });
+          }
         }
         if (line.startsWith('bestmove ')) this.finishSearch(line);
       }
@@ -274,8 +334,22 @@ export class EngineController {
 
   private finishSearch(line: string): void {
     const fen = this.activeFen;
-    this.activeFen = null;
     const best = /^bestmove (\S+)/.exec(line)?.[1];
+    const evaluation = this.evaluationAtBestDepth(best === '(none)' ? null : best);
+    this.activeFen = null;
+    if (!fen || !evaluation || !best || best !== '(none)' && !uciMove.test(best)) {
+      this.fail('Stockfish did not return a usable evaluation.');
+      return;
+    }
+    this.cache.put(evaluation, this.activeLineCount, searchProfile(this.activeLimits));
+    if (this.requestedFen === fen && this.lineCount === this.activeLineCount
+      && searchProfile(this.limits) === searchProfile(this.activeLimits))
+      this.onState({ kind: 'done', evaluation, cached: false });
+    this.infos.clear();
+  }
+
+  private evaluationAtBestDepth(bestMove: string | null | undefined = undefined): EngineEvaluation | null {
+    const fen = this.activeFen;
     const depths = [...this.infos.keys()].sort((a, b) => b - a);
     const depth = depths.find(candidate => {
       const atDepth = this.infos.get(candidate)!;
@@ -284,20 +358,13 @@ export class EngineController {
     }) ?? depths.find(candidate => this.infos.get(candidate)?.has(1));
     const atDepth = depth === undefined ? null : this.infos.get(depth)!;
     const primary = atDepth?.get(1);
-    if (!fen || !primary || !best || best !== '(none)' && !uciMove.test(best)) {
-      this.fail('Stockfish did not return a usable evaluation.');
-      return;
-    }
+    if (!fen || !primary) return null;
     const lines = [...atDepth!.values()].filter(info => info.rank <= this.activeLineCount)
       .sort((a, b) => a.rank - b.rank).map(info => ({ rank: info.rank,
         score: info.score, variation: info.pv }));
-    const evaluation: EngineEvaluation = { fen, depth: depth!,
-      score: primary.score, bestMove: best === '(none)' ? null : best,
+    return { fen, depth: depth!,
+      score: primary.score, bestMove: bestMove === undefined ? primary.pv[0] ?? null : bestMove,
       variation: primary.pv,
       ...(this.activeLineCount === 1 ? {} : { lines }) };
-    this.cache.put(evaluation, this.activeLineCount);
-    if (this.requestedFen === fen && this.lineCount === this.activeLineCount)
-      this.onState({ kind: 'done', evaluation, cached: false });
-    this.infos.clear();
   }
 }

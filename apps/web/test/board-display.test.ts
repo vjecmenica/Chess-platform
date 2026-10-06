@@ -105,8 +105,9 @@ describe('board display', () => {
     expect(emptyTop).toContain('captured-top');
     expect(emptyBottom).toContain('captured-bottom');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.captured-row \{[^}]*height: 27px/);
-    expect(css).toMatch(/\.material-below \{[^}]*height: 30px/);
+    expect(css).toMatch(/\.captured-row \{[^}]*height: 33px/);
+    expect(css).toMatch(/\.material-below \{[^}]*height: 36px/);
+    expect(blackTop).not.toContain('captured-player');
   });
 
   it('signs the material balance for the bottom side and hides equal material', () => {
