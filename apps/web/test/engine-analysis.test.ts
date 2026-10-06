@@ -50,32 +50,31 @@ describe('browser Stockfish controller', () => {
     const html = renderToStaticMarkup(createElement(EnginePanel, { game, fen: start,
       selectedPly: 0, onSelectPly: () => {}, onReviewChange: () => {},
       onEvaluationChange: () => {} }));
-    expect(html).toContain('Depth and time');
-    expect(html).toContain('Depth only');
-    expect(html).toContain('Time only');
-    expect(html).toContain('Unlimited');
+    expect(html).toContain('Unlimited depth');
+    expect(html).toContain('Unlimited search time');
+    expect(html).not.toContain('Search limit mode');
     expect(html).toContain('Candidate lines');
     expect(html).toContain('Start engine');
     expect(html).not.toContain('More lines share the 1.2-second search budget');
   });
 
   it('uses the first depth or time limit and requires explicit infinite mode', () => {
-    expect(searchCommand(interactiveLimits('both', 18, 2400))).toBe('go depth 18 movetime 2400');
-    expect(searchCommand(interactiveLimits('depth', 18, 2400))).toBe('go depth 18');
-    expect(searchCommand(interactiveLimits('time', 18, 2400))).toBe('go movetime 2400');
-    expect(searchCommand(interactiveLimits('infinite', 18, 2400))).toBe('go infinite');
+    expect(searchCommand(interactiveLimits(18, 2400))).toBe('go depth 18 movetime 2400');
+    expect(searchCommand(interactiveLimits(18, null))).toBe('go depth 18');
+    expect(searchCommand(interactiveLimits(null, 2400))).toBe('go movetime 2400');
+    expect(searchCommand(interactiveLimits(null, null))).toBe('go infinite');
     expect(() => searchCommand({ mode: 'bounded', depth: null, timeMs: null })).toThrow();
-    expect(searchProfile(interactiveLimits('both', 14, 1200))).toBe('default');
+    expect(searchProfile(interactiveLimits(14, 1200))).toBe('default');
   });
 
   it('restarts with the latest limits, ignores replaced output, and separates cache profiles', () => {
     const { engine, workers, states, cache } = setup();
-    engine.setSearchLimits(interactiveLimits('depth', 18, 1200));
+    engine.setSearchLimits(interactiveLimits(18, null));
     engine.start(start);
     const worker = workers[0]!;
     ready(worker);
     expect(worker.commands.at(-1)).toBe('go depth 18');
-    engine.setSearchLimits(interactiveLimits('time', 18, 2400));
+    engine.setSearchLimits(interactiveLimits(null, 2400));
     expect(worker.commands.at(-1)).toBe('stop');
     worker.emit('info depth 18 score cp 88 pv e2e4');
     worker.emit('bestmove e2e4');
@@ -84,9 +83,9 @@ describe('browser Stockfish controller', () => {
     expect(worker.commands.at(-1)).toBe('go movetime 2400');
     finish(worker);
     expect(cache.get(start, 1)).toBeUndefined();
-    expect(cache.get(start, 1, searchProfile(interactiveLimits('time', 18, 2400))))
+    expect(cache.get(start, 1, searchProfile(interactiveLimits(null, 2400))))
       .toMatchObject({ bestMove: 'e2e4' });
-    engine.setSearchLimits(interactiveLimits('both', 14, 1200));
+    engine.setSearchLimits(interactiveLimits(14, 1200));
     expect(worker.commands.at(-1)).toBe('isready');
     worker.emit('readyok');
     expect(worker.commands.at(-1)).toBe('go depth 14 movetime 1200');
@@ -127,7 +126,7 @@ describe('browser Stockfish controller', () => {
   it('shows real bounded-search lines before completion and updates MultiPV ranks independently', () => {
     const { engine, workers, states } = setup();
     engine.setLineCount(3);
-    engine.setSearchLimits(interactiveLimits('time', 14, 15_000));
+    engine.setSearchLimits(interactiveLimits(null, 15_000));
     engine.start(start);
     const worker = workers[0]!;
     ready(worker);

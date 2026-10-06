@@ -58,9 +58,11 @@ describe('analysis move list', () => {
     const quiet = buildGameReview(game, fens.map(fen => ({ fen, depth: 14,
       score: { kind: 'cp' as const, value: 0 }, bestMove: null, variation: [] })));
     expect(markup(game, tree, true, quiet)).toContain('engine-glyph engine-strong');
+    expect(markup(game, tree, true, quiet)).toContain('>Strong</span>');
     const mate = buildGameReview(game, quiet.evaluations.map((evaluation, index) => index === 1
       ? { ...evaluation, score: { kind: 'mate' as const, value: 1 } } : evaluation));
     expect(markup(game, tree, true, mate)).toContain('Engine: Mate score, no numeric centipawn loss');
+    expect(markup(game, tree, true, mate)).toContain('>Mate eval</span>');
   });
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);

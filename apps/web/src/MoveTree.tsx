@@ -4,7 +4,7 @@ import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
-import { reviewGlyph, type GameReview } from './game-review';
+import { reviewBadge, type GameReview } from './game-review';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -84,7 +84,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
   function moveButton(move: MoveView, compact = false, lineStart = false) {
     const nag = nagDetails(move.note?.nag);
     const reviewed = move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined;
-    const glyph = reviewed && reviewGlyph(reviewed.label);
+    const badge = reviewed && reviewBadge(reviewed.label);
     if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
     return <span key={cursorKey(move.cursor)}
       className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
@@ -93,7 +93,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
       <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
         aria-label={[move.notation,
           ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
-          ...(glyph ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
+          ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
             ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : [])].join(', ')}
         aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
         title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
@@ -123,10 +123,10 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         }
           onSelect(move.cursor); }}>{move.san}{nag && <span className="nag-symbol"
           title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}
-          {glyph && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
+          {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
             title={`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
               ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`}
-            aria-hidden="true">{glyph}</span>}</button>
+            aria-hidden="true">{badge}</span>}</button>
       {move.note?.comment && <span className="move-comment" title={move.note.comment}>
         {move.note.comment}</span>}
     </span>;

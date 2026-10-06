@@ -20,14 +20,14 @@ export interface GameReview {
   readonly moves: readonly ReviewedMove[];
 }
 
-export function reviewGlyph(label: ReviewedMove['label']): string {
+export function reviewBadge(label: ReviewedMove['label']): string {
   switch (label) {
-    case 'Strong': return 'S';
-    case 'Good': return 'G';
+    case 'Strong': return 'Strong';
+    case 'Good': return 'Good';
     case 'Inaccuracy': return '?!';
     case 'Mistake': return '?';
     case 'Blunder': return '??';
-    case 'Mate score': return 'M';
+    case 'Mate score': return 'Mate eval';
   }
 }
 

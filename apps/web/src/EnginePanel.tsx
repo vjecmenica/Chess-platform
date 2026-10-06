@@ -10,12 +10,9 @@ type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
-type SearchMode = 'both' | 'depth' | 'time' | 'infinite';
-
-export function interactiveLimits(mode: SearchMode, depth: number, timeMs: number): SearchLimits {
-  return mode === 'infinite' ? { mode: 'infinite' }
-    : { mode: 'bounded', depth: mode === 'time' ? null : depth,
-      timeMs: mode === 'depth' ? null : timeMs };
+export function interactiveLimits(depth: number | null, timeMs: number | null): SearchLimits {
+  return depth === null && timeMs === null ? { mode: 'infinite' }
+    : { mode: 'bounded', depth, timeMs };
 }
 
 export function candidateLines(evaluation: EngineEvaluation):
@@ -54,7 +51,7 @@ export function reviewPositionText(review: GameReview, index: number): string {
   const score = evaluation.score.kind === 'mate' && evaluation.score.value === 0
     ? `${graphCentipawns(evaluation) > 0 ? 'White' : 'Black'} wins by mate`
     : evaluationLabel(evaluation);
-  return `${position} · Stockfish, White perspective: ${score}`;
+  return `${position} · Stockfish: ${score}`;
 }
 
 export function reviewAdvantageSegments(scores: readonly number[], width: number):
@@ -145,17 +142,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 }) {
   const [enabled, setEnabled] = useState(false);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
-  const [searchMode, setSearchMode] = useState<SearchMode>('both');
   const [depth, setDepth] = useState(defaultSearchLimits.mode === 'bounded'
     ? defaultSearchLimits.depth ?? 14 : 14);
   const [timeMs, setTimeMs] = useState(defaultSearchLimits.mode === 'bounded'
     ? defaultSearchLimits.timeMs ?? 1200 : 1200);
+  const [unlimitedDepth, setUnlimitedDepth] = useState(false);
+  const [unlimitedTime, setUnlimitedTime] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
   const cache = useRef<EngineCache | null>(null);
-  const limits = interactiveLimits(searchMode, depth, timeMs);
+  const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
 
   useEffect(() => {
@@ -175,9 +173,12 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount, profile) ?? null); },
     [fen, lineCount, profile, onEvaluationChange]);
 
-  function updateLimits(mode: SearchMode, nextDepth: number, nextTimeMs: number) {
-    setSearchMode(mode); setDepth(nextDepth); setTimeMs(nextTimeMs);
-    controller.current?.setSearchLimits(interactiveLimits(mode, nextDepth, nextTimeMs));
+  function updateLimits(nextDepth: number, nextTimeMs: number,
+    nextUnlimitedDepth: boolean, nextUnlimitedTime: boolean) {
+    setDepth(nextDepth); setTimeMs(nextTimeMs);
+    setUnlimitedDepth(nextUnlimitedDepth); setUnlimitedTime(nextUnlimitedTime);
+    controller.current?.setSearchLimits(interactiveLimits(
+      nextUnlimitedDepth ? null : nextDepth, nextUnlimitedTime ? null : nextTimeMs));
     onEvaluationChange(null);
   }
 
@@ -241,30 +242,30 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </div>
     </div>
     <div className="engine-search-settings" role="group" aria-label="Interactive search limits">
-      <label className="engine-mode-setting">Search
-        <select aria-label="Search limit mode" value={searchMode}
-          disabled={review.kind === 'running'}
-          onChange={event => updateLimits(event.target.value as SearchMode, depth, timeMs)}>
-          <option value="both">Depth and time</option>
-          <option value="depth">Depth only</option>
-          <option value="time">Time only</option>
-          <option value="infinite">Unlimited</option>
-        </select>
-      </label>
-      {(searchMode === 'both' || searchMode === 'depth') &&
+      <div className="engine-limit-setting">
         <label className="engine-range-setting">Depth
-          <input type="range" min="1" max="40" value={depth} disabled={review.kind === 'running'}
-            onChange={event => updateLimits(searchMode, Number(event.target.value), timeMs)} />
-          <output>{depth}</output>
-        </label>}
-      {(searchMode === 'both' || searchMode === 'time') &&
+          <input type="range" min="1" max="40" value={depth}
+            disabled={unlimitedDepth || review.kind === 'running'}
+            onChange={event => updateLimits(Number(event.target.value), timeMs,
+              unlimitedDepth, unlimitedTime)} />
+          <output>{unlimitedDepth ? '—' : depth}</output>
+        </label>
+        <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited depth"
+          checked={unlimitedDepth} disabled={review.kind === 'running'}
+          onChange={event => updateLimits(depth, timeMs, event.target.checked, unlimitedTime)} />Unlimited</label>
+      </div>
+      <div className="engine-limit-setting">
         <label className="engine-range-setting">Search time
           <input type="range" min="200" max="30000" step="100" value={timeMs}
-            disabled={review.kind === 'running'}
-            onChange={event => updateLimits(searchMode, depth, Number(event.target.value))} />
-          <output>{(timeMs / 1000).toFixed(1)}s</output>
-        </label>}
-      {searchMode === 'infinite' && <small>Runs until stopped or the position changes.</small>}
+            disabled={unlimitedTime || review.kind === 'running'}
+            onChange={event => updateLimits(depth, Number(event.target.value),
+              unlimitedDepth, unlimitedTime)} />
+          <output>{unlimitedTime ? '—' : `${(timeMs / 1000).toFixed(1)}s`}</output>
+        </label>
+        <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited search time"
+          checked={unlimitedTime} disabled={review.kind === 'running'}
+          onChange={event => updateLimits(depth, timeMs, unlimitedDepth, event.target.checked)} />Unlimited</label>
+      </div>
     </div>
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
@@ -279,7 +280,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
           <span className="engine-rank">{rank}.</span>
           <span className="engine-score">{line.score}</span>
-          <span className="engine-line">{line.san.join(' ') || 'No legal move'}</span>
+          <span className="engine-line">{line.san.length === 0 ? 'No legal move' : <>
+            <strong className="engine-first-move">{line.san[0]}</strong>
+            {line.san.length > 1 ? ` ${line.san.slice(1).join(' ')}` : ''}</>}</span>
         </div> : <div className="engine-candidate engine-candidate-pending" key={rank}
           aria-label={`Line ${rank}, waiting for Stockfish`}>
           <span className="engine-rank">{rank}.</span><span className="engine-score">—</span>

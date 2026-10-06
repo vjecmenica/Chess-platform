@@ -8,7 +8,7 @@ import { ReviewGraph, reviewAdvantageSegments, reviewGraphX, reviewGraphY,
   reviewPositionText } from '../src/EnginePanel';
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel, nextReviewedMovePly,
-  reviewGlyph, reviewMethodVersion, reviewPositions, reviewSummary,
+  reviewBadge, reviewMethodVersion, reviewPositions, reviewSummary,
   type ReviewProgress } from '../src/game-review';
 
 function gameWithMoves(): GameReadResponse {
@@ -91,8 +91,8 @@ describe('browser-local full-game review', () => {
     expect(markup).toContain('class="review-hit"');
     expect(markup).not.toContain('class="review-point"');
     expect(markup).toContain('review-fill-black');
-    expect(reviewPositionText(review, 0)).toContain('Initial position · Stockfish, White perspective');
-    expect(reviewPositionText(review, 1)).toBe('After 1. e4 · Stockfish, White perspective: Mate -2');
+    expect(reviewPositionText(review, 0)).toContain('Initial position · Stockfish:');
+    expect(reviewPositionText(review, 1)).toBe('After 1. e4 · Stockfish: Mate -2');
     expect(reviewPositionText({ ...review, evaluations: [review.evaluations[0]!, checkmatedBlack,
       review.evaluations[2]!] }, 1)).toContain('White wins by mate');
   });
@@ -143,8 +143,8 @@ describe('browser-local full-game review', () => {
     expect(reviewSummary(review, 'black')).toEqual({ inaccuracy: 0, mistake: 1,
       blunder: 0, averageLossCp: 200 });
     expect(['Strong', 'Good', 'Inaccuracy', 'Mistake', 'Blunder', 'Mate score']
-      .map(label => reviewGlyph(label as typeof review.moves[number]['label'])))
-      .toEqual(['S', 'G', '?!', '?', '??', 'M']);
+      .map(label => reviewBadge(label as typeof review.moves[number]['label'])))
+      .toEqual(['Strong', 'Good', '?!', '?', '??', 'Mate eval']);
     const mate = buildGameReview(game, [evaluation(fens[0]!, 100),
       { ...evaluation(fens[1]!, 0), score: { kind: 'mate', value: 1 } },
       evaluation(fens[2]!, 200)]);
