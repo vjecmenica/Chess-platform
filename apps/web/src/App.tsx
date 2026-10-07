@@ -31,6 +31,7 @@ import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-worksp
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
+import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -609,6 +610,8 @@ export function App() {
   function inputPosition() {
     const current = gameRef.current;
     if (current === null || promotion !== null
+      || (!analysisOpen && isViewingLiveHistory(current.status,
+        selectedReplayPly, current.history.length))
       || (!analysisOpen && (pendingRef.current !== null || pendingActionRef.current !== null
         || posting.current))) return null;
     if (!analysisOpen && current.status !== 'active') return null;
@@ -834,6 +837,7 @@ export function App() {
     const queue = premovesRef.current;
     if (game?.status !== 'active' || game.position.sideToMove !== game.yourSeat
       || queue.length === 0 || analysisOpen || promotion !== null
+      || isViewingLiveHistory(game.status, selectedReplayPly, game.history.length)
       || pending !== null || pendingAction !== null || submitting || posting.current
       || game.clocks?.phase === 'handoff'
       || premoveAttemptedVersion.current === game.version) return;
@@ -845,22 +849,26 @@ export function App() {
     premoveAttemptedVersion.current = game.version;
     void submitMove({ requestId: next.id, premoveId: next.id, expectedVersion: game.version,
       from: next.from, to: next.to, ...(next.promotion ? { promotion: next.promotion } : {}) });
-  }, [game, premoves, analysisOpen, promotion, pending, pendingAction, submitting]);
+  }, [game, premoves, analysisOpen, selectedReplayPly, promotion, pending, pendingAction, submitting]);
 
   const link = challenge ? `${window.location.origin}${challenge.path}` : '';
-  const canMove = game?.status === 'active' && game.position.sideToMove === game.yourSeat
-    && pending === null && pendingAction === null && !submitting;
   const replaying = game?.status === 'finished';
   const displayedPly = game === null ? 0 : replayPly(
     analysisOpen && analysis !== null ? mainAncestorPly(analysis)
       : selectedReplayPly ?? game.history.length, game.history.length);
+  const liveBrowsingHistory = isViewingLiveHistory(game?.status,
+    selectedReplayPly, game?.history.length ?? 0);
+  const canMove = game?.status === 'active' && !liveBrowsingHistory
+    && game.position.sideToMove === game.yourSeat
+    && pending === null && pendingAction === null && !submitting;
   const displayedFen = game === null ? null :
     analysisOpen && analysis !== null ? cursorFen(analysis, game)
-      : replaying ? replayFen(game, displayedPly) : game.position.fen;
+      : replaying || liveBrowsingHistory ? replayFen(game, displayedPly) : game.position.fen;
   const orientation = game === null ? 'white' : boardOrientation(game.yourSeat,
     analysisOpen && analysisBoard?.gameId === game.id && analysisBoard.flipped);
   const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, orientation);
-  const premovePieces = game?.status === 'active' && game.position.sideToMove !== game.yourSeat
+  const premovePieces = game?.status === 'active' && !liveBrowsingHistory
+    && game.position.sideToMove !== game.yourSeat
     ? projectedPieces(game.position.fen, game.yourSeat, premoves) : null;
   const boardNotes = analysisOpen && analysisBoard?.gameId === game?.id && displayedFen !== null
     ? positionAnnotations(analysisBoard, displayedFen) : null;
@@ -873,7 +881,7 @@ export function App() {
   const coordinates = game === null ? null : boardCoordinates(orientation);
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
-  const lastMove = game === null ? null : highlightedMove(game, replaying ? displayedPly : game.history.length,
+  const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = resultDisplay(game?.result ?? null);
@@ -889,6 +897,34 @@ export function App() {
   const selectedEvaluation = displayedFen === null || !analysisOpen ? null
     : positionEvaluation?.fen === displayedFen ? positionEvaluation
       : gameReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
+
+  useEffect(() => {
+    if (game?.status !== 'active' && game?.status !== 'finished') return;
+    const navigate = (event: KeyboardEvent) => {
+      const direction = event.key === 'ArrowLeft' ? -1
+        : event.key === 'ArrowRight' ? 1 : null;
+      if (direction === null || event.defaultPrevented || event.altKey || event.ctrlKey
+        || event.metaKey || event.shiftKey || isEditableKeyTarget(event.target)) return;
+      if (analysisOpen && analysis !== null) {
+        if (direction === -1 && analysis.cursor.kind === 'main' && analysis.cursor.ply === 0) return;
+        const next = direction === -1 ? previousPosition(analysis) : nextPosition(analysis, game);
+        if (next === analysis) return;
+        setAnalysis(next);
+      } else {
+        if (direction === -1 && displayedPly === 0) return;
+        if (direction === 1 && displayedPly === game.history.length) {
+          if (game.status !== 'active' || selectedReplayPly === null) return;
+          setSelectedReplayPly(null);
+        } else setSelectedReplayPly(nextReplaySelection(selectedReplayPly,
+          game.history.length, direction, game.status === 'active'));
+      }
+      setSelected(null);
+      setAnnotationFrom(null);
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', navigate);
+    return () => window.removeEventListener('keydown', navigate);
+  }, [game, analysis, analysisOpen, displayedPly, selectedReplayPly]);
 
   useEffect(() => {
     const frame = boardFrameRef.current;
@@ -1085,9 +1121,10 @@ export function App() {
                     Clear marks
                   </button>
                 </div>}
-              {(analysisOpen || canMove || game.status === 'finished') && <p className="board-hint">{analysisOpen
+              {(analysisOpen || canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{analysisOpen
                 ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move.`
-                : canMove ? 'Select or drag one of your pieces.'
+                : liveBrowsingHistory ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
+                  : canMove ? 'Select or drag one of your pieces.'
                   : 'Select Analysis to explore legal alternatives.'}</p>}
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
@@ -1211,6 +1248,7 @@ export function App() {
                   : game.clocks?.phase === 'awaiting_first_move'
                     ? 'Waiting for White’s first move.'
                   : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
+                    : liveBrowsingHistory ? `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move. Viewing an earlier position.`
                     : canMove ? `Your turn (${game.yourSeat}).`
                       : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`}</p>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
