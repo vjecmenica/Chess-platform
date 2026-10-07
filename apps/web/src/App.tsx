@@ -27,6 +27,7 @@ import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { MastersPanel } from './MastersPanel';
+import { resumeAnalysisKey } from './lichess-oauth';
 import { EvaluationBar } from './EvaluationBar';
 import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
@@ -118,7 +119,8 @@ export function App() {
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(() =>
+    sessionStorage.getItem(resumeAnalysisKey) === '1');
   const [bookMoves, setBookMoves] = useState<ReadonlySet<string>>(new Set());
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);

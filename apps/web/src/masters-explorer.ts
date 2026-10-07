@@ -8,7 +8,8 @@ export interface MastersMove { readonly uci: string; readonly san: string; reado
 export interface MastersData { readonly opening: { readonly eco: string; readonly name: string } | null;
   readonly moves: readonly MastersMove[] }
 export type MastersResult = { readonly kind: 'ok'; readonly data: MastersData }
-  | { readonly kind: 'error'; readonly message: string } | { readonly kind: 'cancelled' };
+  | { readonly kind: 'error'; readonly message: string } | { readonly kind: 'auth_required' }
+  | { readonly kind: 'cancelled' };
 
 export function mastersPath(game: GameReadResponse, tree: AnalysisTree,
   cursor: AnalysisCursor = tree.cursor): MastersPath {
@@ -91,14 +92,16 @@ export class MastersClient {
   constructor(private readonly fetcher: typeof fetch = fetch,
     private readonly now: () => number = Date.now) {}
 
-  lookup(path: MastersPath, signal?: AbortSignal): Promise<MastersResult> {
-    const task = this.queue.then(() => this.perform(path, signal));
+  lookup(path: MastersPath, token: string | null, signal?: AbortSignal): Promise<MastersResult> {
+    const task = this.queue.then(() => this.perform(path, token, signal));
     this.queue = task.then(() => undefined, () => undefined);
     return task;
   }
 
-  private async perform(path: MastersPath, signal?: AbortSignal): Promise<MastersResult> {
+  private async perform(path: MastersPath, token: string | null,
+    signal?: AbortSignal): Promise<MastersResult> {
     if (signal?.aborted) return { kind: 'cancelled' };
+    if (token === null) return { kind: 'auth_required' };
     const key = mastersUrl(path);
     const cached = this.cache.get(key);
     if (cached && this.now() - cached.at < 300_000) {
@@ -114,7 +117,10 @@ export class MastersClient {
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 5_000);
     try {
       const response = await this.fetcher(key, { signal: controller.signal, credentials: 'omit',
-        headers: { Accept: 'application/json' } });
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+      if (response.status === 401) return { kind: 'auth_required' };
+      if (response.status === 403) return { kind: 'error',
+        message: 'Lichess denied access to Masters Explorer for this connection.' };
       if (response.status === 429) {
         this.cooldownUntil = this.now() + 60_000;
         return { kind: 'error', message: 'Masters Explorer is rate-limited. Try again in a minute.' };

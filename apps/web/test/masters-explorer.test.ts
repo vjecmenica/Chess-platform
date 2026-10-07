@@ -74,12 +74,13 @@ describe('Masters opening explorer', () => {
       { status: 200 })).mockResolvedValueOnce(new Response('', { status: 429 }));
     let now = 0;
     const client = new MastersClient(fetcher, () => now);
-    expect((await client.lookup(path)).kind).toBe('ok');
-    expect((await client.lookup(path)).kind).toBe('ok');
+    expect((await client.lookup(path, 'user-token')).kind).toBe('ok');
+    expect((await client.lookup(path, 'user-token')).kind).toBe('ok');
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: 'Bearer user-token' });
     now = 300_001;
-    expect((await client.lookup(path)).kind).toBe('error');
-    expect((await client.lookup(path)).kind).toBe('error');
+    expect((await client.lookup(path, 'user-token')).kind).toBe('error');
+    expect((await client.lookup(path, 'user-token')).kind).toBe('error');
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -89,14 +90,27 @@ describe('Masters opening explorer', () => {
     let release!: (value: Response) => void;
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise(resolve => { release = resolve; }));
     const client = new MastersClient(fetcher);
-    const first = client.lookup(path);
+    const first = client.lookup(path, 'user-token');
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
     const abort = new AbortController();
-    const second = client.lookup(path, abort.signal);
+    const second = client.lookup(path, 'user-token', abort.signal);
     abort.abort();
     release(new Response(JSON.stringify(response), { status: 200 }));
     expect((await first).kind).toBe('ok');
     expect((await second).kind).toBe('cancelled');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request Masters without a token and distinguishes authorization failures', async () => {
+    const path = mastersPath(game(), createAnalysisTree(game()));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response('', { status: 401 }))
+      .mockResolvedValueOnce(new Response('', { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 200 }));
+    const client = new MastersClient(fetcher);
+    expect((await client.lookup(path, null)).kind).toBe('auth_required');
+    expect(fetcher).not.toHaveBeenCalled();
+    expect((await client.lookup(path, 'revoked')).kind).toBe('auth_required');
+    expect((await client.lookup(path, 'denied')).kind).toBe('error');
+    expect((await client.lookup(path, 'allowed')).kind).toBe('ok');
   });
 });

@@ -14,7 +14,8 @@ The chosen stack is TypeScript, npm workspaces, React + Vite, Fastify, and Postg
 
 Selecting a piece on your turn marks its legal destinations; captures have a separate outline. The same hints follow the selected position in finished-game Analysis. The board does not show live hints for the opponent's pieces.
 
-Finished-game Analysis also offers a [Masters opening explorer](docs/masters-explorer.md). It reads
+Finished-game Analysis also offers a [Masters opening explorer](docs/masters-explorer.md). Connect
+your own Lichess account in Analysis to use it. It reads
 candidate moves and outcome statistics from Lichess's official API and can add a candidate as a
 browser-local variation. Confirmed master-game moves receive a separate Book marker.
 
