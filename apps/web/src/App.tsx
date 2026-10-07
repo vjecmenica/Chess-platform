@@ -26,8 +26,6 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
 import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
-import { MastersPanel } from './MastersPanel';
-import { resumeAnalysisKey } from './lichess-oauth';
 import { EvaluationBar } from './EvaluationBar';
 import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
@@ -119,9 +117,9 @@ export function App() {
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
-  const [analysisOpen, setAnalysisOpen] = useState(() =>
-    sessionStorage.getItem(resumeAnalysisKey) === '1');
-  const [bookMoves, setBookMoves] = useState<ReadonlySet<string>>(new Set());
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisTab, setAnalysisTab] = useState<'moves' | 'review' | 'masters'>('moves');
+  const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
@@ -1099,6 +1097,13 @@ export function App() {
                 isYou={topSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />
+              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                fen={displayedFen} reviewHost={reviewHost}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
@@ -1137,15 +1142,49 @@ export function App() {
                   {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
+                {analysisOpen && <div className="analysis-tabs" role="tablist" aria-label="Analysis sections">
+                  {(['moves', 'review', 'masters'] as const).map(tab => <button type="button"
+                    key={tab} id={`analysis-tab-${tab}`} role="tab"
+                    aria-selected={analysisTab === tab} aria-controls={`analysis-pane-${tab}`}
+                    tabIndex={analysisTab === tab ? 0 : -1}
+                    onKeyDown={event => {
+                      const tabs = ['moves', 'review', 'masters'] as const;
+                      const index = tabs.indexOf(tab);
+                      const next = event.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length]
+                        : event.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length]
+                          : event.key === 'Home' ? tabs[0]
+                            : event.key === 'End' ? tabs.at(-1) : null;
+                      if (next !== null && next !== undefined) {
+                        event.preventDefault(); setAnalysisTab(next);
+                        document.getElementById(`analysis-tab-${next}`)?.focus();
+                      }
+                    }}
+                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves'
+                      : tab === 'review' ? 'Review' : 'Masters'}</button>)}
+                </div>}
+                <div className="analysis-pane" id={analysisOpen ? 'analysis-pane-moves' : undefined}
+                  role={analysisOpen ? 'tabpanel' : undefined}
+                  aria-labelledby={analysisOpen ? 'analysis-tab-moves' : undefined}
+                  hidden={analysisOpen && analysisTab !== 'moves'}>
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   review={analysisOpen ? gameReview : null}
-                  bookMoves={analysisOpen ? bookMoves : undefined}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}
                   onPromote={id => setAnalysis(current => current === null ? null : promoteVariation(current, id))}
                   onNote={(cursor: AnalysisCursor, note: MoveNote) => setAnalysis(current =>
                     current === null ? null : setMoveNote(current, cursor, note))} />
+                </div>
+                {analysisOpen && <>
+                  <div className="analysis-pane review-pane" id="analysis-pane-review"
+                    role="tabpanel" aria-labelledby="analysis-tab-review"
+                    hidden={analysisTab !== 'review'} ref={setReviewHost} />
+                  <div className="analysis-pane masters-pane" id="analysis-pane-masters"
+                    role="tabpanel" aria-labelledby="analysis-tab-masters"
+                    hidden={analysisTab !== 'masters'}>
+                    <p>Masters Explorer is unavailable while its data source is under review.</p>
+                  </div>
+                </>}
               </div>
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
@@ -1217,6 +1256,7 @@ export function App() {
                       if (!analysisOpen)
                         setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
                       setAnalysisOpen(!analysisOpen);
+                      setAnalysisTab('moves');
                       setGameReview(null);
                       setPositionEvaluation(null);
                       resizeGesture.current = null;
@@ -1266,26 +1306,6 @@ export function App() {
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />
             </aside>
-            {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-              fen={displayedFen}
-              selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-              onSelectPly={ply => {
-                setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                setSelected(null);
-              }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
-            {analysisOpen && analysis !== null && <MastersPanel key={game.id} game={game}
-              tree={analysis} onExplore={uci => {
-                submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
-                  uci.slice(2, 4) as Square,
-                  uci.length === 5 ? uci[4] as 'q' | 'r' | 'b' | 'n' : undefined);
-                setSelected(null);
-              }} onBook={(key, confirmed) => setBookMoves(current => {
-                const scopedKey = `${game.id}:${key}`;
-                if (current.has(scopedKey) === confirmed) return current;
-                const next = new Set(current);
-                if (confirmed) next.add(scopedKey); else next.delete(scopedKey);
-                return next;
-              })} />}
           </div>
         </>}
       </section>}

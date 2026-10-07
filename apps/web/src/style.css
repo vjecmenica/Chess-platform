@@ -178,9 +178,30 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .first-move-countdown b { font-variant-numeric: tabular-nums; }
 .move-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .engine-panel { display: grid; gap: 7px; width: min(100%, calc(100dvh - 96px), 720px);
-  min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid #d2d9cb;
+  position: relative; min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid #d2d9cb;
   border-radius: 8px; background: #fbfaf5; font-size: 13px; color: #33473b; }
-.analysis-workspace .engine-panel { grid-column: 1 / -1; width: 100%; margin-top: 0; }
+.analysis-workspace .game-sidebar { grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  height: max(var(--board-row-height, 600px), 440px); overflow: visible; }
+.analysis-workspace .engine-panel { width: 100%; margin: 0; padding: 8px; }
+.analysis-workspace .engine-result { max-height: min(150px, calc(var(--board-row-height, 600px) * .24));
+  overflow-y: auto; }
+.analysis-workspace .engine-candidate { align-items: center; }
+.analysis-workspace .engine-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.analysis-workspace .move-panel { overflow: hidden; }
+.analysis-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
+  margin: 0 0 6px; }
+.analysis-tabs button { min-width: 0; min-height: 36px; padding: 5px 7px; border-color: #cbd9c8;
+  background: transparent; color: #526157; font-size: 13px; }
+.analysis-tabs button[aria-selected="true"] { color: #143d30; border-color: #143d30;
+  font-weight: 700; box-shadow: inset 0 -2px #143d30; }
+.analysis-pane { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.analysis-pane[hidden] { display: none; }
+.analysis-pane .moves { min-height: 0; }
+.review-pane { overflow-y: auto; }
+.review-tab-content { display: grid; gap: 8px; min-width: 0; }
+.masters-pane { padding: 10px; border: 1px solid #d2d9cb; border-radius: 6px;
+  color: #526157; font-size: 13px; }
+.masters-pane p { margin: 0; }
 .masters-panel { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; padding: 10px 12px;
   border: 1px solid #d2d9cb; border-radius: 8px; background: #fbfaf5; color: #33473b; font-size: 13px; }
 .masters-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
@@ -202,6 +223,12 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .engine-heading > strong { font-size: 18px; line-height: 1.2; }
 .engine-heading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .engine-heading button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
+.engine-settings-popover { position: absolute; z-index: 10; top: calc(100% + 4px); right: 0;
+  display: grid; gap: 8px; width: min(330px, calc(100vw - 32px)); max-height: min(420px, 75dvh);
+  overflow-y: auto; padding: 10px; border: 1px solid #9bad98; border-radius: 8px;
+  background: #fffdf8; box-shadow: 0 8px 25px #142b2540; }
+.engine-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.engine-settings-heading strong { font-size: 14px; }
 .engine-line-setting { display: inline-flex; align-items: center; gap: 5px; margin: 0;
   color: #526157; font-size: 12px; }
 .engine-line-setting select { min-height: 32px; padding: 3px 7px; border: 1px solid #b8c7b5;
@@ -365,6 +392,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .engine-panel { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
   .game-sidebar { height: auto; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
   .game-sidebar { overflow-y: visible; }
+  .analysis-workspace .game-sidebar { display: flex; flex-direction: column; height: auto; }
+  .analysis-workspace .engine-panel { width: 100%; }
+  .analysis-workspace .move-panel { flex: none; height: min(360px, 45dvh); }
   .game-sidebar > .clock:first-child { grid-area: opponent; }
   .game-sidebar > .clock:last-child { grid-area: self; }
   .game-controls { grid-area: controls; }

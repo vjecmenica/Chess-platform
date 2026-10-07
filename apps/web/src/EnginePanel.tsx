@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   defaultSearchLimits, evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
@@ -134,11 +135,12 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange }: {
+  onEvaluationChange, reviewHost }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
+  readonly reviewHost?: HTMLElement | null;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
@@ -150,11 +152,35 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const [unlimitedTime, setUnlimitedTime] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
   const cache = useRef<EngineCache | null>(null);
   const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!settingsRef.current?.contains(event.target as Node)
+        && !settingsButtonRef.current?.contains(event.target as Node)) setSettingsOpen(false);
+    };
+    const closeEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSettingsOpen(false);
+        settingsButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeEscape);
+    };
+  }, [settingsOpen]);
 
   useEffect(() => {
     let storage: Storage | undefined;
@@ -221,7 +247,25 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     <div className="engine-heading">
       <strong>Stockfish</strong>
       <div className="engine-heading-actions">
-        <label className="engine-line-setting">Lines
+        <button type="button" className="secondary" ref={settingsButtonRef}
+          aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
+          onClick={() => setSettingsOpen(value => !value)}>Settings</button>
+        <button type="button" className="secondary" aria-pressed={enabled}
+          disabled={review.kind === 'running'}
+          onClick={() => {
+            if (enabled && state.kind === 'error') controller.current?.start(fen);
+            else if (enabled) { controller.current?.stop(); setEnabled(false); }
+            else { controller.current?.start(fen); setEnabled(true); }
+          }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
+      </div>
+    </div>
+    {settingsOpen && <div className="engine-settings-popover" id="engine-settings"
+      role="dialog" aria-label="Engine settings" ref={settingsRef}>
+      <div className="engine-settings-heading"><strong>Search settings</strong>
+        <button type="button" className="secondary" onClick={() => {
+          setSettingsOpen(false); settingsButtonRef.current?.focus();
+        }}>Close</button></div>
+      <label className="engine-line-setting">Lines
           <select value={lineCount} disabled={review.kind === 'running'}
             aria-label="Candidate lines" onChange={event => {
               const count = Number(event.target.value) as MultiPvCount;
@@ -232,15 +276,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
             {[1, 2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
           </select>
         </label>
-        <button type="button" className="secondary" aria-pressed={enabled}
-          disabled={review.kind === 'running'}
-          onClick={() => {
-            if (enabled && state.kind === 'error') controller.current?.start(fen);
-            else if (enabled) { controller.current?.stop(); setEnabled(false); }
-            else { controller.current?.start(fen); setEnabled(true); }
-          }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
-      </div>
-    </div>
     <div className="engine-search-settings" role="group" aria-label="Interactive search limits">
       <div className="engine-limit-setting">
         <label className="engine-range-setting">Depth
@@ -267,6 +302,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           onChange={event => updateLimits(depth, timeMs, unlimitedDepth, event.target.checked)} />Unlimited</label>
       </div>
     </div>
+    <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
+      title={`${engineBuild}, GPLv3. Runs in this browser.`}>Engine license and source</a>
+    </div>}
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && (state.kind === 'searching' || state.kind === 'done') &&
@@ -277,6 +315,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       {engineLineRows(lines, lineCount).map((line, index) => {
         const rank = index + 1;
         return line ? <div className="engine-candidate" key={rank}
+          title={line.san.join(' ') || 'No legal move'}
           aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
           <span className="engine-rank">{rank}.</span>
           <span className="engine-score">{line.score}</span>
@@ -290,6 +329,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         </div>;
       })}
     </div>}
+    {reviewHost && createPortal(<div className="review-tab-content">
     <div className="review-control">
       <button type="button" className="secondary" onClick={() => {
         if (review.kind === 'running') {
@@ -327,7 +367,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         })}
       </div>
     </div>}
-    <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
-      title={`${engineBuild}, GPLv3. Runs in this browser.`}>Engine license and source</a>
+    </div>, reviewHost)}
   </section>;
 }

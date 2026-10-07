@@ -1,41 +1,16 @@
 # Masters opening explorer
 
-The first phase runs only in finished-game Analysis. A player first connects their own Lichess
-account through Lichess OAuth2 Authorization Code with PKCE. It then asks the official
-[Lichess Masters Explorer endpoint](https://github.com/lichess-org/api/blob/master/doc/specs/tags/openingexplorer/masters.yaml)
-for the selected position, using the saved starting FEN and selected move path. It shows
-candidate moves, supporting game counts, White/draw/Black percentages, and an ECO code and
-opening name when the response contains them. Choosing a move uses the local analysis tree;
-it never changes the saved game. No lookup runs during live play.
+The Masters tab is currently unavailable while its data source and access policy are reviewed.
+Opening it makes no external request, asks for no Lichess connection, and does not mark moves
+Book. The analysis board, local variations, Stockfish, and game review continue to work.
 
-**Book** means that a lookup for the position before the played move returned that exact legal
-UCI move with at least one supporting master game. The endpoint returns a limited candidate
-list, so an unmarked move is not proof that it never appeared in Masters data. Book is a
-source-presence marker, separate from Stockfish move-quality labels and manual PGN annotations.
-It appears once the preceding position has been checked in Analysis, not from an automatic
-whole-game classification pass.
+An earlier prototype queried the official Lichess Masters endpoint from finished-game Analysis
+and offered candidate moves as local variations. Its API and OAuth code remain in the repository
+but are not mounted in the UI. Lichess's [Masters endpoint specification](https://github.com/lichess-org/api/blob/master/doc/specs/tags/openingexplorer/masters.yaml)
+requires OAuth2. The project has guest sessions but no account-backed token vault. Re-enabling a
+Masters source needs a deliberate access decision; a shared personal token is not acceptable.
 
-Lichess now requires OAuth2 for this endpoint. The connection uses an unregistered public client,
-requests no account permissions, checks a random state value, and sends the PKCE verifier only
-to Lichess's token endpoint. The user's access token stays in this browser tab's session storage;
-it is never bundled with the frontend, sent to the Chess-platform server, or saved in PostgreSQL.
-The player can disconnect, which removes the local token and asks Lichess to revoke it. A guest
-without a Lichess account cannot use Masters Explorer. A future persistent cross-device connection
-would need registered Chess-platform accounts and a server-side encrypted token vault; no shared
-personal token is an acceptable substitute.
-
-The browser requests at most 12 moves and no top-game records. Requests are serialized, have a
-five-second timeout, and pause for at least one minute after a 429 response. A 32-position,
-five-minute memory-only cache avoids repeated lookups while the page is open. No Masters
-response is saved to local storage or the database; no corpus is downloaded, mirrored, or
-redistributed. Service failure does not block the rest of Analysis.
-
-The [Lichess Terms of Service](https://lichess.org/terms-of-service) explicitly allow API use in
-applications, including commercial applications, subject to applicable licenses and fair-play
-rules. The [API tips](https://lichess.org/page/api-tips) call for one request at a time and a full
-minute's pause after a 429. The [official response schema](https://github.com/lichess-org/api/blob/master/doc/specs/schemas/OpeningExplorerMasters.yaml)
-defines these statistics. The underlying Masters corpus is not described here as CC0; the Terms
-distinguish licenses by component. The UI attributes the statistics to Lichess Masters Explorer.
-The [official endpoint specification](https://github.com/lichess-org/api/blob/master/doc/specs/tags/openingexplorer/masters.yaml)
-now declares OAuth2 authentication; Lichess also documents the
-[PKCE authorization and token endpoints](https://github.com/lichess-org/api/blob/master/doc/specs/tags/oauth/oauth.yaml).
+If a future source supports this feature, a **Book** label should mean that the source returned
+the exact legal played move for the preceding position with at least one supporting master game.
+Book must stay separate from Stockfish quality labels and manual PGN annotations. A missing
+result cannot prove that a move was never played in master games.

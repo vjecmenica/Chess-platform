@@ -44,16 +44,17 @@ function finish(worker: FakeWorker, pv = 'e2e4 e7e5 g1f3') {
 }
 
 describe('browser Stockfish controller', () => {
-  it('shows bounded interactive controls without changing the review budget', () => {
+  it('keeps interactive settings collapsed beside the engine toggle', () => {
     const game = { id: 'test', status: 'finished', history: [], position: { fen: start,
       sideToMove: 'white' }, result: { outcome: 'draw', reason: 'agreement' } } as GameReadResponse;
     const html = renderToStaticMarkup(createElement(EnginePanel, { game, fen: start,
       selectedPly: 0, onSelectPly: () => {}, onReviewChange: () => {},
       onEvaluationChange: () => {} }));
-    expect(html).toContain('Unlimited depth');
-    expect(html).toContain('Unlimited search time');
+    expect(html).toContain('aria-label="Engine settings"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('Unlimited depth');
+    expect(html).not.toContain('Unlimited search time');
     expect(html).not.toContain('Search limit mode');
-    expect(html).toContain('Candidate lines');
     expect(html).toContain('Start engine');
     expect(html).not.toContain('More lines share the 1.2-second search budget');
   });
