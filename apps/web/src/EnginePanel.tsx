@@ -309,9 +309,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && (state.kind === 'searching' || state.kind === 'done') &&
       <div className="engine-result" role="group" aria-label="Engine lines">
-      {evaluation !== null && <small>Depth {evaluation.depth}
+      <small className="engine-depth">Depth {evaluation?.depth ?? '—'}
         {state.kind === 'done' && state.cached ? ' · cached'
-          : state.kind === 'searching' ? ' · searching' : ''}</small>}
+          : state.kind === 'searching' ? ' · searching' : ''}</small>
       {engineLineRows(lines, lineCount).map((line, index) => {
         const rank = index + 1;
         return line ? <div className="engine-candidate" key={rank}
@@ -329,7 +329,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         </div>;
       })}
     </div>}
-    {reviewHost && createPortal(<div className="review-tab-content">
+    {reviewHost && createPortal(<div className="review-content">
     <div className="review-control">
       <button type="button" className="secondary" onClick={() => {
         if (review.kind === 'running') {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GameReadResponse } from '@chess/contracts';
@@ -57,6 +58,15 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toContain('Search limit mode');
     expect(html).toContain('Start engine');
     expect(html).not.toContain('More lines share the 1.2-second search budget');
+  });
+
+  it('keeps a depth row during a pending search and aligns both range tracks', () => {
+    const panel = readFileSync(new URL('../src/EnginePanel.tsx', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(panel).toContain("Depth {evaluation?.depth ?? '—'}");
+    expect(panel).toContain('className="engine-depth"');
+    expect(css).toMatch(/\.engine-search-settings \.engine-range-setting\s*\{[^}]*grid-template-columns: 74px minmax\(0, 1fr\) 42px/);
+    expect(css).toMatch(/\.engine-depth\s*\{[^}]*min-height: 1\.2em/);
   });
 
   it('uses the first depth or time limit and requires explicit infinite mode', () => {

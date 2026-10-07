@@ -118,7 +118,7 @@ export function App() {
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [analysisTab, setAnalysisTab] = useState<'moves' | 'review' | 'masters'>('moves');
+  const [analysisTab, setAnalysisTab] = useState<'moves' | 'masters'>('moves');
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
@@ -1091,6 +1091,7 @@ export function App() {
               <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
+              {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
               <ClockPanel clock={game.clocks} side={topSide}
@@ -1143,12 +1144,12 @@ export function App() {
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 {analysisOpen && <div className="analysis-tabs" role="tablist" aria-label="Analysis sections">
-                  {(['moves', 'review', 'masters'] as const).map(tab => <button type="button"
+                  {(['moves', 'masters'] as const).map(tab => <button type="button"
                     key={tab} id={`analysis-tab-${tab}`} role="tab"
                     aria-selected={analysisTab === tab} aria-controls={`analysis-pane-${tab}`}
                     tabIndex={analysisTab === tab ? 0 : -1}
                     onKeyDown={event => {
-                      const tabs = ['moves', 'review', 'masters'] as const;
+                      const tabs = ['moves', 'masters'] as const;
                       const index = tabs.indexOf(tab);
                       const next = event.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length]
                         : event.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length]
@@ -1159,8 +1160,7 @@ export function App() {
                         document.getElementById(`analysis-tab-${next}`)?.focus();
                       }
                     }}
-                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves'
-                      : tab === 'review' ? 'Review' : 'Masters'}</button>)}
+                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves' : 'Masters'}</button>)}
                 </div>}
                 <div className="analysis-pane" id={analysisOpen ? 'analysis-pane-moves' : undefined}
                   role={analysisOpen ? 'tabpanel' : undefined}
@@ -1176,9 +1176,6 @@ export function App() {
                     current === null ? null : setMoveNote(current, cursor, note))} />
                 </div>
                 {analysisOpen && <>
-                  <div className="analysis-pane review-pane" id="analysis-pane-review"
-                    role="tabpanel" aria-labelledby="analysis-tab-review"
-                    hidden={analysisTab !== 'review'} ref={setReviewHost} />
                   <div className="analysis-pane masters-pane" id="analysis-pane-masters"
                     role="tabpanel" aria-labelledby="analysis-tab-masters"
                     hidden={analysisTab !== 'masters'}>

@@ -188,7 +188,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .analysis-workspace .engine-candidate { align-items: center; }
 .analysis-workspace .engine-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .analysis-workspace .move-panel { overflow: hidden; }
-.analysis-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px;
+.analysis-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
   margin: 0 0 6px; }
 .analysis-tabs button { min-width: 0; min-height: 36px; padding: 5px 7px; border-color: #cbd9c8;
   background: transparent; color: #526157; font-size: 13px; }
@@ -197,8 +197,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .analysis-pane { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .analysis-pane[hidden] { display: none; }
 .analysis-pane .moves { min-height: 0; }
-.review-pane { overflow-y: auto; }
-.review-tab-content { display: grid; gap: 8px; min-width: 0; }
+.review-below-board { width: 100%; min-width: 0; margin-top: 10px; }
+.review-content { display: grid; gap: 8px; min-width: 0; padding: 10px 12px;
+  border: 1px solid #d2d9cb; border-radius: 8px; background: #fbfaf5; }
 .masters-pane { padding: 10px; border: 1px solid #d2d9cb; border-radius: 6px;
   color: #526157; font-size: 13px; }
 .masters-pane p { margin: 0; }
@@ -237,13 +238,15 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .engine-limit-setting { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .engine-search-settings label { display: inline-flex; align-items: center; gap: 7px; margin: 0;
   color: #526157; font-size: 12px; }
-.engine-range-setting { flex: 1 1 auto; min-width: 0; }
-.engine-range-setting input { flex: 1 1 auto; width: 100%; min-width: 35px; padding: 0; margin: 0; accent-color: #526157; }
-.engine-range-setting output { min-width: 35px; text-align: right; color: #26382f;
+.engine-search-settings .engine-range-setting { display: grid; grid-template-columns: 74px minmax(0, 1fr) 42px;
+  flex: 1 1 auto; min-width: 0; width: 100%; align-items: center; gap: 7px; }
+.engine-range-setting input { width: 100%; min-width: 0; padding: 0; margin: 0; accent-color: #526157; }
+.engine-range-setting output { min-width: 0; text-align: right; color: #26382f;
   font-variant-numeric: tabular-nums; }
 .engine-unlimited { flex: 0 0 auto; white-space: nowrap; }
 .engine-unlimited input { margin: 0; accent-color: #526157; }
 .engine-result { display: grid; gap: 5px; min-width: 0; }
+.engine-depth { display: block; min-height: 1.2em; font-variant-numeric: tabular-nums; }
 .engine-candidate-pending { color: #7d887e; }
 .engine-candidate { display: grid; grid-template-columns: 20px 60px minmax(0, 1fr);
   align-items: baseline; gap: 6px; min-width: 0; }
