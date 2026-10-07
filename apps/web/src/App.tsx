@@ -26,6 +26,7 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
 import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
+import { MastersPanel } from './MastersPanel';
 import { EvaluationBar } from './EvaluationBar';
 import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
@@ -118,6 +119,7 @@ export function App() {
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [bookMoves, setBookMoves] = useState<ReadonlySet<string>>(new Set());
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
@@ -1135,6 +1137,7 @@ export function App() {
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   review={analysisOpen ? gameReview : null}
+                  bookMoves={analysisOpen ? bookMoves : undefined}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}
@@ -1268,6 +1271,19 @@ export function App() {
                 setAnalysis(current => current === null ? null : selectMain(current, game, ply));
                 setSelected(null);
               }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
+            {analysisOpen && analysis !== null && <MastersPanel key={game.id} game={game}
+              tree={analysis} onExplore={uci => {
+                submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
+                  uci.slice(2, 4) as Square,
+                  uci.length === 5 ? uci[4] as 'q' | 'r' | 'b' | 'n' : undefined);
+                setSelected(null);
+              }} onBook={(key, confirmed) => setBookMoves(current => {
+                const scopedKey = `${game.id}:${key}`;
+                if (current.has(scopedKey) === confirmed) return current;
+                const next = new Set(current);
+                if (confirmed) next.add(scopedKey); else next.delete(scopedKey);
+                return next;
+              })} />}
           </div>
         </>}
       </section>}

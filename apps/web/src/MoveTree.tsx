@@ -12,6 +12,7 @@ interface MoveTreeProps {
   readonly selected: AnalysisCursor;
   readonly interactive: boolean;
   readonly review?: GameReview | null;
+  readonly bookMoves?: ReadonlySet<string> | undefined;
   readonly onSelect: (cursor: AnalysisCursor) => void;
   readonly onDelete: (id: number) => void;
   readonly onPromote?: (id: number) => void;
@@ -21,7 +22,7 @@ interface MoveTreeProps {
 interface OpenMenu { move: MoveView; x: number; y: number; trigger: HTMLElement }
 
 export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
-  onPromote, onNote, review }: MoveTreeProps) {
+  onPromote, onNote, review, bookMoves }: MoveTreeProps) {
   const view = buildMoveTree(game, tree, selected);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [editing, setEditing] = useState(false);
@@ -85,6 +86,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     const nag = nagDetails(move.note?.nag);
     const reviewed = move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined;
     const badge = reviewed && reviewBadge(reviewed.label);
+    const book = tree !== null && bookMoves?.has(`${game.id}:${cursorKey(move.cursor)}`);
     if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
     return <span key={cursorKey(move.cursor)}
       className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
@@ -94,7 +96,8 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         aria-label={[move.notation,
           ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
           ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
-            ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : [])].join(', ')}
+            ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : []),
+          ...(book ? ['Book move, confirmed by Lichess Masters Explorer'] : [])].join(', ')}
         aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
         title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
@@ -127,6 +130,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
             title={`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
               ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`}
             aria-hidden="true">{badge}</span>}</button>
+      {book && <span className="book-badge" title="Book move confirmed by Lichess Masters Explorer">Book</span>}
       {move.note?.comment && <span className="move-comment" title={move.note.comment}>
         {move.note.comment}</span>}
     </span>;

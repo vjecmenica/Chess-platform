@@ -181,6 +181,22 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid #d2d9cb;
   border-radius: 8px; background: #fbfaf5; font-size: 13px; color: #33473b; }
 .analysis-workspace .engine-panel { grid-column: 1 / -1; width: 100%; margin-top: 0; }
+.masters-panel { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; padding: 10px 12px;
+  border: 1px solid #d2d9cb; border-radius: 8px; background: #fbfaf5; color: #33473b; font-size: 13px; }
+.masters-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.masters-heading strong { font-size: 16px; }
+.masters-heading span, .masters-panel small { color: #617163; }
+.masters-panel p { margin: 0; }
+.masters-moves { display: grid; gap: 2px; max-height: 250px; overflow-y: auto; }
+.masters-move { display: grid; grid-template-columns: minmax(60px, 1fr) repeat(4, minmax(68px, auto));
+  align-items: center; gap: 6px; padding: 3px 0; border-top: 1px solid #e9ece5; }
+.masters-move button { justify-self: start; min-height: 30px; padding: 3px 8px; }
+.masters-move span { font-variant-numeric: tabular-nums; }
+.book-badge { margin-left: 3px; color: #76552d; font-size: 10px; font-weight: 700; }
+@media (max-width: 540px) {
+  .masters-move { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 8px; }
+  .masters-move span { font-size: 11px; }
+}
 .analysis-workspace .engine-panel button { min-height: 36px; padding: 7px 11px; font-size: 13px; }
 .engine-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .engine-heading > strong { font-size: 18px; line-height: 1.2; }
