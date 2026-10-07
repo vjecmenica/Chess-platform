@@ -20,10 +20,10 @@ export interface GameReview {
   readonly moves: readonly ReviewedMove[];
 }
 
-export function reviewBadge(label: ReviewedMove['label']): string {
+export function reviewBadge(label: ReviewedMove['label']): string | null {
   switch (label) {
-    case 'Strong': return 'Strong';
-    case 'Good': return 'Good';
+    case 'Strong': return null;
+    case 'Good': return null;
     case 'Inaccuracy': return '?!';
     case 'Mistake': return '?';
     case 'Blunder': return '??';

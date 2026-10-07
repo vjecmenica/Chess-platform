@@ -30,6 +30,7 @@ import { EvaluationBar } from './EvaluationBar';
 import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
+import { FinishedResultArea } from './FinishedResultArea';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -514,7 +515,7 @@ export function App() {
     const refreshed = shouldRefresh ? await refreshGame() : false;
     if (stale) setGameInfo(refreshed
       ? 'The position changed before your move was accepted. The confirmed game has been reloaded.'
-      : 'The position changed before your move was accepted. Use Refresh position to reload the confirmed game.');
+      : 'The position changed before your move was accepted. Reload the page to fetch the confirmed game.');
   }
 
   function clearPendingAction() {
@@ -1186,9 +1187,22 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {result !== null ? <div className="final-result" role="status">
-                  <strong>{result.score}</strong><span>{result.explanation}</span>
-                </div> : <p className="turn" role="status">{game.status === 'pending_adjudication'
+                {result !== null ? <FinishedResultArea key={game.id} score={result.score}
+                  explanation={result.explanation} analysisOpen={analysisOpen}
+                  onToggleAnalysis={() => {
+                    if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
+                    else if (analysis !== null && selectedReplayPly !== null)
+                      setAnalysis(selectMain(analysis, game, selectedReplayPly));
+                    if (!analysisOpen)
+                      setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
+                    setAnalysisOpen(!analysisOpen);
+                    setAnalysisTab('moves');
+                    setGameReview(null);
+                    setPositionEvaluation(null);
+                    resizeGesture.current = null;
+                    setAnalysisTool('move'); setAnnotationFrom(null);
+                    setSelected(null); setPromotion(null); setAnalysisError(null);
+                  }} /> : <p className="turn" role="status">{game.status === 'pending_adjudication'
                   ? game.pending?.kind === 'resignation'
                     ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. Play and clocks are stopped while the result awaits a verified mating decision.`
                     : game.timeoutAdjudication === 'unresolved'
@@ -1244,22 +1258,6 @@ export function App() {
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
                   </>}
-                  {game.status === 'finished' && <button type="button" aria-pressed={analysisOpen}
-                    title="Analysis notes stay in this browser and do not affect the game."
-                    onClick={() => {
-                      if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
-                      else if (analysis !== null && selectedReplayPly !== null)
-                        setAnalysis(selectMain(analysis, game, selectedReplayPly));
-                      if (!analysisOpen)
-                        setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
-                      setAnalysisOpen(!analysisOpen);
-                      setAnalysisTab('moves');
-                      setGameReview(null);
-                      setPositionEvaluation(null);
-                      resizeGesture.current = null;
-                      setAnalysisTool('move'); setAnnotationFrom(null);
-                      setSelected(null); setPromotion(null); setAnalysisError(null);
-                    }}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
                 </div>
                 {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
                   <p>Promote your pawn to:</p>
@@ -1291,13 +1289,6 @@ export function App() {
                   <button type="button" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
-                <button type="button" className="refresh-position" onClick={() => void refreshGame()}>Refresh position</button>
-                <details className="share-menu">
-                  <summary>Challenge link</summary>
-                  <label htmlFor="challenge-link">Shareable link</label>
-                  <input id="challenge-link" readOnly value={link}
-                    onFocus={event => event.currentTarget.select()} />
-                </details>
               </div>
               <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,

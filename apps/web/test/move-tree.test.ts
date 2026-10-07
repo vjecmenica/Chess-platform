@@ -57,8 +57,8 @@ describe('analysis move list', () => {
     expect(game.history.map(move => move.san)).toEqual(['e4', 'e5', 'Nf3']);
     const quiet = buildGameReview(game, fens.map(fen => ({ fen, depth: 14,
       score: { kind: 'cp' as const, value: 0 }, bestMove: null, variation: [] })));
-    expect(markup(game, tree, true, quiet)).toContain('engine-glyph engine-strong');
-    expect(markup(game, tree, true, quiet)).toContain('>Strong</span>');
+    expect(markup(game, tree, true, quiet)).not.toContain('engine-glyph');
+    expect(markup(game, tree, true, quiet)).not.toContain('Engine: Strong');
     const mate = buildGameReview(game, quiet.evaluations.map((evaluation, index) => index === 1
       ? { ...evaluation, score: { kind: 'mate' as const, value: 1 } } : evaluation));
     expect(markup(game, tree, true, mate)).toContain('Engine: Mate score, no numeric centipawn loss');

@@ -144,7 +144,7 @@ describe('browser-local full-game review', () => {
       blunder: 0, averageLossCp: 200 });
     expect(['Strong', 'Good', 'Inaccuracy', 'Mistake', 'Blunder', 'Mate score']
       .map(label => reviewBadge(label as typeof review.moves[number]['label'])))
-      .toEqual(['Strong', 'Good', '?!', '?', '??', 'Mate eval']);
+      .toEqual([null, null, '?!', '?', '??', 'Mate eval']);
     const mate = buildGameReview(game, [evaluation(fens[0]!, 100),
       { ...evaluation(fens[1]!, 0), score: { kind: 'mate', value: 1 } },
       evaluation(fens[2]!, 200)]);
