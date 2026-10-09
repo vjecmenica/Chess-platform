@@ -31,7 +31,7 @@ import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-worksp
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
-import { importPgn, importedResultDisplay, type ImportedGame } from './pgn-import';
+import { importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
 import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 
@@ -122,6 +122,8 @@ export function App() {
   const [imported, setImported] = useState<ImportedGame | null>(null);
   const [pgnText, setPgnText] = useState('');
   const [pgnError, setPgnError] = useState<string | null>(null);
+  const [pgnErrorSource, setPgnErrorSource] = useState<'file' | 'text'>('file');
+  const pgnErrorRef = useRef<HTMLParagraphElement | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
@@ -187,6 +189,11 @@ export function App() {
   }
 
   useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
+  useEffect(() => {
+    if (pgnError === null) return;
+    pgnErrorRef.current?.focus({ preventScroll: true });
+    pgnErrorRef.current?.scrollIntoView({ block: 'center' });
+  }, [pgnError, pgnErrorSource]);
 
   useEffect(() => { setResignConfirmationVersion(null); },
     [game?.id, game?.version, game?.status, challenge?.status, analysisOpen]);
@@ -397,35 +404,38 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible); };
   }, [challenge?.status, challenge?.yourSeat, refreshGame]);
 
+  function showImportedGame(next: ImportedGame) {
+    setImported(next);
+    gameRef.current = next.game;
+    setGame(next.game);
+    setAnalysis(createAnalysisTree(next.game));
+    setAnalysisBoard(createAnalysisBoard(next.game.id));
+    setAnalysisOpen(true);
+    setAnalysisTab('moves');
+    setSelectedReplayPly(null);
+    setGameReview(null);
+    setPositionEvaluation(null);
+    setPgnError(null);
+    setSelected(null);
+    setPromotion(null);
+  }
+
   function openPgn(text: string) {
-    try {
-      const next = importPgn(text, `import-${crypto.randomUUID()}`);
-      setImported(next);
-      gameRef.current = next.game;
-      setGame(next.game);
-      setAnalysis(createAnalysisTree(next.game));
-      setAnalysisBoard(createAnalysisBoard(next.game.id));
-      setAnalysisOpen(true);
-      setAnalysisTab('moves');
-      setSelectedReplayPly(null);
-      setGameReview(null);
-      setPositionEvaluation(null);
-      setPgnError(null);
-      setSelected(null);
-      setPromotion(null);
-    } catch (cause) {
+    try { showImportedGame(importPgn(text, `import-${crypto.randomUUID()}`)); }
+    catch (cause) {
+      setPgnErrorSource('text');
       setPgnError(cause instanceof Error ? cause.message : 'Could not read this PGN.');
     }
   }
 
   async function openPgnFile(file: File | undefined) {
     if (!file) return;
-    if (file.size > 1_000_000) {
-      setPgnError('PGN files must be smaller than 1 MB.');
-      return;
+    setPgnError(null);
+    try { showImportedGame(await importPgnFile(file, `import-${crypto.randomUUID()}`)); }
+    catch (cause) {
+      setPgnErrorSource('file');
+      setPgnError(cause instanceof Error ? cause.message : 'Could not read this PGN file.');
     }
-    try { openPgn(await file.text()); }
-    catch { setPgnError('Could not read this PGN file.'); }
   }
 
   async function createChallenge() {
@@ -1049,11 +1059,14 @@ export function App() {
           void openPgnFile(event.currentTarget.files?.[0]);
           event.currentTarget.value = '';
         }} />
+        {pgnError !== null && pgnErrorSource === 'file' && <p className="error" role="alert" tabIndex={-1}
+          ref={pgnErrorRef}>{pgnError}</p>}
         <label htmlFor="pgn-text">Or paste PGN</label>
         <textarea id="pgn-text" value={pgnText} onChange={event => setPgnText(event.target.value)}
           rows={5} placeholder={'[Event "Casual game"]\n\n1. e4 e5 2. Nf3 Nc6 *'} />
         <button type="button" onClick={() => openPgn(pgnText)}>Open in Analysis</button>
-        {pgnError !== null && <p className="error" role="alert">{pgnError}</p>}
+        {pgnError !== null && pgnErrorSource === 'text' && <p className="error" role="alert" tabIndex={-1}
+          ref={pgnErrorRef}>{pgnError}</p>}
       </section>}
 
       {(challenge?.status === 'accepted' && challenge.yourSeat !== null || imported !== null)

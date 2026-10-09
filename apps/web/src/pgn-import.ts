@@ -28,6 +28,14 @@ export function importPgn(text: string, id: string): ImportedGame {
   };
 }
 
+export async function importPgnFile(file: Pick<File, 'size' | 'text'>, id: string): Promise<ImportedGame> {
+  if (file.size > 1_000_000) throw new Error('PGN files must be smaller than 1 MB.');
+  let text: string;
+  try { text = await file.text(); }
+  catch { throw new Error('Could not read this PGN file.'); }
+  return importPgn(text, id);
+}
+
 export function importedResultDisplay(imported: ImportedGame): { score: string; explanation: string } {
   switch (imported.result) {
     case '1-0': return { score: '1-0', explanation: 'White won.' };

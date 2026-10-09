@@ -14,7 +14,7 @@ export function PlayerIdentity({ side, name, rating }: {
 }) {
   return <span className="player-label">
     <span className="player-name-line"><span className="player-name">{name}</span>
-      {rating && <span className="player-rating" aria-label={`Rating ${rating}`}>({rating})</span>}
+      {rating && <span className="player-rating" aria-label={`Rating ${rating}`}>{rating}</span>}
     </span>
     <b>{side === 'white' ? 'White' : 'Black'}</b>
   </span>;

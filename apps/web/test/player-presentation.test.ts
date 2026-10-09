@@ -16,6 +16,9 @@ describe('shared game presentation', () => {
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'black' }));
     expect(white).toContain('class="clock imported-player"');
     expect(white).toMatch(/player-name">Ada<\/span>.*player-rating.*1820.*<b>White<\/b>/);
+    expect(white).not.toContain('(1820)');
+    expect(white).not.toContain('At selected move');
+    expect(white).not.toContain('Stopped');
     expect(black).toContain('Ben');
     expect(black).not.toContain('player-rating');
     const guest = renderToStaticMarkup(createElement(ClockPanel, {
@@ -49,5 +52,8 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.captured-top \{ margin-bottom: 3px/);
     expect(css).toMatch(/\.game-sidebar \{[^}]*margin-top: var\(--board-top-offset\)/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 0/);
+    expect(css).toMatch(/\.imported-player \{ min-height: 72px; \}/);
+    expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.imported-player \{ min-height: 62px; \}/);
+    expect(css).toMatch(/\.player-rating \{[^}]*font-size: 14px; font-weight: 600/);
   });
 });
