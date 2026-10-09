@@ -74,7 +74,7 @@ describe('shared game presentation', () => {
     expect(app).not.toContain('board-topline-analysis');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.material-below \{[^}]*height: 34px; margin-top: 1px/);
-    expect(css).toMatch(/\.analysis-material-below \{ margin-top: -2px/);
+    expect(css).toMatch(/\.analysis-material-below \{ margin-top: -8px/);
     expect(css).toMatch(/\.analysis-footer-row \{ display: flex; align-items: center/);
     expect(css).toMatch(/\.analysis-footer-row \.analysis-board-controls \{[^}]*margin-top: 0/);
     expect(css).toMatch(/\.analysis-board-controls \{[^}]*flex-wrap: wrap/);
