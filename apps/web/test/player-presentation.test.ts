@@ -14,7 +14,7 @@ describe('shared game presentation', () => {
     expect(importedPlayer(imported, 'black')).toEqual({ name: 'Ben', rating: null });
     const white = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'white' }));
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'black' }));
-    expect(white).toContain('class="clock imported-player"');
+    expect(white).toContain('class="clock clock-no-status imported-player"');
     expect(white).toMatch(/player-name">Ada<\/span>.*player-rating.*1820.*<b>White<\/b>/);
     expect(white).not.toContain('(1820)');
     expect(white).not.toContain('At selected move');
@@ -52,8 +52,16 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.captured-top \{ margin-bottom: 3px/);
     expect(css).toMatch(/\.game-sidebar \{[^}]*margin-top: var\(--board-top-offset\)/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 0/);
-    expect(css).toMatch(/\.imported-player \{ min-height: 72px; \}/);
-    expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.imported-player \{ min-height: 62px; \}/);
+    expect(css).toMatch(/\.clock-no-status \{ min-height: 72px; \}/);
+    expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
     expect(css).toMatch(/\.player-rating \{[^}]*font-size: 14px; font-weight: 600/);
+  });
+
+  it('renders below-board guidance and the clock notice only outside Analysis', () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+    expect(app).toContain("!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished')");
+    expect(app).toContain('!analysisOpen && imported === null && challenge !== null');
+    expect(app).toContain("showStatus={!analysisOpen && game.status !== 'finished'}");
+    expect(app).not.toContain('Analysis: ${');
   });
 });

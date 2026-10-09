@@ -185,7 +185,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .player-name { min-width: 0; overflow-wrap: anywhere; }
 .player-rating { color: #274b39; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .player-label b { display: block; color: #526157; font-size: 12px; font-weight: 500; }
-.imported-player { min-height: 72px; }
+.clock-no-status { min-height: 72px; }
 .clock strong { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; font-size: clamp(24px, 2.5vw, 32px); line-height: 1; }
 .clock-hundredths { font-size: .58em; font-weight: 600; opacity: .76; }
 .clock small { color: #526157; font-size: 11px; }
@@ -440,7 +440,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .piece { font-size: clamp(24px, 8vw, 38px); }
   .game-sidebar { gap: 6px; padding: 7px; }
   .clock { padding: 7px; gap: 2px 4px; }
-  .imported-player { min-height: 62px; }
+  .clock-no-status { min-height: 62px; }
   .clock strong { font-size: clamp(21px, 6vw, 28px); }
   .player-label { font-size: 12px; }
   .player-label b, .clock small { font-size: 10px; }

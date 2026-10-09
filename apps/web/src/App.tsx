@@ -1200,12 +1200,11 @@ export function App() {
                     Clear marks
                   </button>
                 </div>}
-              {(analysisOpen || canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{analysisOpen
-                ? `Analysis: ${analysis !== null && cursorSide(analysis, game) === 'white' ? 'White' : 'Black'} to move.`
-                : liveBrowsingHistory ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
+              {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
+                ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
                   : canMove ? 'Select or drag one of your pieces.'
                   : 'Select Analysis to explore legal alternatives.'}</p>}
-              {imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
+              {!analysisOpen && imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>}
               {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
@@ -1214,6 +1213,7 @@ export function App() {
               {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
                 : <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
+                showStatus={!analysisOpen && game.status !== 'finished'}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />}
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
@@ -1417,6 +1417,7 @@ export function App() {
               </div>
               {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
                 : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                showStatus={!analysisOpen && game.status !== 'finished'}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />}
             </aside>

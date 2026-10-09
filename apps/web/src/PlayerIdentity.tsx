@@ -24,7 +24,7 @@ export function ImportedPlayerRow({ imported, side }: {
   imported: ImportedGame; side: GameSide;
 }) {
   const player = importedPlayer(imported, side);
-  return <div className="clock imported-player">
+  return <div className="clock clock-no-status imported-player">
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
   </div>;
 }

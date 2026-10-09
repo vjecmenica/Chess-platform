@@ -92,12 +92,30 @@ describe('display clocks', () => {
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
     expect(shown).toContain('05:03');
     expect(shown).not.toContain('clock-hundredths');
-    expect(shown).toContain('At selected move');
+    expect(shown).not.toContain('At selected move');
+    expect(shown).not.toContain('Stopped');
     expect(shown).not.toContain('clock-active');
     const unavailable = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'white', isYou: true, historicalMs: null }));
-    expect(unavailable).toContain('Time unavailable');
+    expect(unavailable).not.toContain('Time unavailable');
     expect(unavailable).toContain('>—</strong>');
+  });
+
+  it('keeps player identities and clock values without status copy in finished analysis', () => {
+    const shown = renderToStaticMarkup(createElement(ClockPanel, {
+      clock: running, side: 'white', isYou: true, historicalMs: 300_000, showStatus: false,
+    }));
+    expect(shown).toContain('clock-no-status');
+    expect(shown).toContain('You');
+    expect(shown).toContain('White');
+    expect(shown).toContain('05:00');
+    expect(shown).not.toContain('<small>');
+    const replay = renderToStaticMarkup(createElement(ClockPanel, {
+      clock: { ...running, activeSide: null }, side: 'black', isYou: false, showStatus: false,
+    }));
+    expect(replay).toContain('Opponent');
+    expect(replay).toContain('05:03');
+    expect(replay).not.toContain('Stopped');
   });
 
   it('warns at thirty seconds in live and historical clocks with smaller hundredths', () => {

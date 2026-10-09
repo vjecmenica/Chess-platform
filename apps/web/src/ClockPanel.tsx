@@ -38,11 +38,12 @@ function ClockValue({ milliseconds }: { milliseconds: number }) {
     <span className="clock-hundredths">.{fraction}</span>}</>;
 }
 
-export function ClockPanel({ clock, side, isYou, historicalMs }: {
+export function ClockPanel({ clock, side, isYou, historicalMs, showStatus = true }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
   historicalMs?: number | null | undefined;
+  showStatus?: boolean;
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -67,16 +68,15 @@ export function ClockPanel({ clock, side, isYou, historicalMs }: {
     : firstMoveRemainingMs(clock, side, elapsedMs);
   const valueMs = historicalMs !== undefined ? historicalMs
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
-  return <div className={`clock ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
+  return <div className={`clock ${!showStatus ? 'clock-no-status' : ''} ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
       <PlayerIdentity side={side} name={isYou ? 'You' : 'Opponent'} />
       <strong aria-live="off">{valueMs === null
         ? historicalMs !== undefined ? '—' : 'Untimed' : <ClockValue milliseconds={valueMs} />}</strong>
-      <small>{historicalMs !== undefined ? historicalMs === null ? 'Time unavailable' : 'At selected move'
-        : clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'
+      {showStatus && historicalMs === undefined && <small>{clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'
         ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
           : clock.activeSide === side ? 'Running' : 'Stopped'
-        : clock.ready[side] ? 'Ready' : 'Not ready'}</small>
+        : clock.ready[side] ? 'Ready' : 'Not ready'}</small>}
       {graceMs !== null && <span className="first-move-countdown"
         aria-label={`${side === 'white' ? 'White' : 'Black'} first-move deadline, ${formatClock(graceMs)} remaining`}>
         First move <b aria-live="off"><ClockValue milliseconds={graceMs} /></b>
