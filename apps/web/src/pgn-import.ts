@@ -28,11 +28,11 @@ export function importPgn(text: string, id: string): ImportedGame {
   };
 }
 
-export function importedResultText(imported: ImportedGame): string {
+export function importedResultDisplay(imported: ImportedGame): { score: string; explanation: string } {
   switch (imported.result) {
-    case '1-0': return '1-0 · White won';
-    case '0-1': return '0-1 · Black won';
-    case '1/2-1/2': return '½–½ · Draw';
-    case '*': return 'Result not recorded';
+    case '1-0': return { score: '1-0', explanation: 'White won.' };
+    case '0-1': return { score: '0-1', explanation: 'Black won.' };
+    case '1/2-1/2': return { score: '½–½', explanation: 'Draw.' };
+    case '*': return { score: '—', explanation: 'Result not recorded in PGN.' };
   }
 }

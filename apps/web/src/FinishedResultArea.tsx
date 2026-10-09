@@ -5,10 +5,11 @@ interface FinishedResultAreaProps {
   readonly score: string;
   readonly explanation: string;
   readonly analysisOpen: boolean;
+  readonly sessionOnly?: boolean;
   readonly onToggleAnalysis: () => void;
 }
 
-export function FinishedResultArea({ score, explanation, analysisOpen,
+export function FinishedResultArea({ score, explanation, analysisOpen, sessionOnly = false,
   onToggleAnalysis }: FinishedResultAreaProps) {
   const [height, setHeight] = useState<number | null>(null);
   const area = useRef<HTMLDivElement | null>(null);
@@ -33,7 +34,8 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
     </div>
     <div className="finished-result-actions">
       <button type="button" aria-pressed={analysisOpen}
-        title="Analysis notes stay in this browser and do not affect the game."
+        title={sessionOnly ? 'Analysis notes last until this page is reloaded.'
+          : 'Analysis notes stay in this browser and do not affect the game.'}
         onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>
     </div>
     <button type="button" className="result-resize-handle"

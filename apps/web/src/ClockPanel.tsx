@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ClockState, GameSide, SavedMove } from '@chess/contracts';
+import { PlayerIdentity } from './PlayerIdentity';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
   side: GameSide, initialMs: number, timed: boolean): number | null {
@@ -68,8 +69,7 @@ export function ClockPanel({ clock, side, isYou, historicalMs }: {
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   return <div className={`clock ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <span className="player-label">{isYou ? 'You' : 'Opponent'}
-        <b>{side === 'white' ? 'White' : 'Black'}</b></span>
+      <PlayerIdentity side={side} name={isYou ? 'You' : 'Opponent'} />
       <strong aria-live="off">{valueMs === null
         ? historicalMs !== undefined ? '—' : 'Untimed' : <ClockValue milliseconds={valueMs} />}</strong>
       <small>{historicalMs !== undefined ? historicalMs === null ? 'Time unavailable' : 'At selected move'

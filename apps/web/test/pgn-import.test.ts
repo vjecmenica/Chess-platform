@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAnalysisTree, nextPosition, playAnalysisMove, selectMain } from '../src/analysis-model';
 import { replayFen } from '../src/board-model';
-import { importPgn, importedResultText } from '../src/pgn-import';
+import { importPgn, importedResultDisplay } from '../src/pgn-import';
 import { reviewPositions } from '../src/game-review';
 
 describe('local PGN analysis', () => {
@@ -20,12 +20,16 @@ describe('local PGN analysis', () => {
     expect(nextPosition(initial, game).cursor).toEqual({ kind: 'main', ply: 2 });
     expect(game.history[1]?.san).toBe('e5');
     expect(reviewPositions(game)).toHaveLength(4);
-    expect(importedResultText(imported)).toBe('Result not recorded');
+    expect(importedResultDisplay(imported)).toEqual({ score: '—',
+      explanation: 'Result not recorded in PGN.' });
   });
 
   it('retains decisive and drawn PGN results without changing saved game data', () => {
-    expect(importedResultText(importPgn('1. e4 1-0', 'white'))).toBe('1-0 · White won');
-    expect(importedResultText(importPgn('1. d4 0-1', 'black'))).toBe('0-1 · Black won');
-    expect(importedResultText(importPgn('1. c4 1/2-1/2', 'draw'))).toBe('½–½ · Draw');
+    expect(importedResultDisplay(importPgn('1. e4 1-0', 'white')))
+      .toEqual({ score: '1-0', explanation: 'White won.' });
+    expect(importedResultDisplay(importPgn('1. d4 0-1', 'black')))
+      .toEqual({ score: '0-1', explanation: 'Black won.' });
+    expect(importedResultDisplay(importPgn('1. c4 1/2-1/2', 'draw')))
+      .toEqual({ score: '½–½', explanation: 'Draw.' });
   });
 });

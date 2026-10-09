@@ -31,7 +31,8 @@ import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-worksp
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
-import { importPgn, importedResultText, type ImportedGame } from './pgn-import';
+import { importPgn, importedResultDisplay, type ImportedGame } from './pgn-import';
+import { ImportedPlayerRow } from './PlayerIdentity';
 import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -929,7 +930,8 @@ export function App() {
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
-  const result = resultDisplay(game?.result ?? null);
+  const result = imported !== null ? importedResultDisplay(imported)
+    : resultDisplay(game?.result ?? null);
   const hintSide = game === null ? null : analysisOpen && analysis !== null
     ? cursorSide(analysis, game) : game.position.sideToMove;
   const showHints = selected !== null && displayedFen !== null && hintSide !== null
@@ -1196,9 +1198,8 @@ export function App() {
               {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              {imported !== null ? <div className="imported-player">{topSide === 'white' ? 'White' : 'Black'}
-                <strong>{imported.headers[topSide === 'white' ? 'White' : 'Black'] ?? 'Unknown player'}</strong>
-              </div> : <ClockPanel clock={game.clocks} side={topSide}
+              {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
+                : <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />}
@@ -1291,14 +1292,9 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {imported !== null ? <div className="imported-result">
-                  <strong>{importedResultText(imported)}</strong>
-                  {imported.headers.Event && <span>{imported.headers.Event}</span>}
-                  {imported.headers.Date && <span>{imported.headers.Date}</span>}
-                  <details><summary>PGN headers</summary><dl>{Object.entries(imported.headers).map(([key, value]) =>
-                    <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></details>
-                </div> : result !== null ? <FinishedResultArea key={game.id} score={result.score}
+                {result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
+                  sessionOnly={imported !== null}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
                     else if (analysis !== null && selectedReplayPly !== null)
@@ -1324,6 +1320,11 @@ export function App() {
                     : liveBrowsingHistory ? `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move. Viewing an earlier position.`
                     : canMove ? `Your turn (${game.yourSeat}).`
                       : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`}</p>}
+                {imported !== null && <details className="pgn-details">
+                  <summary>PGN details</summary>
+                  <dl>{Object.entries(imported.headers).map(([key, value]) =>
+                    <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
+                </details>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
@@ -1401,9 +1402,8 @@ export function App() {
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div>
-              {imported !== null ? <div className="imported-player">{bottomSide === 'white' ? 'White' : 'Black'}
-                <strong>{imported.headers[bottomSide === 'white' ? 'White' : 'Black'] ?? 'Unknown player'}</strong>
-              </div> : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+              {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
+                : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
                   game.timeControl.initialMs, game.clocks !== null) : undefined} />}
             </aside>
