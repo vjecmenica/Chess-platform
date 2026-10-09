@@ -1087,40 +1087,8 @@ export function App() {
               }),
             } as CSSProperties}>
             <div className="play-column">
-              {captured !== null && <div className={`board-topline${analysisOpen ? ' board-topline-analysis' : ''}`}>
-                <CapturedRow side={topSide} pieces={captured[topSide]} placement="top" />
-                {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
-                  <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
-                    title={imported === null ? 'Board marks and orientation are saved only in this browser.'
-                      : 'Board marks and orientation last until this page is reloaded.'}>
-                    <button type="button" className="secondary" onClick={() =>
-                      setAnalysisBoard(current => current?.gameId === game.id
-                        ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>
-                    <div className="analysis-tool-group" role="group" aria-label="Board tool">
-                      {(['move', 'arrow', 'square'] as const).map(tool =>
-                        <button key={tool} type="button" className="secondary" aria-pressed={analysisTool === tool}
-                          title={tool === 'move' ? 'Explore legal moves' : tool === 'arrow'
-                            ? 'Click two squares to draw an arrow, or right-drag' : 'Click a square to mark it'}
-                          onClick={() => { setAnalysisTool(tool); setAnnotationFrom(null); setSelected(null); }}>
-                          {tool === 'move' ? 'Move' : tool === 'arrow' ? 'Arrow' : 'Square'}
-                        </button>)}</div>
-                    <div className="analysis-colors" role="group" aria-label="Board mark color">
-                      {(Object.keys(annotationColors) as AnnotationColor[]).map(color =>
-                        <button key={color} type="button" className="color-choice"
-                          aria-label={`${color} board marks`} aria-pressed={analysisBoard.color === color}
-                          title={`${color[0]?.toUpperCase()}${color.slice(1)} arrows and squares`}
-                          onClick={() => setAnalysisBoard(current => current?.gameId === game.id
-                            ? { ...current, color } : current)}>
-                          <span aria-hidden="true" style={{ backgroundColor: annotationColors[color].fill }} />
-                        </button>)}</div>
-                    <button type="button" className="secondary" disabled={boardNotes === null
-                      || boardNotes.arrows.length === 0 && boardNotes.marks.length === 0}
-                      onClick={() => { editBoardAnnotations(clearPositionAnnotations); setAnnotationFrom(null); }}>
-                      Clear marks
-                    </button>
-                  </div>}
-                {analysisOpen && <MaterialTotal advantage={material} bottomSide={bottomSide} />}
-              </div>}
+              {captured !== null && <CapturedRow side={topSide} pieces={captured[topSide]}
+                placement="top" />}
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
@@ -1197,11 +1165,41 @@ export function App() {
               {captured !== null &&
                 <div className="material-below">
                   <CapturedRow side={bottomSide} pieces={captured[bottomSide]} placement="bottom" />
-                  {!analysisOpen && <MaterialTotal advantage={material} bottomSide={bottomSide} />}
+                  <MaterialTotal advantage={material} bottomSide={bottomSide} />
                 </div>}
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
+              {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
+                <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
+                  title={imported === null ? 'Board marks and orientation are saved only in this browser.'
+                    : 'Board marks and orientation last until this page is reloaded.'}>
+                  <button type="button" className="secondary" onClick={() =>
+                    setAnalysisBoard(current => current?.gameId === game.id
+                      ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>
+                  <div className="analysis-tool-group" role="group" aria-label="Board tool">
+                    {(['move', 'arrow', 'square'] as const).map(tool =>
+                      <button key={tool} type="button" className="secondary" aria-pressed={analysisTool === tool}
+                        title={tool === 'move' ? 'Explore legal moves' : tool === 'arrow'
+                          ? 'Click two squares to draw an arrow, or right-drag' : 'Click a square to mark it'}
+                        onClick={() => { setAnalysisTool(tool); setAnnotationFrom(null); setSelected(null); }}>
+                        {tool === 'move' ? 'Move' : tool === 'arrow' ? 'Arrow' : 'Square'}
+                      </button>)}</div>
+                  <div className="analysis-colors" role="group" aria-label="Board mark color">
+                    {(Object.keys(annotationColors) as AnnotationColor[]).map(color =>
+                      <button key={color} type="button" className="color-choice"
+                        aria-label={`${color} board marks`} aria-pressed={analysisBoard.color === color}
+                        title={`${color[0]?.toUpperCase()}${color.slice(1)} arrows and squares`}
+                        onClick={() => setAnalysisBoard(current => current?.gameId === game.id
+                          ? { ...current, color } : current)}>
+                        <span aria-hidden="true" style={{ backgroundColor: annotationColors[color].fill }} />
+                      </button>)}</div>
+                  <button type="button" className="secondary" disabled={boardNotes === null
+                    || boardNotes.arrows.length === 0 && boardNotes.marks.length === 0}
+                    onClick={() => { editBoardAnnotations(clearPositionAnnotations); setAnnotationFrom(null); }}>
+                    Clear marks
+                  </button>
+                </div>}
               {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
                 ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
                   : canMove ? 'Select or drag one of your pieces.'

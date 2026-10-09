@@ -59,22 +59,20 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.clock-no-status \.player-rating \{ font-size: 15px/);
   });
 
-  it('keeps the shared analysis toolbar above the board without shifting desktop alignment', () => {
+  it('keeps material and analysis controls below the board without shifting desktop alignment', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-    const topLine = app.indexOf('board-topline-analysis');
-    const toolbar = app.indexOf('className="analysis-board-controls"');
     const board = app.indexOf('className="board-stage"');
-    expect(topLine).toBeGreaterThan(0);
-    expect(toolbar).toBeGreaterThan(topLine);
-    expect(board).toBeGreaterThan(toolbar);
-    expect(app.slice(topLine, board)).toContain('<MaterialTotal advantage={material}');
-    expect(app).toContain('{!analysisOpen && <MaterialTotal advantage={material}');
+    const material = app.indexOf('className="material-below"');
+    const toolbar = app.indexOf('className="analysis-board-controls"');
+    expect(board).toBeGreaterThan(0);
+    expect(material).toBeGreaterThan(board);
+    expect(toolbar).toBeGreaterThan(material);
+    expect(app.slice(material, toolbar)).toContain('<MaterialTotal advantage={material}');
+    expect(app).not.toContain('board-topline-analysis');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.board-topline \{[^}]*height: 36px/);
-    expect(css).toMatch(/\.analysis-board-controls \{[^}]*overflow-x: auto/);
-    expect(css).toMatch(/\.board-topline-analysis \{[^}]*flex-wrap: wrap/);
-    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.board-topline \{ margin-left: auto; \}/);
-    expect(css).toMatch(/\.board-topline-analysis > \.analysis-board-controls \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.material-below \{[^}]*height: 34px; margin-top: 1px/);
+    expect(css).toMatch(/\.analysis-board-controls \{[^}]*margin-top: 2px/);
+    expect(css).toMatch(/\.analysis-board-controls \{[^}]*flex-wrap: wrap/);
   });
 
   it('renders below-board guidance and the clock notice only outside Analysis', () => {
