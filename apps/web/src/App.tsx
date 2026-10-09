@@ -1163,15 +1163,16 @@ export function App() {
                 </div>
               </div>
               {captured !== null &&
-                <div className="material-below">
+                <div className={`material-below${analysisOpen ? ' analysis-material-below' : ''}`}>
                   <CapturedRow side={bottomSide} pieces={captured[bottomSide]} placement="bottom" />
-                  <MaterialTotal advantage={material} bottomSide={bottomSide} />
+                  {!analysisOpen && <MaterialTotal advantage={material} bottomSide={bottomSide} />}
                 </div>}
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
               {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
-                <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
+                <div className="analysis-footer-row">
+                  <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
                   title={imported === null ? 'Board marks and orientation are saved only in this browser.'
                     : 'Board marks and orientation last until this page is reloaded.'}>
                   <button type="button" className="secondary" onClick={() =>
@@ -1199,6 +1200,8 @@ export function App() {
                     onClick={() => { editBoardAnnotations(clearPositionAnnotations); setAnnotationFrom(null); }}>
                     Clear marks
                   </button>
+                  </div>
+                  <MaterialTotal advantage={material} bottomSide={bottomSide} />
                 </div>}
               {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
                 ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`

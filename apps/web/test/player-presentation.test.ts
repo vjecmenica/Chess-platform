@@ -62,16 +62,21 @@ describe('shared game presentation', () => {
   it('keeps material and analysis controls below the board without shifting desktop alignment', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     const board = app.indexOf('className="board-stage"');
-    const material = app.indexOf('className="material-below"');
+    const material = app.indexOf('analysis-material-below');
+    const footer = app.indexOf('className="analysis-footer-row"');
     const toolbar = app.indexOf('className="analysis-board-controls"');
+    const count = app.indexOf('<MaterialTotal advantage={material}', toolbar);
     expect(board).toBeGreaterThan(0);
     expect(material).toBeGreaterThan(board);
-    expect(toolbar).toBeGreaterThan(material);
-    expect(app.slice(material, toolbar)).toContain('<MaterialTotal advantage={material}');
+    expect(footer).toBeGreaterThan(material);
+    expect(toolbar).toBeGreaterThan(footer);
+    expect(count).toBeGreaterThan(toolbar);
     expect(app).not.toContain('board-topline-analysis');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.material-below \{[^}]*height: 34px; margin-top: 1px/);
-    expect(css).toMatch(/\.analysis-board-controls \{[^}]*margin-top: 2px/);
+    expect(css).toMatch(/\.analysis-material-below \{ margin-top: -2px/);
+    expect(css).toMatch(/\.analysis-footer-row \{ display: flex; align-items: center/);
+    expect(css).toMatch(/\.analysis-footer-row \.analysis-board-controls \{[^}]*margin-top: 0/);
     expect(css).toMatch(/\.analysis-board-controls \{[^}]*flex-wrap: wrap/);
   });
 
