@@ -52,9 +52,29 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.captured-top \{ margin-bottom: 3px/);
     expect(css).toMatch(/\.game-sidebar \{[^}]*margin-top: var\(--board-top-offset\)/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 0/);
-    expect(css).toMatch(/\.clock-no-status \{ min-height: 72px; \}/);
+    expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
     expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
     expect(css).toMatch(/\.player-rating \{[^}]*font-size: 14px; font-weight: 600/);
+    expect(css).toMatch(/\.clock-no-status \.player-label \{ font-size: 16px/);
+    expect(css).toMatch(/\.clock-no-status \.player-rating \{ font-size: 15px/);
+  });
+
+  it('keeps the shared analysis toolbar above the board without shifting desktop alignment', () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+    const topLine = app.indexOf('board-topline-analysis');
+    const toolbar = app.indexOf('className="analysis-board-controls"');
+    const board = app.indexOf('className="board-stage"');
+    expect(topLine).toBeGreaterThan(0);
+    expect(toolbar).toBeGreaterThan(topLine);
+    expect(board).toBeGreaterThan(toolbar);
+    expect(app.slice(topLine, board)).toContain('<MaterialTotal advantage={material}');
+    expect(app).toContain('{!analysisOpen && <MaterialTotal advantage={material}');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.board-topline \{[^}]*height: 36px/);
+    expect(css).toMatch(/\.analysis-board-controls \{[^}]*overflow-x: auto/);
+    expect(css).toMatch(/\.board-topline-analysis \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.board-topline \{ margin-left: auto; \}/);
+    expect(css).toMatch(/\.board-topline-analysis > \.analysis-board-controls \{[^}]*flex-wrap: wrap/);
   });
 
   it('renders below-board guidance and the clock notice only outside Analysis', () => {
