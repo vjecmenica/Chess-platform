@@ -31,6 +31,7 @@ import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-worksp
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
+import { importPgn, importedResultText, type ImportedGame } from './pgn-import';
 import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -117,6 +118,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
+  const [imported, setImported] = useState<ImportedGame | null>(null);
+  const [pgnText, setPgnText] = useState('');
+  const [pgnError, setPgnError] = useState<string | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
@@ -320,6 +324,10 @@ export function App() {
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysis?.gameId === game.id) return;
+    if (imported?.game.id === game.id) {
+      setAnalysis(createAnalysisTree(game));
+      return;
+    }
     try {
       const raw = window.localStorage.getItem(analysisStorageKey(game.id));
       const restored = raw === null ? null : restoreAnalysis(game, raw);
@@ -330,29 +338,35 @@ export function App() {
       setAnalysis(createAnalysisTree(game));
       setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.');
     }
-  }, [game?.id, game?.status, analysis?.gameId]);
+  }, [game?.id, game?.status, analysis?.gameId, imported?.game.id]);
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysis?.gameId !== game.id) return;
+    if (imported?.game.id === game.id) return;
     try { window.localStorage.setItem(analysisStorageKey(game.id), serializeAnalysis(analysis)); }
     catch { setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.'); }
-  }, [game?.id, game?.status, analysis]);
+  }, [game?.id, game?.status, analysis, imported?.game.id]);
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysisBoard?.gameId === game.id) return;
+    if (imported?.game.id === game.id) {
+      setAnalysisBoard(createAnalysisBoard(game.id));
+      return;
+    }
     let restored: AnalysisBoardState | null = null;
     try {
       const raw = window.localStorage.getItem(analysisBoardStorageKey(game.id));
       if (raw !== null) restored = restoreAnalysisBoard(game.id, raw);
     } catch { /* Browser storage is optional. */ }
     setAnalysisBoard(restored ?? createAnalysisBoard(game.id));
-  }, [game?.id, game?.status, analysisBoard?.gameId]);
+  }, [game?.id, game?.status, analysisBoard?.gameId, imported?.game.id]);
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysisBoard?.gameId !== game.id) return;
+    if (imported?.game.id === game.id) return;
     try { window.localStorage.setItem(analysisBoardStorageKey(game.id), serializeAnalysisBoard(analysisBoard)); }
     catch { /* Board controls still work when storage is unavailable. */ }
-  }, [game?.id, game?.status, analysisBoard]);
+  }, [game?.id, game?.status, analysisBoard, imported?.game.id]);
 
   useEffect(() => { setAnnotationFrom(null); }, [analysis?.cursor]);
 
@@ -381,6 +395,37 @@ export function App() {
     return () => { stopUpdates(); window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible); };
   }, [challenge?.status, challenge?.yourSeat, refreshGame]);
+
+  function openPgn(text: string) {
+    try {
+      const next = importPgn(text, `import-${crypto.randomUUID()}`);
+      setImported(next);
+      gameRef.current = next.game;
+      setGame(next.game);
+      setAnalysis(createAnalysisTree(next.game));
+      setAnalysisBoard(createAnalysisBoard(next.game.id));
+      setAnalysisOpen(true);
+      setAnalysisTab('moves');
+      setSelectedReplayPly(null);
+      setGameReview(null);
+      setPositionEvaluation(null);
+      setPgnError(null);
+      setSelected(null);
+      setPromotion(null);
+    } catch (cause) {
+      setPgnError(cause instanceof Error ? cause.message : 'Could not read this PGN.');
+    }
+  }
+
+  async function openPgnFile(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 1_000_000) {
+      setPgnError('PGN files must be smaller than 1 MB.');
+      return;
+    }
+    try { openPgn(await file.text()); }
+    catch { setPgnError('Could not read this PGN file.'); }
+  }
 
   async function createChallenge() {
     if (session === null) return;
@@ -951,17 +996,18 @@ export function App() {
   }
 
   return (
-    <main className={challengeId === null ? 'home-page'
+    <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
+        {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
       </header>
-      {challengeId === null && <section className="intro">
+      {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
         <h1>Challenge a friend.</h1>
         <p className="description">Create a challenge and share its link with a second guest.</p>
       </section>}
-      {challenge?.status !== 'accepted' && <section className="notice"
+      {challenge?.status !== 'accepted' && imported === null && <section className="notice"
         aria-labelledby="challenge-title">
         <div className="section-heading">
           <h2 id="challenge-title">{challengeId === null ? 'Create a challenge' : 'Challenge'}</h2>
@@ -992,8 +1038,25 @@ export function App() {
         </details>}
       </section>}
 
-      {challenge?.status === 'accepted' && challenge.yourSeat !== null && <section className="game-area" aria-labelledby="game-title">
-        <h1 id="game-title" className="visually-hidden">Chess game</h1>
+      {challengeId === null && imported === null && <section className="notice pgn-import"
+        aria-labelledby="pgn-import-title">
+        <h2 id="pgn-import-title">Analyze a PGN</h2>
+        <p>Open a local game in Analysis. It stays in this browser session.</p>
+        <label htmlFor="pgn-file">Choose a .pgn file</label>
+        <input id="pgn-file" type="file" accept=".pgn,text/plain" onChange={event => {
+          void openPgnFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = '';
+        }} />
+        <label htmlFor="pgn-text">Or paste PGN</label>
+        <textarea id="pgn-text" value={pgnText} onChange={event => setPgnText(event.target.value)}
+          rows={5} placeholder={'[Event "Casual game"]\n\n1. e4 e5 2. Nf3 Nc6 *'} />
+        <button type="button" onClick={() => openPgn(pgnText)}>Open in Analysis</button>
+        {pgnError !== null && <p className="error" role="alert">{pgnError}</p>}
+      </section>}
+
+      {(challenge?.status === 'accepted' && challenge.yourSeat !== null || imported !== null)
+        && <section className="game-area" aria-labelledby="game-title">
+        <h1 id="game-title" className="visually-hidden">{imported ? 'Imported game analysis' : 'Chess game'}</h1>
         {game === null && gameError === null && <p role="status">Loading the confirmed position…</p>}
         {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
@@ -1094,7 +1157,8 @@ export function App() {
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
               {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
                 <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
-                  title="Board marks and orientation are saved only in this browser.">
+                  title={imported === null ? 'Board marks and orientation are saved only in this browser.'
+                    : 'Board marks and orientation last until this page is reloaded.'}>
                   <button type="button" className="secondary" onClick={() =>
                     setAnalysisBoard(current => current?.gameId === game.id
                       ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>
@@ -1126,17 +1190,20 @@ export function App() {
                 : liveBrowsingHistory ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
                   : canMove ? 'Select or drag one of your pieces.'
                   : 'Select Analysis to explore legal alternatives.'}</p>}
-              <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
+              {imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
-                : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>
+                : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>}
               {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              <ClockPanel clock={game.clocks} side={topSide}
+              {imported !== null ? <div className="imported-player">{topSide === 'white' ? 'White' : 'Black'}
+                <strong>{imported.headers[topSide === 'white' ? 'White' : 'Black'] ?? 'Unknown player'}</strong>
+              </div> : <ClockPanel clock={game.clocks} side={topSide}
                 isYou={topSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined} />
+                  game.timeControl.initialMs, game.clocks !== null) : undefined} />}
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
                 selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
                 onSelectPly={ply => {
@@ -1224,7 +1291,13 @@ export function App() {
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {result !== null ? <FinishedResultArea key={game.id} score={result.score}
+                {imported !== null ? <div className="imported-result">
+                  <strong>{importedResultText(imported)}</strong>
+                  {imported.headers.Event && <span>{imported.headers.Event}</span>}
+                  {imported.headers.Date && <span>{imported.headers.Date}</span>}
+                  <details><summary>PGN headers</summary><dl>{Object.entries(imported.headers).map(([key, value]) =>
+                    <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></details>
+                </div> : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
@@ -1328,14 +1401,16 @@ export function App() {
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div>
-              <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+              {imported !== null ? <div className="imported-player">{bottomSide === 'white' ? 'White' : 'Black'}
+                <strong>{imported.headers[bottomSide === 'white' ? 'White' : 'Black'] ?? 'Unknown player'}</strong>
+              </div> : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                 historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined} />
+                  game.timeControl.initialMs, game.clocks !== null) : undefined} />}
             </aside>
           </div>
         </>}
       </section>}
-      {challenge?.status !== 'accepted' && <footer>Play with focus. Learn from every game.</footer>}
+      {challenge?.status !== 'accepted' && imported === null && <footer>Play with focus. Learn from every game.</footer>}
     </main>
   );
 }

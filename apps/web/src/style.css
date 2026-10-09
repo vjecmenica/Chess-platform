@@ -30,6 +30,23 @@ label { display: block; margin: 16px 0 7px; font-size: 14px; font-weight: 600; }
 input { display: block; width: 100%; padding: 10px; border: 1px solid #a9b8a8; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
 input:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid #a47a37; outline-offset: 3px; }
 .notice button { margin-top: 12px; }
+.pgn-import { margin-top: 18px; max-width: 760px; }
+.pgn-import textarea { display: block; width: 100%; min-height: 110px; resize: vertical;
+  padding: 10px; border: 1px solid #a9b8a8; border-radius: 6px;
+  color: inherit; background: #fff; font: inherit; }
+.pgn-import textarea:focus-visible, .pgn-import input:focus-visible {
+  outline: 3px solid #a47a37; outline-offset: 2px; }
+.imported-player { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 9px 11px; border-bottom: 1px solid #d2d9cb; font-size: 13px; }
+.imported-player strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imported-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px;
+  font-size: 13px; }
+.imported-result > strong { font-size: 17px; }
+.imported-result details { flex-basis: 100%; }
+.imported-result dl { margin: 6px 0; max-height: 140px; overflow: auto; }
+.imported-result dl div { display: flex; gap: 8px; }
+.imported-result dt { font-weight: 700; }
+.imported-result dd { margin: 0; overflow-wrap: anywhere; }
 button { border: 1px solid #143d30; background: #143d30; color: white; border-radius: 6px; padding: 9px 13px; font: inherit; font-size: 14px; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .6; }
 button:focus-visible { outline: 3px solid #a47a37; outline-offset: 3px; }

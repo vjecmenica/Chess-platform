@@ -17,6 +17,8 @@ Selecting a piece on your turn marks its legal destinations; captures have a sep
 The Masters tab is currently unavailable while its [data source and access policy](docs/masters-explorer.md)
 are reviewed. It makes no external requests and asks for no Lichess connection.
 
+To analyze a local game, use **Analyze a PGN** on the home page: choose a `.pgn` file or paste its text. Import validates the standard-start main line, headers, and result, then opens the same board, variations, Stockfish, and Review controls. Imported games and their analysis notes last only until this browser page is closed or reloaded; nothing is uploaded or saved to the game database. PGNs with comments, variations, annotations, or custom starting positions are rejected with a clear message for this first version. PGN export is not available yet.
+
 ## Local setup
 
 Run all commands from the repository root. Use Node.js **22.12+ in the 22.x line, or 24.x LTS**, with npm 10 or newer. The lockfile records the exact dependency versions. The setup was checked with Node.js 22.22.3 and npm 10.9.8 on Windows.

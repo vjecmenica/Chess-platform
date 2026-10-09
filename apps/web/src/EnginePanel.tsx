@@ -135,12 +135,13 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, reviewHost }: {
+  onEvaluationChange, reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
   readonly reviewHost?: HTMLElement | null;
+  readonly sessionOnly?: boolean;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
@@ -184,7 +185,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   useEffect(() => {
     let storage: Storage | undefined;
-    try { storage = window.localStorage; } catch { /* Analysis still works without storage. */ }
+    if (!sessionOnly) {
+      try { storage = window.localStorage; } catch { /* Analysis still works without storage. */ }
+    }
     cache.current = new EngineCache(storage);
     controller.current = new EngineController(
       () => new Worker(engineWorkerUrl) as EngineWorker, setState, cache.current);
