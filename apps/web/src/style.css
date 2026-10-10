@@ -68,8 +68,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 /* Captures never participate in the player panel's size or grid placement. */
 .player-material-row { position: absolute; left: 0; right: 0;
   display: flex; align-items: center; gap: 6px; height: 33px; }
-.player-material-top > .player-material-row { bottom: 100%; }
-.player-material-bottom > .player-material-row { top: 100%; }
+.player-material-top > .player-material-row { bottom: calc(100% + 16px); }
+.player-material-bottom > .player-material-row { top: calc(100% + 16px); }
 .player-material-row .captured-row { flex: 1 1 auto; }
 .analysis-footer-row { display: flex; align-items: center; gap: 6px; min-width: 0;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
