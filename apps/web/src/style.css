@@ -51,7 +51,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .challenge-page { max-width: 1660px; padding: 10px 18px 18px; }
 .game-area { margin-top: 10px; }
 .game-layout {
-  --board-top-offset: 0px;
+  --board-top-offset: 36px;
   display: grid;
   grid-template-columns: minmax(0, min(var(--board-column-size, 754px), calc(100% - 338px))) minmax(320px, 380px);
   justify-content: center;
@@ -61,10 +61,15 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   margin: 0 auto;
 }
 .game-layout.analysis-workspace { align-items: stretch; }
-.play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+.play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end;
+  padding-top: var(--board-top-offset); }
 .board-stage { display: flex; justify-content: flex-end; align-items: flex-start; width: 100%; min-width: 0; }
-.player-material-panel { min-width: 0; }
-.player-material-row { display: flex; align-items: center; gap: 6px; height: 33px; }
+.player-material-panel { position: relative; min-width: 0; }
+/* Captures never participate in the player panel's size or grid placement. */
+.player-material-row { position: absolute; left: 0; right: 0;
+  display: flex; align-items: center; gap: 6px; height: 33px; }
+.player-material-top > .player-material-row { bottom: 100%; }
+.player-material-bottom > .player-material-row { top: 100%; }
 .player-material-row .captured-row { flex: 1 1 auto; }
 .analysis-footer-row { display: flex; align-items: center; gap: 6px; min-width: 0;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
@@ -173,7 +178,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   border: 1px solid #d2d9cb;
   border-radius: 10px;
   background: #fffdf8;
-  overflow-y: auto;
+  overflow: visible;
 }
 .clock { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; min-width: 0; padding: 9px 12px; border: 1px solid #b8c7b5; border-radius: 8px; background: #f4f6ef; }
 .clock-active { border-color: #143d30; background: #e4eddf; box-shadow: inset 3px 0 #143d30; }
@@ -419,13 +424,14 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .game-layout.analysis-workspace { grid-template-columns: minmax(0, 1fr); }
   .play-column { align-items: stretch; }
   .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .analysis-footer-row, .engine-panel { width: min(100%, calc(100dvh - 90px), 680px); margin-left: auto; margin-right: auto; }
-  .game-sidebar { height: auto; min-height: 0; margin-top: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
+  .game-sidebar { height: auto; min-height: 0; margin-top: 33px; margin-bottom: 33px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-template-areas: "opponent self" "controls controls" "moves moves"; }
   .game-sidebar { overflow-y: visible; }
   .analysis-workspace .game-sidebar { display: flex; flex-direction: column; height: auto; }
   .analysis-workspace .engine-panel { width: 100%; }
   .analysis-workspace .move-panel { flex: none; height: min(360px, 45dvh); }
   .game-sidebar > .player-material-top { grid-area: opponent; }
   .game-sidebar > .player-material-bottom { grid-area: self; }
+  .game-layout:not(.analysis-workspace) .player-material-bottom { margin-bottom: 33px; }
   .game-controls { grid-area: controls; }
   .move-panel { grid-area: moves; height: var(--board-row-height, 360px); min-height: 0; }
   .moves { max-height: none; }

@@ -14,7 +14,7 @@ export function PlayerMaterialPanel({ side, pieces, advantage, placement, childr
 }) {
   const row = <div className="player-material-row">
     <CapturedRow side={side} pieces={pieces} placement={placement} />
-    <MaterialTotal advantage={advantage} bottomSide={side} />
+    {placement === 'bottom' && <MaterialTotal advantage={advantage} bottomSide={side} />}
   </div>;
   return <div className={`player-material-panel player-material-${placement}`}>
     {placement === 'top' && row}

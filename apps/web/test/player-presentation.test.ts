@@ -48,10 +48,13 @@ describe('shared game presentation', () => {
 
   it('aligns the board and sidebar on desktop and removes the offset when stacked', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/--board-top-offset: 0px/);
+    expect(css).toMatch(/--board-top-offset: 36px/);
     expect(css).toMatch(/\.captured-row \{[^}]*height: 33px/);
+    expect(css).toMatch(/\.player-material-row \{ position: absolute/);
+    expect(css).toMatch(/\.player-material-top > \.player-material-row \{ bottom: 100%/);
+    expect(css).toMatch(/\.player-material-bottom > \.player-material-row \{ top: 100%/);
     expect(css).toMatch(/\.game-sidebar \{[^}]*margin-top: var\(--board-top-offset\)/);
-    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 0/);
+    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 33px/);
     expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
     expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
     expect(css).toMatch(/\.player-rating \{[^}]*font-size: 14px; font-weight: 600/);
@@ -71,8 +74,12 @@ describe('shared game presentation', () => {
         const player = html.indexOf('player-label');
         expect(placement === 'top' ? material < player : material > player).toBe(true);
         expect(html).toContain(side === 'white' ? 'Captured black rook' : 'Captured white rook');
-        expect(html).toContain(side === 'white' ? 'White material balance +2' : 'Black material balance -2');
-        expect(html.match(/material-total/g)).toHaveLength(1);
+        if (placement === 'bottom') {
+          expect(html).toContain(side === 'white' ? 'White material balance +2' : 'Black material balance -2');
+          expect(html.match(/material-total/g)).toHaveLength(1);
+        } else {
+          expect(html).not.toContain('material-total');
+        }
       }
     }
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
@@ -100,7 +107,8 @@ describe('shared game presentation', () => {
       }));
       expect(html).toContain(clockHtml);
       expect(html.match(/Captured white knight/g)).toHaveLength(2);
-      expect(html).toContain('Black material balance +6');
+      if (placement === 'bottom') expect(html).toContain('Black material balance +6');
+      else expect(html).not.toContain('material-total');
       const row = html.indexOf('player-material-row');
       const clock = html.indexOf(clockHtml);
       expect(placement === 'top' ? row < clock : row > clock).toBe(true);
