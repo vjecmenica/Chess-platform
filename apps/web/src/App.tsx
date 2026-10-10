@@ -7,7 +7,7 @@ import { availableClaimForPlayer } from './draw-claim-control';
 import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
   legalMoveHints, pieceAt, pieceImage } from './board-interaction';
 import { boardCoordinates, capturedPieces, highlightedMove, materialAdvantage } from './board-display';
-import { CapturedRow, MaterialTotal } from './CapturedMaterial';
+import { PlayerMaterialPanel } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows } from './BoardArrows';
 import { analysisBoardStorageKey, annotationColors, boardOrientation,
@@ -1087,8 +1087,6 @@ export function App() {
               }),
             } as CSSProperties}>
             <div className="play-column">
-              {captured !== null && <CapturedRow side={topSide} pieces={captured[topSide]}
-                placement="top" />}
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
@@ -1162,11 +1160,6 @@ export function App() {
                   }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
-              {captured !== null &&
-                <div className={`material-below${analysisOpen ? ' analysis-material-below' : ''}`}>
-                  <CapturedRow side={bottomSide} pieces={captured[bottomSide]} placement="bottom" />
-                  {!analysisOpen && <MaterialTotal advantage={material} bottomSide={bottomSide} />}
-                </div>}
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
@@ -1201,7 +1194,6 @@ export function App() {
                     Clear marks
                   </button>
                   </div>
-                  <MaterialTotal advantage={material} bottomSide={bottomSide} />
                 </div>}
               {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
                 ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
@@ -1213,12 +1205,15 @@ export function App() {
               {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
-                : <ClockPanel clock={game.clocks} side={topSide}
-                isYou={topSide === game.yourSeat}
-                showStatus={!analysisOpen && game.status !== 'finished'}
-                historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+              <PlayerMaterialPanel side={topSide} pieces={captured?.[topSide] ?? []}
+                advantage={material} placement="top">
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
+                  : <ClockPanel clock={game.clocks} side={topSide}
+                  isYou={topSide === game.yourSeat}
+                  showStatus={!analysisOpen && game.status !== 'finished'}
+                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
+                    game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+              </PlayerMaterialPanel>
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
@@ -1418,11 +1413,14 @@ export function App() {
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div>
-              {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
-                : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
-                showStatus={!analysisOpen && game.status !== 'finished'}
-                historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                  game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+              <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
+                advantage={material} placement="bottom">
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
+                  : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                  showStatus={!analysisOpen && game.status !== 'finished'}
+                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
+                    game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+              </PlayerMaterialPanel>
             </aside>
           </div>
         </>}

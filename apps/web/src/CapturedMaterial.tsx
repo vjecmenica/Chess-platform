@@ -1,10 +1,27 @@
 import type { GameSide } from '@chess/contracts';
+import type { ReactNode } from 'react';
 import { pieceImage } from './board-interaction';
 import type { CapturedPiece } from './board-display';
 
 const names: Readonly<Record<CapturedPiece, string>> = {
   q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn',
 };
+
+export function PlayerMaterialPanel({ side, pieces, advantage, placement, children }: {
+  side: GameSide; pieces: readonly CapturedPiece[];
+  advantage: { side: GameSide; points: number } | null;
+  placement: 'top' | 'bottom'; children: ReactNode;
+}) {
+  const row = <div className="player-material-row">
+    <CapturedRow side={side} pieces={pieces} placement={placement} />
+    <MaterialTotal advantage={advantage} bottomSide={side} />
+  </div>;
+  return <div className={`player-material-panel player-material-${placement}`}>
+    {placement === 'top' && row}
+    {children}
+    {placement === 'bottom' && row}
+  </div>;
+}
 
 export function CapturedRow({ side, pieces, placement }: {
   side: GameSide; pieces: readonly CapturedPiece[]; placement: 'top' | 'bottom';

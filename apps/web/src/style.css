@@ -51,7 +51,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .challenge-page { max-width: 1660px; padding: 10px 18px 18px; }
 .game-area { margin-top: 10px; }
 .game-layout {
-  --board-top-offset: 36px;
+  --board-top-offset: 0px;
   display: grid;
   grid-template-columns: minmax(0, min(var(--board-column-size, 754px), calc(100% - 338px))) minmax(320px, 380px);
   justify-content: center;
@@ -63,25 +63,16 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .game-layout.analysis-workspace { align-items: stretch; }
 .play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
 .board-stage { display: flex; justify-content: flex-end; align-items: flex-start; width: 100%; min-width: 0; }
-.captured-top, .material-below { width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
-  padding-left: 14px; }
-.captured-top { margin-bottom: 3px; }
-.material-below { display: flex; align-items: center; justify-content: space-between;
-  gap: 6px; min-width: 0; height: 34px; margin-top: 1px; }
-.analysis-material-below { margin-top: -8px; }
-.analysis-material-below:has(.captured-bottom:empty) { display: none; }
-/* Keep Review in place when the empty 34px strip and its -8px margin collapse. */
-.analysis-material-below:has(.captured-bottom:empty) ~ .analysis-footer-row { margin-bottom: calc(34px - 8px); }
+.player-material-panel { min-width: 0; }
+.player-material-row { display: flex; align-items: center; gap: 6px; height: 33px; }
+.player-material-row .captured-row { flex: 1 1 auto; }
 .analysis-footer-row { display: flex; align-items: center; gap: 6px; min-width: 0;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
   padding-left: 14px; }
-.analysis-footer-row .material-total { flex: 0 0 auto; align-self: flex-start; margin-top: 8px; }
 .captured-row { display: flex; align-items: center; min-width: 0; height: 33px; max-width: 100%; }
 .captured-row img { display: block; width: 32px; height: 32px; min-width: 0;
   flex: 0 1 32px; margin-right: -8px; }
 .captured-row img:last-child { margin-right: 0; }
-.captured-top.captured-black img { transform: translateY(2px); }
-.captured-bottom.captured-black img { transform: translateY(-2px); }
 .material-total { margin-left: auto; font-size: 15px; font-weight: 750;
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .material-positive { color: #205d3d; }
@@ -433,8 +424,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .analysis-workspace .game-sidebar { display: flex; flex-direction: column; height: auto; }
   .analysis-workspace .engine-panel { width: 100%; }
   .analysis-workspace .move-panel { flex: none; height: min(360px, 45dvh); }
-  .game-sidebar > .clock:first-child { grid-area: opponent; }
-  .game-sidebar > .clock:last-child { grid-area: self; }
+  .game-sidebar > .player-material-top { grid-area: opponent; }
+  .game-sidebar > .player-material-bottom { grid-area: self; }
   .game-controls { grid-area: controls; }
   .move-panel { grid-area: moves; height: var(--board-row-height, 360px); min-height: 0; }
   .moves { max-height: none; }

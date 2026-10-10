@@ -106,9 +106,6 @@ describe('board display', () => {
     expect(emptyBottom).toContain('captured-bottom');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.captured-row \{[^}]*height: 33px/);
-    expect(css).toMatch(/\.material-below \{[^}]*height: 34px; margin-top: 1px/);
-    expect(css).toMatch(/\.captured-top\.captured-black img \{ transform: translateY\(2px\)/);
-    expect(css).toMatch(/\.captured-bottom\.captured-black img \{ transform: translateY\(-2px\)/);
     expect(blackTop).not.toContain('captured-player');
     expect(blackTop).toContain('captured-black');
   });
