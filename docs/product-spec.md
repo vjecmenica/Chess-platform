@@ -65,7 +65,7 @@ The graph shows White's evaluation after every half-move, visually clipped at ±
 
 The board-width review area holds the controls, progress, graph, and per-player summary. The summary counts inaccuracies, mistakes, and blunders and averages only moves with numeric CPL; it shows no average when none qualify. Graph points and nonzero summary counts can navigate to a saved main-line position. The existing move list shows **?!** for Inaccuracy, **?** for Mistake, **??** for Blunder, and **Mate eval** where a mate score prevents numeric CPL. Strong and Good remain internal review categories but do not appear as move badges. These review indicators are separate from manually entered PGN NAGs and comments; they do not change or replace either annotation.
 
-Numerical accuracy, aggregation across a game, richer move-quality labels, multi-line engine comparison, persistent review records, and a server background job remain open. Before adding accuracy, define its formula, exclusions, mate handling, versioning, and validation games. A server job will also need durable retry and deduplication behavior.
+The completed summary also shows White and Black accuracy under [local-win-accuracy-v1](accuracy-method.md). It reuses the same evaluations, converts them into the moving player's win percentages, and combines volatility-weighted and harmonic means. The documented local window and mate conventions make this a local estimate, not exact Lichess parity, an Elo rating, or a measure of established strength. Richer move-quality labels, multi-line engine comparison, persistent review records, broader accuracy calibration, and a server background job remain open. A server job will also need durable retry and deduplication behavior.
 
 Engine and AI advice must not be available to players during an active game. This must be enforced at server entry points as well as in the interface. The exact scope of restrictions on other analysis pages, and the limits of controlling browser engines or outside tools, need an explicit fair-play policy.
 
@@ -120,7 +120,7 @@ Acceptance criteria:
 
 **Ratings and matchmaking.** Select initial rating, rating deviation (RD), volatility, tau, rating periods, inactivity treatment, provisional status, and abandoned/voided-game rules. Updating after every match is not automatically the same as the intended Glicko-2 method. Choose the initial search range, widening interval and amount, waiting limit, cancellation behavior, and treatment of new players. FIFO among mutually compatible candidates is a suggestion.
 
-**Analysis and review.** Choose browser versus server engine execution, CPU/memory budgets, the multiple-line (MultiPV) limit, caching, and package licensing before interactive analysis. Set and validate the accuracy formula, move labels, thresholds, and versioning before full game review.
+**Analysis and review.** Choose browser versus server engine execution, CPU/memory budgets, the multiple-line (MultiPV) limit, caching, and package licensing before interactive analysis. The local accuracy and CPL methods are versioned; validate them more broadly before comparing players or producing long-term analytics.
 
 **Fair play and privacy.** Define restrictions while a player has an active game, including access to analysis of other finished games and puzzles with advice. Address reporting and moderation before public rated play. Set puzzle licensing and personal-game privacy rules before puzzles and AI explanations ship.
 

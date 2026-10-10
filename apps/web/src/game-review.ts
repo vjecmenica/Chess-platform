@@ -1,5 +1,6 @@
 import type { GameReadResponse } from '@chess/contracts';
 import { replayFen } from './board-model';
+import { calculateGameAccuracy, type GameAccuracy } from './game-accuracy';
 import { EngineCache, EngineController, type EngineEvaluation, type EngineState,
   type EngineWorker } from './engine-analysis';
 
@@ -18,6 +19,7 @@ export interface GameReview {
   readonly method: typeof reviewMethodVersion;
   readonly evaluations: readonly EngineEvaluation[];
   readonly moves: readonly ReviewedMove[];
+  readonly accuracy: GameAccuracy;
 }
 
 export function reviewBadge(label: ReviewedMove['label']): string | null {
@@ -92,7 +94,8 @@ export function buildGameReview(game: GameReadResponse,
     return { ply: move.ply, san: move.san, side: move.side, lossCp,
       label: lossCp === null ? 'Mate score' : moveLabel(lossCp) };
   });
-  return { method: reviewMethodVersion, evaluations, moves };
+  return { method: reviewMethodVersion, evaluations, moves,
+    accuracy: calculateGameAccuracy(evaluations, moves.map(move => move.side)) };
 }
 
 export interface ReviewProgress { readonly completed: number; readonly total: number;

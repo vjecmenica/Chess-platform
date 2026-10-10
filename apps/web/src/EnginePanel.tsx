@@ -6,11 +6,24 @@ import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
   type EngineLine, type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
+import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
 
 type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
+
+export function AccuracyEstimate({ result }: { readonly result: PlayerAccuracy }) {
+  const explanation = result.unavailable === 'no_moves' ? 'No moves by this player.'
+    : result.unavailable === 'missing_evaluation' ? 'A complete set of valid evaluations is required.'
+      : `Local engine estimate from ${result.moveCount} moves.`;
+  return <span className="review-average" data-accuracy-method={result.method}
+    title={`${result.method}. ${explanation}`}>
+    <b aria-label={result.value === null ? `Accuracy unavailable. ${explanation}`
+      : `Accuracy ${result.value.toFixed(1)} percent`}>{result.value === null ? '—' : `${result.value.toFixed(1)}%`}</b>
+    <small>Local accuracy</small>
+  </span>;
+}
 export function interactiveLimits(depth: number | null, timeMs: number | null): SearchLimits {
   return depth === null && timeMs === null ? { mode: 'infinite' }
     : { mode: 'bounded', depth, timeMs };
@@ -354,6 +367,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           const summary = reviewSummary(review.review, side);
           return <div key={side} className="review-player">
             <strong>{side === 'white' ? 'White' : 'Black'}</strong>
+            <AccuracyEstimate result={review.review.accuracy[side]} />
             <span className="review-average"><b>{summary.averageLossCp === null ? '—'
               : `${summary.averageLossCp} cp`}</b><small>Average centipawn loss</small></span>
             {(['inaccuracy', 'mistake', 'blunder'] as const).map(kind => {
@@ -369,6 +383,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           </div>;
         })}
       </div>
+      <small>Accuracy is a local engine estimate, not an Elo rating or a measure of established strength.{' '}
+        <a href="https://github.com/vjecmenica/Chess-platform/blob/main/docs/accuracy-method.md"
+          target="_blank" rel="noreferrer">{accuracyMethodVersion}</a>
+      </small>
     </div>}
     </div>, reviewHost)}
   </section>;
