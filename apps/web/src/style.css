@@ -69,6 +69,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .material-below { display: flex; align-items: center; justify-content: space-between;
   gap: 6px; min-width: 0; height: 34px; margin-top: 1px; }
 .analysis-material-below { margin-top: -8px; }
+.analysis-material-below:has(.captured-bottom:empty) { display: none; }
+/* Keep Review in place when the empty 34px strip and its -8px margin collapse. */
+.analysis-material-below:has(.captured-bottom:empty) ~ .analysis-footer-row { margin-bottom: calc(34px - 8px); }
 .analysis-footer-row { display: flex; align-items: center; gap: 6px; min-width: 0;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
   padding-left: 14px; }
