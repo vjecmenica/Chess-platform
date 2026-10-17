@@ -6,6 +6,25 @@ import { importPgn, importPgnFile, importedResultDisplay } from '../src/pgn-impo
 import { reviewPositions } from '../src/game-review';
 
 describe('local PGN analysis', () => {
+  it('preserves a PGN time control without treating it as an on-site clock', () => {
+    for (const tag of ['600+5', '40/7200:3600+30']) {
+      const imported = importPgn(`[TimeControl "${tag}"]\n\n1. e4 e5 *`, `tc-${tag}`);
+      expect(imported.headers.TimeControl).toBe(tag);
+      expect(imported.game.timeControl).toEqual({ source: 'pgn', raw: tag });
+      expect(reviewPositions(imported.game)).toHaveLength(3);
+    }
+  });
+
+  it('leaves an absent or unknown PGN time control unknown', () => {
+    const absent = importPgn('1. d4 d5 *', 'absent');
+    expect(absent.headers.TimeControl).toBeUndefined();
+    expect(absent.game.timeControl).toBeNull();
+
+    const unknown = importPgn('[TimeControl "-"]\n\n1. d4 d5 *', 'unknown');
+    expect(unknown.headers.TimeControl).toBe('-');
+    expect(unknown.game.timeControl).toBeNull();
+  });
+
   it('reads a real .pgn file and opens its legal main line for analysis', async () => {
     const bytes = readFileSync(new URL('./fixtures/club-match.pgn', import.meta.url));
     const file = new File([bytes], 'club-match.pgn', { type: 'application/x-chess-pgn' });

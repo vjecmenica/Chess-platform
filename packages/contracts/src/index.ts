@@ -63,7 +63,8 @@ export interface GameState {
     readonly deadlineMs: number } | { readonly kind: 'resignation'; readonly resigningSide: GameSide };
   readonly clocks: ClockState | null;
   readonly clockStatus: 'not_integrated' | 'authoritative';
-  readonly timeControl: { readonly initialMs: 300_000; readonly incrementMs: 3_000 };
+  readonly timeControl: { readonly initialMs: 300_000; readonly incrementMs: 3_000 }
+    | { readonly source: 'pgn'; readonly raw: string } | null;
   readonly rated: false;
   readonly yourSeat: GameSide;
 }

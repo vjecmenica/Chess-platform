@@ -1212,7 +1212,8 @@ export function App() {
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                    game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+                    game.timeControl !== null && 'initialMs' in game.timeControl
+                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
               </PlayerMaterialPanel>
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}
@@ -1419,7 +1420,8 @@ export function App() {
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                    game.timeControl.initialMs, game.clocks !== null) : undefined} />}
+                    game.timeControl !== null && 'initialMs' in game.timeControl
+                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
               </PlayerMaterialPanel>
             </aside>
           </div>

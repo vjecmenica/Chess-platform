@@ -3,8 +3,8 @@ import type { ClockState, GameSide, SavedMove } from '@chess/contracts';
 import { PlayerIdentity } from './PlayerIdentity';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
-  side: GameSide, initialMs: number, timed: boolean): number | null {
-  if (!timed) return null;
+  side: GameSide, initialMs: number | null, timed: boolean): number | null {
+  if (!timed || initialMs === null) return null;
   for (let index = Math.min(ply, history.length) - 1; index >= 0; index -= 1) {
     if (history[index]!.side === side) return history[index]!.remainingMsAfterMove;
   }

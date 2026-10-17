@@ -9,6 +9,7 @@ export interface ImportedGame {
 
 export function importPgn(text: string, id: string): ImportedGame {
   const parsed = parsePgn(text);
+  const timeControlTag = parsed.headers.TimeControl;
   const result = parsed.result === '*' ? null : parsed.result === '1/2-1/2'
     ? { outcome: 'draw' as const, reason: 'pgn_import' }
     : { outcome: 'win' as const, reason: 'pgn_import',
@@ -21,7 +22,8 @@ export function importPgn(text: string, id: string): ImportedGame {
       drawOffer: null, claimDrawOffer: null, availableDrawClaims: [],
       timeoutAdjudication: null, drawOfferNextEligiblePly: { white: 2, black: 2 },
       clocks: null, clockStatus: 'not_integrated',
-      timeControl: { initialMs: 300_000, incrementMs: 3_000 },
+      timeControl: timeControlTag?.trim() && timeControlTag.trim() !== '-'
+        ? { source: 'pgn', raw: timeControlTag } : null,
       rated: false, yourSeat: 'white',
       history: parsed.moves.map(move => ({ ...move, remainingMsAfterMove: null })),
     },
