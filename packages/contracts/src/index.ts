@@ -15,7 +15,7 @@ export interface ChallengeSummary {
   readonly game: { readonly id: string | null;
     readonly status: 'not_created' | 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted';
     readonly clocks: 'not_integrated' | 'authoritative'; readonly rated: false;
-    readonly initialMs: 300_000; readonly incrementMs: 3_000 };
+    readonly initialMs: number; readonly incrementMs: number };
   readonly createdAt: string;
 }
 
@@ -63,7 +63,7 @@ export interface GameState {
     readonly deadlineMs: number } | { readonly kind: 'resignation'; readonly resigningSide: GameSide };
   readonly clocks: ClockState | null;
   readonly clockStatus: 'not_integrated' | 'authoritative';
-  readonly timeControl: { readonly initialMs: 300_000; readonly incrementMs: 3_000 }
+  readonly timeControl: { readonly initialMs: number; readonly incrementMs: number }
     | { readonly source: 'pgn'; readonly raw: string } | null;
   readonly rated: false;
   readonly yourSeat: GameSide;
@@ -89,3 +89,5 @@ export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {
   readonly bonusMs: number;
   readonly move?: SavedMove;
 }
+export { timeControlPresets, defaultTimeControl, isTimeControlId } from './time-controls.js';
+export type { TimeControlId } from './time-controls.js';

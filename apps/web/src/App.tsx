@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
+import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
+import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { availableClaimForPlayer } from './draw-claim-control';
@@ -56,7 +58,8 @@ const errors: Record<string, string> = {
   game_finished: 'The game has finished. The position will be refreshed.',
   game_aborted: 'The game was aborted. The position will be refreshed.',
   first_move_deadline_elapsed: 'The first-move deadline passed. The game was aborted.',
-  request_id_conflict: 'This retry ID was used for a different move. Refresh the page.',
+  request_id_conflict: 'This retry ID was used for a different request. Refresh the page.',
+  invalid_time_control: 'Choose one of the supported time controls.',
   clock_not_started: 'Both guests must press Ready before White’s clock starts.',
   received_before_turn: 'This move arrived before your turn began. The position will be refreshed.',
   flag_fell: 'The server recorded a flag at the clock deadline. The position will be refreshed.',
@@ -151,6 +154,7 @@ export function App() {
   const [submitting, setSubmitting] = useState(false);
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
+  const [selectedTimeControl, setSelectedTimeControl] = useState<TimeControlId>(defaultTimeControl);
   const promotionFocus = useRef<HTMLButtonElement | null>(null);
   const resignFocus = useRef<HTMLButtonElement | null>(null);
   const challengeFetch = useRef<Promise<void> | null>(null);
@@ -446,7 +450,9 @@ export function App() {
     try {
       const created = await responseBody<ChallengeSummary>(await fetch('/api/challenges', {
         method: 'POST',
-        headers: { 'Idempotency-Key': createRequestId.current, 'X-CSRF-Token': session.csrfToken },
+        headers: { 'Idempotency-Key': createRequestId.current, 'X-CSRF-Token': session.csrfToken,
+          'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeControl: selectedTimeControl }),
       }));
       window.location.assign(created.path);
     } catch (cause) {
@@ -1028,13 +1034,20 @@ export function App() {
         {session === null && error === null && <p role="status">Starting your guest session…</p>}
         {error !== null && <p className="error" role="alert">{error}</p>}
         {challengeId === null && session !== null && (
+          <>
+          <TimeControlSelect value={selectedTimeControl} disabled={busy} onChange={value => {
+            setSelectedTimeControl(value);
+            createRequestId.current = null;
+          }} />
           <button type="button" disabled={busy} onClick={() => void createChallenge()}>
             {busy ? 'Creating…' : 'Create challenge'}
           </button>
+          </>
         )}
         {challenge !== null && <details className="challenge-details" open>
           <summary>Challenge details</summary>
           <p className="status">Waiting for a second guest</p>
+          <p>Casual · {timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)}</p>
           <div className="seats">
             <p>White <strong>{challenge.yourSeat === 'white' ? 'You' : 'Occupied'}</strong></p>
             <p>Black <strong>{challenge.yourSeat === 'black' ? 'You' : challenge.seats.black === 'open' ? 'Open' : 'Occupied'}</strong></p>
@@ -1201,7 +1214,7 @@ export function App() {
                   : 'Select Analysis to explore legal alternatives.'}</p>}
               {!analysisOpen && imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
-                : '5+3 server clock · Time continues through disconnects and server outages. The server decides deadlines.'}</p>}
+                : `${timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)} server clock · Time continues through disconnects and server outages. The server decides deadlines.`}</p>}
               {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">

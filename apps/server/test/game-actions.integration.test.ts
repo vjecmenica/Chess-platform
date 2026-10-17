@@ -274,7 +274,10 @@ describe('guest game actions against PostgreSQL', () => {
     await atBarrier;
     time.set(deadline + 5000);
     await timer.heartbeat();
-    expect(await timer.pollDueGames()).toBe(0);
+    await timer.pollDueGames();
+    // Other fixtures may also be due; this receipt must protect its own game.
+    expect((await pool.query('SELECT status, version FROM chess.games WHERE id = $1', [id])).rows[0])
+      .toMatchObject({ status: 'active', version: 3 });
     release();
     expect((await response).json()).toMatchObject({ accepted: true,
       game: { status: 'finished', result: { reason: 'agreement' }, clocks: { phase: 'stopped' } } });

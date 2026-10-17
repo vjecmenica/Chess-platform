@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { ChallengeSummary, GuestSessionResponse } from '@chess/contracts';
+import { defaultTimeControl, isTimeControlId, timeControlPresets, type TimeControlId } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { createGuest, currentGuest, requireGuest } from './guest-session.js';
 
@@ -16,6 +17,7 @@ interface ChallengeRow {
   creator_guest_id: string;
   acceptor_guest_id: string | null;
   created_at: Date;
+  time_control: TimeControlId;
   game_status: 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted' | null;
   clock_mode: 'legacy_untimed' | 'five_plus_three' | null;
 }
@@ -31,14 +33,14 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
     game: { id: row.game_status === null ? null : row.id,
       status: row.game_status ?? 'not_created',
       clocks: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
-      rated: false, initialMs: 300_000, incrementMs: 3_000 },
+      rated: false, ...timeControlPresets[row.time_control] },
     createdAt: row.created_at.toISOString(),
   };
 }
 
 async function findChallenge(query: Pick<pg.Pool, 'query'>, id: string): Promise<ChallengeRow | null> {
   const { rows } = await query.query<ChallengeRow>(
-    `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at,
+    `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at, c.time_control,
       g.status AS game_status, g.clock_mode
       FROM chess.challenges c LEFT JOIN chess.games g ON g.id = c.id WHERE c.id = $1`, [id],
   );
@@ -61,17 +63,23 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
     reply.header('Cache-Control', 'no-store');
     const guest = await requireGuest(pool, request, reply, true);
     if (guest === null) return;
-    if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
+    const body = request.body;
+    const timeControl = body === undefined ? defaultTimeControl
+      : typeof body === 'object' && body !== null && !Array.isArray(body)
+        && Object.keys(body).length === 1 && 'timeControl' in body ? body.timeControl : null;
+    if (!isTimeControlId(timeControl)) return reply.code(400).send({ error: 'invalid_time_control' });
     const requestId = request.headers['idempotency-key'];
     if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
     const { rows } = await pool.query<ChallengeRow>(
-      `INSERT INTO chess.challenges (id, creator_guest_id, create_request_id)
-        VALUES ($1, $2, $3)
+      `INSERT INTO chess.challenges (id, creator_guest_id, create_request_id, time_control)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (creator_guest_id, create_request_id)
         DO UPDATE SET create_request_id = EXCLUDED.create_request_id
-        RETURNING id, creator_guest_id, acceptor_guest_id, created_at`,
-      [randomUUID(), guest.id, requestId],
+        RETURNING id, creator_guest_id, acceptor_guest_id, created_at, time_control`,
+      [randomUUID(), guest.id, requestId, timeControl],
     );
+    if (rows[0]!.time_control !== timeControl)
+      return reply.code(409).send({ error: 'request_id_conflict' });
     const row = await findChallenge(pool, rows[0]!.id);
     if (row === null) throw new Error('The created challenge could not be read.');
     return reply.code(200).send(summary(row, guest.id));
@@ -101,19 +109,21 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
       let row: ChallengeRow | null;
       try {
         await client.query('BEGIN');
-        const changed = await client.query<{ id: string }>(
+        const changed = await client.query<{ id: string; time_control: TimeControlId }>(
           `UPDATE chess.challenges SET acceptor_guest_id = $2, accepted_at = now()
             WHERE id = $1 AND acceptor_guest_id IS NULL AND creator_guest_id <> $2
-            RETURNING id`, [request.params.id, guest.id],
+            RETURNING id, time_control`, [request.params.id, guest.id],
         );
         if (changed.rowCount === 1) {
           const acceptedAtMs = trustedNowMs();
+          const preset = timeControlPresets[changed.rows[0]!.time_control];
           await client.query(
             `INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status,
-                clock_mode, clock_phase, clock_start_mode, white_first_move_deadline_at)
+                clock_mode, clock_phase, clock_start_mode, white_first_move_deadline_at,
+                white_remaining_ms, black_remaining_ms)
               VALUES ($1, $2, $2, 'white', 'active', 'five_plus_three',
-                'awaiting_first_move', 'first_move_grace', $3)`,
-            [request.params.id, STANDARD_STARTING_FEN, new Date(acceptedAtMs + 30_000)],
+                'awaiting_first_move', 'first_move_grace', $3, $4, $4)`,
+            [request.params.id, STANDARD_STARTING_FEN, new Date(acceptedAtMs + 30_000), preset.initialMs],
           );
         }
         row = await findChallenge(client, request.params.id);
@@ -134,7 +144,7 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
 export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
-    await pool.query('SELECT id FROM chess.challenges LIMIT 0');
+    await pool.query('SELECT id, time_control FROM chess.challenges LIMIT 0');
     await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,
       white_first_move_deadline_at, black_first_move_deadline_at FROM chess.games LIMIT 0`);
     await pool.query('SELECT admission_id, applied FROM chess.game_move_receipts LIMIT 0');

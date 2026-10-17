@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { createGameFromPosition, FIVE_PLUS_THREE } from '@chess/domain';
+import { createGameFromPosition } from '@chess/domain';
+import { timeControlPresets, type TimeControlId } from '@chess/contracts';
 import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
   GameReadResponse, GameState, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
@@ -22,6 +23,7 @@ type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'abor
 type ClockPhase = 'legacy_untimed' | 'waiting' | 'awaiting_first_move' | 'running' | 'handoff' | 'stopped' | 'flagged';
 interface GameRow {
   id: string;
+  time_control: TimeControlId;
   creator_guest_id: string;
   acceptor_guest_id: string;
   starting_fen: string;
@@ -82,7 +84,7 @@ function seat(row: GameRow, guestId: string): Side | null {
 
 async function loadGame(client: pg.PoolClient, id: string): Promise<GameRow | null> {
   const { rows } = await client.query<GameRow>(
-    `SELECT g.*, c.creator_guest_id, c.acceptor_guest_id
+    `SELECT g.*, c.creator_guest_id, c.acceptor_guest_id, c.time_control
       FROM chess.games g JOIN chess.challenges c ON c.id = g.id
       WHERE g.id = $1 FOR UPDATE OF g`, [id],
   );
@@ -170,8 +172,8 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
         && (row.ready_white || row.ready_black || row.status === 'waiting')
       || row.clock_start_mode === 'readiness' && row.clock_phase === 'awaiting_first_move'
       || firstMoveWaiting && (row.status !== 'active' || rows.length !== 0
-        || row.side_to_move !== 'white' || row.white_remaining_ms !== FIVE_PLUS_THREE.initialMs
-        || row.black_remaining_ms < FIVE_PLUS_THREE.initialMs
+        || row.side_to_move !== 'white' || row.white_remaining_ms !== timeControlPresets[row.time_control].initialMs
+        || row.black_remaining_ms < timeControlPresets[row.time_control].initialMs
         || row.turn_started_at !== null || row.deadline_at !== null)
       || row.status === 'waiting' && (row.clock_phase !== 'waiting' || row.ready_white && row.ready_black)
       || row.status === 'active' && !firstMoveWaiting && (row.clock_phase !== 'running' && row.clock_phase !== 'handoff'
@@ -227,7 +229,7 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
     ...(row.pending === null ? {} : { pending: row.pending }),
     clocks: clockResponse(row, atMs),
     clockStatus: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
-    timeControl: { initialMs: FIVE_PLUS_THREE.initialMs, incrementMs: FIVE_PLUS_THREE.incrementMs },
+    timeControl: timeControlPresets[row.time_control],
     rated: false, yourSeat };
 }
 
@@ -591,7 +593,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
             if (startedAtMs === undefined) throw new Error('Running game has no turn start.');
             const left = Math.max(0, (yourSeat === 'white'
               ? row.white_remaining_ms : row.black_remaining_ms) - (receivedAtMs - startedAtMs))
-              + FIVE_PLUS_THREE.incrementMs;
+              + timeControlPresets[row.time_control].incrementMs;
             if (yourSeat === 'white') row.white_remaining_ms = left;
             else row.black_remaining_ms = left;
           }
@@ -654,8 +656,8 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
             else row.white_remaining_ms += bonusMs;
           }
           if (moved && !freeFirstMove) {
-            if (yourSeat === 'white') row.white_remaining_ms += FIVE_PLUS_THREE.incrementMs;
-            else row.black_remaining_ms += FIVE_PLUS_THREE.incrementMs;
+            if (yourSeat === 'white') row.white_remaining_ms += timeControlPresets[row.time_control].incrementMs;
+            else row.black_remaining_ms += timeControlPresets[row.time_control].incrementMs;
           }
           if (row.status !== 'active') {
             row.clock_phase = 'stopped'; row.turn_started_at = null; row.deadline_at = null;
