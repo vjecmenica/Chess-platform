@@ -134,3 +134,9 @@ export class MastersClient {
     }
   }
 }
+
+/** Share of candidate support, including every returned candidate, not just visible rows. */
+export function playedPercentage(moves: readonly MastersMove[], games: number): number {
+  const total = moves.reduce((sum, move) => sum + move.games, 0);
+  return total > 0 ? games * 100 / total : 0;
+}

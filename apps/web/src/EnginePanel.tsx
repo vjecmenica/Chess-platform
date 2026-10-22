@@ -261,7 +261,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
-      <strong>Stockfish</strong>
+      <strong>Engine Evaluation</strong>
       <div className="engine-heading-actions">
         <button type="button" className="secondary" ref={settingsButtonRef}
           aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
@@ -346,13 +346,14 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       })}
     </div>}
     {reviewHost && createPortal(<div className="review-content">
+    <strong>Computer Analysis</strong>
     <div className="review-control">
-      <button type="button" className="secondary" onClick={() => {
+      <button type="button" className="secondary" disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
           runner.current?.cancel(); setReview({ kind: 'cancelled' }); onReviewChange(null);
         } else startReview();
-      }}>{review.kind === 'running' ? 'Cancel review'
-          : review.kind === 'complete' ? 'Review again' : 'Review game'}</button>
+      }}>{review.kind === 'running' ? 'Cancel analysis'
+          : review.kind === 'complete' ? 'Analyze again' : 'Analyze game'}</button>
       {review.kind === 'running' && <span role="status">
         {review.progress.completed} / {review.progress.total} positions
         {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
@@ -362,7 +363,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
       <small>White perspective · nonlinear display scale · mate at graph edge · {reviewMethodVersion}</small>
-      <div className="review-summary" aria-label="Review summary">
+      <div className="review-summary" aria-label="Computer Analysis summary">
         {(['white', 'black'] as const).map(side => {
           const summary = reviewSummary(review.review, side);
           return <div key={side} className="review-player">

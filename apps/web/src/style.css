@@ -470,3 +470,50 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .explorer-pagination button { padding: .35rem .5rem; }
 
 .masters-pane > section { flex-shrink: 0; }
+
+/* Shared board-led workspace: identity strips follow the board in every mode. */
+.game-layout { --board-top-offset: 0px; --default-board-size: clamp(280px, calc(100dvh - 420px), 620px);
+  grid-template-columns: minmax(0, min(var(--board-column-size, calc(var(--default-board-size) + 34px)), calc(100% - 338px))) minmax(320px, 430px); }
+.game-layout.analysis-workspace { align-items: start; }
+.play-column { padding-top: 36px; }
+.board-stage .board-frame, .analysis-footer-row, .board-hint, .clock-policy {
+  width: min(var(--board-size, var(--default-board-size)), calc(100% - 34px), 1080px); }
+.play-column > .player-material-panel { width: min(var(--board-size, var(--default-board-size)), calc(100% - 34px), 1080px); padding-left: 14px; }
+.play-column > .player-material-top { margin-bottom: 6px; }
+.play-column > .player-material-bottom { margin-top: 2px; margin-bottom: 38px; }
+.play-column .player-material-row { left: 14px; }
+.play-column .player-material-top > .player-material-row { bottom: calc(100% + 3px); }
+.play-column .player-material-bottom > .player-material-row { top: calc(100% + 3px); }
+.play-column .clock { min-height: 48px; padding: 6px 10px; }
+.play-column .player-label b { display: inline; margin-left: 8px; }
+.play-column .player-name-line { display: inline-flex; }
+.game-layout .game-sidebar { margin-top: var(--board-alignment-offset, 90px); height: var(--board-row-height, 480px);
+  grid-template-rows: minmax(0, 1fr) auto; }
+.analysis-lower-panels { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start; gap: 12px; min-width: 0; }
+.analysis-lower-panels > * { min-width: 0; }
+.analysis-lower-panels .engine-panel { width: 100%; margin: 0; }
+.analysis-lower-panels .engine-result { max-height: none; overflow: visible; }
+.analysis-lower-panels .engine-line { white-space: normal; overflow-wrap: anywhere; }
+.computer-analysis-card .review-summary { gap: 8px; }
+.computer-analysis-card .review-player { min-width: 0; }
+.computer-analysis-card .review-player > strong { font-size: 16px; }
+.computer-analysis-card .review-count strong, .computer-analysis-card .review-average b { font-size: 18px; }
+.book-columns, .masters-move { display: grid; grid-template-columns: 38px 48px 65px minmax(0, 1fr); gap: 4px; align-items: center; }
+.book-columns { font-size: 10px; }
+.masters-move button { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 4px 0; }
+.masters-move button:hover { text-decoration: underline; }
+.book-outcomes { display: flex; flex-wrap: wrap; gap: 2px 6px; font-size: 10px; }
+.masters-panel { padding: 8px; }
+.explorer-games { font-size: 12px; }
+@media (max-width: 900px) {
+  .game-layout, .game-layout.analysis-workspace { grid-template-columns: minmax(0, 1fr); }
+  .board-stage .board-frame, .play-column > .player-material-panel, .analysis-footer-row {
+    width: min(var(--board-size, 100%), calc(100% - 34px), 1080px); }
+  .play-column { align-items: flex-end; }
+  .game-layout .game-sidebar { display: flex; flex-direction: column; height: auto; margin: 0; }
+  .game-layout .move-panel { height: min(360px, 45dvh); flex: none; }
+  .analysis-lower-panels { grid-template-columns: minmax(0, 1fr); }
+}
+.book-examples { padding: 6px 8px; font-size: 12px; }
+.book-examples summary { cursor: pointer; }

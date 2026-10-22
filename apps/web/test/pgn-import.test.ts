@@ -74,3 +74,10 @@ describe('local PGN analysis', () => {
       .toEqual({ score: '½–½', explanation: 'Draw.' });
   });
 });
+
+it('opens a neutral blank analysis without clocks, ratings or a main line', () => {
+ const blank = importPgn('[White "White"]\n[Black "Black"]\n[Result "*"]\n\n*', 'blank-test');
+ expect(blank.game.history).toEqual([]);
+ expect(blank.game.clocks).toBeNull();
+ expect(blank.headers.WhiteElo).toBeUndefined();
+});

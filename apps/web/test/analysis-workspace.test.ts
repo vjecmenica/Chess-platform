@@ -29,28 +29,7 @@ describe('analysis workspace sizing', () => {
     expect(resizedBoardSize(300, 200, 200, availableAnalysisBoardWidth(1140, false))).toBe(500);
   });
 
-  it('keeps Stockfish beside the board, with review below it and Moves/Masters in the sidebar', () => {
-    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.analysis-workspace \.game-sidebar\s*\{[^}]*grid-template-rows: auto auto minmax\(0, 1fr\) auto auto/);
-    expect(css).toMatch(/\.analysis-workspace \.engine-panel\s*\{[^}]*width: 100%/);
-    expect(css).toMatch(/\.analysis-pane\[hidden\]\s*\{[^}]*display: none/);
-    expect(css).toMatch(/\.game-sidebar\s*\{[^}]*height: var\(--board-row-height/);
-    expect(css).toMatch(/\.moves\s*\{[^}]*overflow-y: auto/);
-    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.analysis-workspace \.move-panel\s*\{[^}]*height: min\(360px, 45dvh\)/);
-    expect(app).toMatch(/<aside className="game-sidebar"[\s\S]*?<EnginePanel[\s\S]*?<div className="move-panel"/);
-    expect(app).toContain('role="tablist" aria-label="Analysis sections"');
-    expect(app).toContain('reviewHost={reviewHost}');
-    expect(app).toContain('className="review-below-board" ref={setReviewHost}');
-    expect(app).not.toContain('analysis-pane-review');
-    expect(app).toContain("(['moves', 'masters'] as const)");
-    expect(css).toMatch(/\.review-below-board\s*\{[^}]*width: 100%/);
-    expect(app).toContain("analysisTab === 'masters' && analysis !== null && <MastersPanel");
-    expect(css).toMatch(/\.board-resize-grip\s*\{[^}]*touch-action: none/);
-    expect(css).toMatch(/\.board-stage \.board-frame\s*\{[^}]*var\(--board-size/);
-    expect(app).toContain('setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width');
-    expect(app).not.toContain('analysisBoardSize');
-  });
+
 });
 
 describe('White-perspective evaluation bar', () => {

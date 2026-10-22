@@ -6,7 +6,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { createAnalysisTree, playAnalysisMove, selectMain } from '../src/analysis-model';
 import { MoveTree } from '../src/MoveTree';
 import { ExplorerContent } from '../src/MastersPanel';
-import { isBookMove, mastersPath, MastersClient, mastersUrl, parseMastersResponse,
+import { playedPercentage, isBookMove, mastersPath, MastersClient, mastersUrl, parseMastersResponse,
   previousMastersPath } from '../src/masters-explorer';
 
 function game(): GameReadResponse {
@@ -136,4 +136,10 @@ describe('Masters opening explorer', () => {
     expect((await client.lookup(path)).kind).toBe('error');
     expect((await client.lookup(path)).kind).toBe('ok');
   });
+});
+
+it('uses every candidate support count for played percentage, including off-screen candidates', () => {
+ const moves = [1, 3, 6].map(games => ({ uci: 'e2e4', san: 'e4', games, white: games, draws: 0, black: 0 }));
+ expect(playedPercentage(moves, 3)).toBe(30);
+ expect(playedPercentage([], 0)).toBe(0);
 });

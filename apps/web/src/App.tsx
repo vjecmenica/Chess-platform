@@ -131,11 +131,11 @@ export function App() {
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [analysisTab, setAnalysisTab] = useState<'moves' | 'masters'>('moves');
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
+  const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
@@ -418,7 +418,7 @@ export function App() {
     setAnalysis(createAnalysisTree(next.game));
     setAnalysisBoard(createAnalysisBoard(next.game.id));
     setAnalysisOpen(true);
-    setAnalysisTab('moves');
+
     setSelectedReplayPly(null);
     setGameReview(null);
     setPositionEvaluation(null);
@@ -995,17 +995,21 @@ export function App() {
   useEffect(() => {
     const frame = boardFrameRef.current;
     if (frame === null) return;
-    const update = () => setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
+    const update = () => {
+      setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
+      setBoardAlignmentOffset(Math.round(frame.getBoundingClientRect().top
+        - (gameLayoutRef.current?.getBoundingClientRect().top ?? 0)));
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(frame);
+    if (frame.parentElement?.parentElement) observer.observe(frame.parentElement.parentElement);
     return () => observer.disconnect();
   }, [analysisOpen, game?.id]);
 
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
-    return Math.min(availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches),
-      window.innerHeight - 72);
+    return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches);
   }
 
   function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
@@ -1081,6 +1085,9 @@ export function App() {
         <textarea id="pgn-text" value={pgnText} onChange={event => setPgnText(event.target.value)}
           rows={5} placeholder={'[Event "Casual game"]\n\n1. e4 e5 2. Nf3 Nc6 *'} />
         <button type="button" onClick={() => openPgn(pgnText)}>Open in Analysis</button>
+        <button type="button" className="secondary" onClick={() => {
+          showImportedGame(importPgn('[White "White"]\n[Black "Black"]\n[Result "*"]\n\n*', `blank-${crypto.randomUUID()}`));
+        }}>Open blank analysis</button>
         {pgnError !== null && pgnErrorSource === 'text' && <p className="error" role="alert" tabIndex={-1}
           ref={pgnErrorRef}>{pgnError}</p>}
       </section>}
@@ -1094,6 +1101,7 @@ export function App() {
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
             ref={gameLayoutRef}
             style={{
+              '--board-alignment-offset': `${boardAlignmentOffset}px`,
               ...(boardSize === null ? {} : {
                 '--board-size': `${boardSize}px`,
                 '--board-column-size': `${boardSize + 34}px`,
@@ -1103,6 +1111,16 @@ export function App() {
               }),
             } as CSSProperties}>
             <div className="play-column">
+              <PlayerMaterialPanel side={topSide} pieces={captured?.[topSide] ?? []}
+                advantage={material} placement="top">
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
+                  : <ClockPanel clock={game.clocks} side={topSide}
+                  isYou={topSide === game.yourSeat}
+                  showStatus={!analysisOpen && game.status !== 'finished'}
+                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
+                    game.timeControl !== null && 'initialMs' in game.timeControl
+                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
+              </PlayerMaterialPanel>
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
@@ -1176,6 +1194,15 @@ export function App() {
                   }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
+              <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
+                advantage={material} placement="bottom">
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
+                  : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                  showStatus={!analysisOpen && game.status !== 'finished'}
+                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
+                    game.timeControl !== null && 'initialMs' in game.timeControl
+                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
+              </PlayerMaterialPanel>
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
@@ -1218,27 +1245,11 @@ export function App() {
               {!analysisOpen && imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
                 ? 'This earlier challenge is untimed.'
                 : `${timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)} server clock · Time continues through disconnects and server outages. The server decides deadlines.`}</p>}
-              {analysisOpen && <div className="review-below-board" ref={setReviewHost} />}
+
             </div>
             <aside className="game-sidebar" aria-label="Game controls and moves">
-              <PlayerMaterialPanel side={topSide} pieces={captured?.[topSide] ?? []}
-                advantage={material} placement="top">
-                {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
-                  : <ClockPanel clock={game.clocks} side={topSide}
-                  isYou={topSide === game.yourSeat}
-                  showStatus={!analysisOpen && game.status !== 'finished'}
-                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                    game.timeControl !== null && 'initialMs' in game.timeControl
-                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
-              </PlayerMaterialPanel>
-              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-                sessionOnly={imported !== null}
-                fen={displayedFen} reviewHost={reviewHost}
-                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
+
+
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
                   <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
@@ -1277,29 +1288,7 @@ export function App() {
                   {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
-                {analysisOpen && <div className="analysis-tabs" role="tablist" aria-label="Analysis sections">
-                  {(['moves', 'masters'] as const).map(tab => <button type="button"
-                    key={tab} id={`analysis-tab-${tab}`} role="tab"
-                    aria-selected={analysisTab === tab} aria-controls={`analysis-pane-${tab}`}
-                    tabIndex={analysisTab === tab ? 0 : -1}
-                    onKeyDown={event => {
-                      const tabs = ['moves', 'masters'] as const;
-                      const index = tabs.indexOf(tab);
-                      const next = event.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length]
-                        : event.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length]
-                          : event.key === 'Home' ? tabs[0]
-                            : event.key === 'End' ? tabs.at(-1) : null;
-                      if (next !== null && next !== undefined) {
-                        event.preventDefault(); setAnalysisTab(next);
-                        document.getElementById(`analysis-tab-${next}`)?.focus();
-                      }
-                    }}
-                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves' : 'Explorer'}</button>)}
-                </div>}
-                <div className="analysis-pane" id={analysisOpen ? 'analysis-pane-moves' : undefined}
-                  role={analysisOpen ? 'tabpanel' : undefined}
-                  aria-labelledby={analysisOpen ? 'analysis-tab-moves' : undefined}
-                  hidden={analysisOpen && analysisTab !== 'moves'}>
+                <div className="analysis-pane">
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
                   review={analysisOpen ? gameReview : null}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
@@ -1309,25 +1298,12 @@ export function App() {
                   onNote={(cursor: AnalysisCursor, note: MoveNote) => setAnalysis(current =>
                     current === null ? null : setMoveNote(current, cursor, note))} />
                 </div>
-                {analysisOpen && <>
-                  <div className="analysis-pane masters-pane" id="analysis-pane-masters"
-                    role="tabpanel" aria-labelledby="analysis-tab-masters"
-                    hidden={analysisTab !== 'masters'}>
-                    {analysisTab === 'masters' && analysis !== null && <MastersPanel game={game} tree={analysis}
-                      onOpenGame={(parsed, id, ply) => {
-                        const next = importParsedPgn(parsed, 'explorer-' + id);
-                        showImportedGame(next);
-                        setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
-                      }}
-                      onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
-                        uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
-                  </div>
-                </>}
+
               </div>
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {result !== null ? <FinishedResultArea key={game.id} score={result.score}
+                {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
                   sessionOnly={imported !== null}
                   onToggleAnalysis={() => {
@@ -1337,7 +1313,7 @@ export function App() {
                     if (!analysisOpen)
                       setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
                     setAnalysisOpen(!analysisOpen);
-                    setAnalysisTab('moves');
+
                     setGameReview(null);
                     setPositionEvaluation(null);
                     resizeGesture.current = null;
@@ -1355,7 +1331,7 @@ export function App() {
                     : liveBrowsingHistory ? `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move. Viewing an earlier position.`
                     : canMove ? `Your turn (${game.yourSeat}).`
                       : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`}</p>}
-                {imported !== null && <details className="pgn-details">
+                {imported !== null && !game.id.startsWith('blank-') && <details className="pgn-details">
                   <summary>PGN details</summary>
                   <dl>{Object.entries(imported.headers).map(([key, value]) =>
                     <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
@@ -1437,16 +1413,29 @@ export function App() {
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div>
-              <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
-                advantage={material} placement="bottom">
-                {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
-                  : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
-                  showStatus={!analysisOpen && game.status !== 'finished'}
-                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                    game.timeControl !== null && 'initialMs' in game.timeControl
-                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
-              </PlayerMaterialPanel>
+
             </aside>
+            {analysisOpen && <div className="analysis-lower-panels">
+              <div className="opening-book-card">
+                {analysis !== null && <MastersPanel game={game} tree={analysis}
+                      onOpenGame={(parsed, id, ply) => {
+                        const next = importParsedPgn(parsed, 'explorer-' + id);
+                        showImportedGame(next);
+                        setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
+                      }}
+                      onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
+                        uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
+              </div>
+              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                sessionOnly={imported !== null}
+                fen={displayedFen} reviewHost={reviewHost}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
+              <div className="computer-analysis-card" ref={setReviewHost} />
+            </div>}
           </div>
         </>}
       </section>}
