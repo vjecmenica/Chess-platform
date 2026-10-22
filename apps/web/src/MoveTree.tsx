@@ -97,7 +97,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
           ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
             ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : []),
-          ...(book ? ['Book move, confirmed by Lichess Masters Explorer'] : [])].join(', ')}
+          ...(book ? ['Book move, confirmed by the opening explorer'] : [])].join(', ')}
         aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
         title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
@@ -130,7 +130,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
             title={`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
               ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`}
             aria-hidden="true">{badge}</span>}</button>
-      {book && <span className="book-badge" title="Book move confirmed by Lichess Masters Explorer">Book</span>}
+      {book && <span className="book-badge" title="Book move confirmed by the opening explorer">Book</span>}
       {move.note?.comment && <span className="move-comment" title={move.note.comment}>
         {move.note.comment}</span>}
     </span>;

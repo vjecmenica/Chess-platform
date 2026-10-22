@@ -3,6 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
+import { MastersPanel } from './MastersPanel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { availableClaimForPlayer } from './draw-claim-control';
@@ -1291,7 +1292,7 @@ export function App() {
                         document.getElementById(`analysis-tab-${next}`)?.focus();
                       }
                     }}
-                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves' : 'Masters'}</button>)}
+                    onClick={() => setAnalysisTab(tab)}>{tab === 'moves' ? 'Moves' : 'Explorer'}</button>)}
                 </div>}
                 <div className="analysis-pane" id={analysisOpen ? 'analysis-pane-moves' : undefined}
                   role={analysisOpen ? 'tabpanel' : undefined}
@@ -1310,7 +1311,9 @@ export function App() {
                   <div className="analysis-pane masters-pane" id="analysis-pane-masters"
                     role="tabpanel" aria-labelledby="analysis-tab-masters"
                     hidden={analysisTab !== 'masters'}>
-                    <p>Masters Explorer is unavailable while its data source is under review.</p>
+                    {analysisTab === 'masters' && analysis !== null && <MastersPanel game={game} tree={analysis}
+                      onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
+                        uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
                   </div>
                 </>}
               </div>

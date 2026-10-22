@@ -18,6 +18,7 @@ if (result.accepted) {
 
 ## Position API
 
+- `normalizedPositionKey(fen)` validates and canonicalizes a FEN for position lookup, excluding move counters and retaining only legal en passant availability. The opening explorer uses it to merge transpositions.
 - `createPosition()` creates an independent position with White to move and empty history. `STANDARD_STARTING_FEN` is exported for replay consumers.
 - `createPositionFromFen(fen)` creates an independent position from a saved FEN with empty local history. The finished-game analysis board uses it to explore legal moves without changing the saved game.
 - `getPosition()` returns `{ fen, sideToMove }`. Sides are `white` and `black`. FEN includes the board, turn, castling rights, en passant state, and move counters. The en passant target is included only when a legal en passant capture is available, following chess.js normalization. FEN counters do not imply a draw policy.

@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "db:check": "tsx src/db-cli.ts check",
-    "db:migrate": "tsx src/db-cli.ts migrate"
+    "db:migrate": "tsx src/db-cli.ts migrate",
+    "explorer:import": "tsx src/explorer-cli.ts"
   },
   "dependencies": {
     "@chess/contracts": "0.0.0",

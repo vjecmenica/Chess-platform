@@ -5,6 +5,7 @@ import { createPosition } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
 import { createAnalysisTree, playAnalysisMove, selectMain } from '../src/analysis-model';
 import { MoveTree } from '../src/MoveTree';
+import { ExplorerContent } from '../src/MastersPanel';
 import { isBookMove, mastersPath, MastersClient, mastersUrl, parseMastersResponse,
   previousMastersPath } from '../src/masters-explorer';
 
@@ -24,6 +25,19 @@ const response = { opening: { eco: 'C20', name: 'King’s Pawn Game' },
     { uci: 'a1a8', san: 'Ra8', white: 1, draws: 0, black: 0 }] };
 
 describe('Masters opening explorer', () => {
+  it('renders local statistics, loading, empty, and retry states without external connections or downloads', () => {
+    const render = (result: Parameters<typeof ExplorerContent>[0]['result']) => renderToStaticMarkup(
+      createElement(ExplorerContent, { result, onExplore: () => {}, onRetry: () => {} }));
+    expect(render(null)).toContain('Loading opening statistics');
+    expect(render({ kind: 'ok', data: { opening: null, moves: [] } })).toContain('No indexed games');
+    expect(render({ kind: 'error', message: 'Opening explorer timed out.' })).toContain('Retry');
+    const html = render({ kind: 'ok', data: parseMastersResponse(response, game().position.fen) });
+    expect(html).toContain('20 games');
+    expect(html).toContain('White 65.0%'); expect(html).toContain('Draw 25.0%'); expect(html).toContain('Black 10.0%');
+    expect(html).toContain('Explore Nf3 as a local analysis variation');
+    expect(html).toContain('licensed TWIC');
+    expect(html).not.toMatch(/Lichess|OAuth|download/i);
+  });
   it('builds the saved and local variation paths from the initial FEN', () => {
     const saved = game();
     let tree = createAnalysisTree(saved);
@@ -34,8 +48,7 @@ describe('Masters opening explorer', () => {
     expect(branch.accepted).toBe(true);
     if (!branch.accepted) return;
     expect(mastersPath(saved, branch.tree).play).toEqual(['d2d4']);
-    expect(new URL(mastersUrl(mastersPath(saved, branch.tree))).hostname)
-      .toBe('explorer.lichess.org');
+    expect(mastersUrl(mastersPath(saved, branch.tree))).toMatch(/^\/api\/opening-explorer\?fen=/);
   });
 
   it('accepts only legal reported candidates and confirms Book separately', () => {
@@ -49,7 +62,7 @@ describe('Masters opening explorer', () => {
     const html = renderToStaticMarkup(createElement(MoveTree, { game: saved,
       tree: createAnalysisTree(saved), selected: { kind: 'main', ply: 2 }, interactive: true,
       bookMoves: new Set(['masters-test:m2']), onSelect: () => {}, onDelete: () => {} }));
-    expect(html).toContain('Book move, confirmed by Lichess Masters Explorer');
+    expect(html).toContain('Book move, confirmed by the opening explorer');
     expect(html).toContain('>Book</span>');
   });
 
@@ -74,14 +87,26 @@ describe('Masters opening explorer', () => {
       { status: 200 })).mockResolvedValueOnce(new Response('', { status: 429 }));
     let now = 0;
     const client = new MastersClient(fetcher, () => now);
-    expect((await client.lookup(path, 'user-token')).kind).toBe('ok');
-    expect((await client.lookup(path, 'user-token')).kind).toBe('ok');
+    expect((await client.lookup(path)).kind).toBe('ok');
+    expect((await client.lookup(path)).kind).toBe('ok');
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: 'Bearer user-token' });
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ credentials: 'same-origin', headers: { Accept: 'application/json' } });
     now = 300_001;
-    expect((await client.lookup(path, 'user-token')).kind).toBe('error');
-    expect((await client.lookup(path, 'user-token')).kind).toBe('error');
+    expect((await client.lookup(path)).kind).toBe('error');
+    expect((await client.lookup(path)).kind).toBe('error');
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('calls the browser fetch function without binding it to the client instance', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(function (this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+      return Promise.resolve(new Response(JSON.stringify(response), { status: 200 }));
+    });
+    try {
+      const client = new MastersClient();
+      expect((await client.lookup(mastersPath(game(), createAnalysisTree(game())))).kind).toBe('ok');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { fetcher.mockRestore(); }
   });
 
   it('cancels a queued lookup before sending it', async () => {
@@ -90,10 +115,10 @@ describe('Masters opening explorer', () => {
     let release!: (value: Response) => void;
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise(resolve => { release = resolve; }));
     const client = new MastersClient(fetcher);
-    const first = client.lookup(path, 'user-token');
+    const first = client.lookup(path);
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
     const abort = new AbortController();
-    const second = client.lookup(path, 'user-token', abort.signal);
+    const second = client.lookup(path, abort.signal);
     abort.abort();
     release(new Response(JSON.stringify(response), { status: 200 }));
     expect((await first).kind).toBe('ok');
@@ -101,16 +126,14 @@ describe('Masters opening explorer', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it('does not request Masters without a token and distinguishes authorization failures', async () => {
+  it('distinguishes expired sessions, access errors, and successful local lookups', async () => {
     const path = mastersPath(game(), createAnalysisTree(game()));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response('', { status: 401 }))
       .mockResolvedValueOnce(new Response('', { status: 403 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(response), { status: 200 }));
     const client = new MastersClient(fetcher);
-    expect((await client.lookup(path, null)).kind).toBe('auth_required');
-    expect(fetcher).not.toHaveBeenCalled();
-    expect((await client.lookup(path, 'revoked')).kind).toBe('auth_required');
-    expect((await client.lookup(path, 'denied')).kind).toBe('error');
-    expect((await client.lookup(path, 'allowed')).kind).toBe('ok');
+    expect(await client.lookup(path)).toMatchObject({ kind: 'error', message: expect.stringContaining('session expired') });
+    expect((await client.lookup(path)).kind).toBe('error');
+    expect((await client.lookup(path)).kind).toBe('ok');
   });
 });

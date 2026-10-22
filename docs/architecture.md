@@ -170,3 +170,7 @@ These sources explain the tools behind the proposal. They do not prescribe our p
 - [Official Stockfish distribution](https://stockfishchess.org/download/): a starting point for selecting the engine package.
 
 Challenge presets are defined once in `packages/contracts/src/time-controls.ts` and validated on creation. Migration 014 stores the preset ID on the challenge; game reconstruction reads those fixed terms to initialize clocks and award increments. Existing challenges default to 5+3. The historical `five_plus_three` clock-mode name remains for compatibility; it now selects the shared authoritative clock path for every preset. Reusing a creation request ID with different terms returns a conflict.
+
+## Opening statistics
+
+The [opening explorer](opening-explorer.md) uses an explicit offline streaming PGN importer, the existing domain rules adapter, and PostgreSQL counters keyed by canonical position and move. File checksums and identity-v1 game fingerprints make repeated and overlapping imports safe within the documented exact-deduplication limits. Batches commit fingerprints, counters, and progress together. An authenticated local GET route returns bounded aggregate candidates, never source games. No import runs at startup; no external service is a fallback. The initial depth is 24 plies, fixed per book database. Capacity must be measured with the private corpus before public deployment.

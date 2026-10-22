@@ -19,7 +19,8 @@
     "db:check": "npm run db:check --workspace=@chess/server",
     "db:migrate": "npm run db:migrate --workspace=@chess/server",
     "start:server": "npm run start --workspace=@chess/server",
-    "preview:web": "npm run preview --workspace=@chess/web"
+    "preview:web": "npm run preview --workspace=@chess/web",
+    "explorer:import": "npm run explorer:import --workspace=@chess/server --"
   },
   "devDependencies": {
     "@types/node": "22.20.4",

@@ -1,5 +1,6 @@
 export { createPosition, createPositionFromFen, STANDARD_STARTING_FEN } from './position.js';
 export { parsePgn } from './pgn.js';
+export { normalizedPositionKey } from './position-key.js';
 export type { ParsedPgn } from './pgn.js';
 export type {
   Side, Promotion, MoveRequest, PositionSnapshot, MoveRecord, MoveRejection, MoveResult,

@@ -1,4 +1,4 @@
-import { createPositionFromFen } from '@chess/domain';
+import { createPositionFromFen, normalizedPositionKey } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
 import { cursorFen, type AnalysisCursor, type AnalysisTree } from './analysis-model';
 
@@ -8,7 +8,7 @@ export interface MastersMove { readonly uci: string; readonly san: string; reado
 export interface MastersData { readonly opening: { readonly eco: string; readonly name: string } | null;
   readonly moves: readonly MastersMove[] }
 export type MastersResult = { readonly kind: 'ok'; readonly data: MastersData }
-  | { readonly kind: 'error'; readonly message: string } | { readonly kind: 'auth_required' }
+  | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'cancelled' };
 
 export function mastersPath(game: GameReadResponse, tree: AnalysisTree,
@@ -40,12 +40,7 @@ export function previousMastersPath(game: GameReadResponse, tree: AnalysisTree):
 }
 
 export function mastersUrl(path: MastersPath): string {
-  const url = new URL('https://explorer.lichess.org/masters');
-  url.searchParams.set('fen', path.rootFen);
-  url.searchParams.set('play', path.play.join(','));
-  url.searchParams.set('moves', '12');
-  url.searchParams.set('topGames', '0');
-  return url.toString();
+  return '/api/opening-explorer?' + new URLSearchParams({ fen: `${normalizedPositionKey(path.fen)} 0 1` }).toString();
 }
 
 function count(value: unknown): number | null {
@@ -54,7 +49,7 @@ function count(value: unknown): number | null {
 
 export function parseMastersResponse(value: unknown, fen: string): MastersData {
   if (typeof value !== 'object' || value === null || !Array.isArray((value as { moves?: unknown }).moves))
-    throw new Error('Invalid Masters response.');
+    throw new Error('Invalid opening explorer response.');
   const source = value as { opening?: unknown; moves: unknown[] };
   const opening = source.opening && typeof source.opening === 'object'
     && typeof (source.opening as { eco?: unknown }).eco === 'string'
@@ -62,7 +57,7 @@ export function parseMastersResponse(value: unknown, fen: string): MastersData {
     ? { eco: (source.opening as { eco: string }).eco,
       name: (source.opening as { name: string }).name } : null;
   const moves: MastersMove[] = [];
-  for (const item of source.moves.slice(0, 12)) {
+  for (const item of source.moves.slice(0, 218)) {
     if (typeof item !== 'object' || item === null) continue;
     const move = item as Record<string, unknown>;
     const white = count(move.white), draws = count(move.draws), black = count(move.black);
@@ -84,24 +79,23 @@ export function isBookMove(data: MastersData, uci: string): boolean {
   return data.moves.some(move => move.uci === uci && move.games > 0);
 }
 
-// Short-lived memory cache only. Never persist or mirror the Masters data.
+// Bounded, short-lived position responses; no source games are available.
 export class MastersClient {
   private queue: Promise<void> = Promise.resolve();
   private cache = new Map<string, { data: MastersData; at: number }>();
   private cooldownUntil = 0;
-  constructor(private readonly fetcher: typeof fetch = fetch,
+  constructor(private readonly fetcher: typeof fetch = (input, init) => fetch(input, init),
     private readonly now: () => number = Date.now) {}
 
-  lookup(path: MastersPath, token: string | null, signal?: AbortSignal): Promise<MastersResult> {
-    const task = this.queue.then(() => this.perform(path, token, signal));
+  lookup(path: MastersPath, signal?: AbortSignal): Promise<MastersResult> {
+    const task = this.queue.then(() => this.perform(path, signal));
     this.queue = task.then(() => undefined, () => undefined);
     return task;
   }
 
-  private async perform(path: MastersPath, token: string | null,
+  private async perform(path: MastersPath,
     signal?: AbortSignal): Promise<MastersResult> {
     if (signal?.aborted) return { kind: 'cancelled' };
-    if (token === null) return { kind: 'auth_required' };
     const key = mastersUrl(path);
     const cached = this.cache.get(key);
     if (cached && this.now() - cached.at < 300_000) {
@@ -109,23 +103,23 @@ export class MastersClient {
       return { kind: 'ok', data: cached.data };
     }
     if (this.now() < this.cooldownUntil)
-      return { kind: 'error', message: 'Masters Explorer is rate-limited. Try again in a minute.' };
+      return { kind: 'error', message: 'Opening explorer is rate-limited. Try again in a minute.' };
     const controller = new AbortController();
     let timedOut = false;
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 5_000);
     try {
-      const response = await this.fetcher(key, { signal: controller.signal, credentials: 'omit',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
-      if (response.status === 401) return { kind: 'auth_required' };
+      const response = await this.fetcher(key, { signal: controller.signal, credentials: 'same-origin',
+        headers: { Accept: 'application/json' } });
+      if (response.status === 401) return { kind: 'error', message: 'Your guest session expired. Refresh the page to reconnect.' };
       if (response.status === 403) return { kind: 'error',
-        message: 'Lichess denied access to Masters Explorer for this connection.' };
+        message: 'Opening explorer access was denied.' };
       if (response.status === 429) {
         this.cooldownUntil = this.now() + 60_000;
-        return { kind: 'error', message: 'Masters Explorer is rate-limited. Try again in a minute.' };
+        return { kind: 'error', message: 'Opening explorer is rate-limited. Try again in a minute.' };
       }
-      if (!response.ok) return { kind: 'error', message: 'Masters Explorer is unavailable.' };
+      if (!response.ok) return { kind: 'error', message: 'Opening explorer is unavailable.' };
       const data = parseMastersResponse(await response.json(), path.fen);
       if (signal?.aborted) return { kind: 'cancelled' };
       this.cache.set(key, { data, at: this.now() });
@@ -133,7 +127,7 @@ export class MastersClient {
       return { kind: 'ok', data };
     } catch {
       return signal?.aborted ? { kind: 'cancelled' } : { kind: 'error',
-        message: timedOut ? 'Masters Explorer timed out.' : 'Masters Explorer is unavailable.' };
+        message: timedOut ? 'Opening explorer timed out.' : 'Opening explorer is unavailable.' };
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener('abort', abort);

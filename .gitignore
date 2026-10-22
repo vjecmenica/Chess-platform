@@ -44,3 +44,9 @@ Desktop.ini
 *~
 
 # Dependency lockfiles, migrations, fixtures and shared configuration belong in Git.
+
+# Licensed opening-book sources and generated bulk data stay private.
+/private-data/
+*.pgn
+*.pgn.gz
+!**/test/fixtures/*.pgn

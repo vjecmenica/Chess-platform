@@ -1,0 +1,42 @@
+[Event "Synthetic transposition A"]
+[Site "Test"]
+[Date "2026.01.01"]
+[Round "1"]
+[White "Alpha"]
+[Black "Beta"]
+[Result "1-0"]
+
+1. Nf3 d5 2. d4 Nf6 3. c4 1-0
+
+[Event "Synthetic transposition B"]
+[Site "Test"]
+[Date "2026.01.02"]
+[Round "2"]
+[White "Gamma"]
+[Black "Delta"]
+[Result "0-1"]
+
+1. d4 Nf6 2. Nf3 d5 3. c4 0-1
+
+[Event "Synthetic annotated draw"]
+[White "Epsilon"]
+[Black "Zeta"]
+[Result "1/2-1/2"]
+
+1. Nf3 {Main line only} d5 (1... Nf6 2. d4) 2. d4! Nf6 $1 3. c4 1/2-1/2
+
+[Event "Synthetic illegal game"]
+[Result "1-0"]
+
+1. e5 1-0
+
+[Event "Synthetic unfinished game"]
+[Result "*"]
+
+1. e4 *
+
+[Event "Synthetic unsupported variant"]
+[Variant "Chess960"]
+[Result "1-0"]
+
+1. e4 1-0

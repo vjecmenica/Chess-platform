@@ -33,8 +33,7 @@ This is the proposed order, not an analysis dependency: once saved games and the
 
 ## Interactive engine analysis
 
-The Masters tab is currently paused while its [data source and access policy](masters-explorer.md)
-are reviewed. It makes no lookup and shows no Book labels. It remains separate from Stockfish.
+The Explorer tab now queries self-hosted [licensed TWIC opening statistics](opening-explorer.md) for the selected finished-game analysis position. Offline ingestion is bounded and repeatable; transpositions share counters. Full-corpus import and capacity measurement remain operational work with the private archives. Source-game downloads and automatic Book tagging remain outside this milestone.
 
 The saved-game analysis board keeps the original moves and a browser-local tree of alternative legal moves. Saved moves use White and Black columns. Consecutive variation moves stay inline; only real forks add indentation. Comments, PGN NAGs, local line promotion, board orientation, and per-position colored arrows and square marks survive a refresh in the same browser without changing the saved game. A player can branch from any saved or explored position, navigate every branch, and delete a branch after confirmation. Analysis is available only after the game finishes. A player may start a single-threaded Stockfish Web Worker for an evaluation, best move, and one to five ranked principal variations of the selected saved or explored position. The default remains one line and a depth-14, 1.2-second limit. Players can choose depth-only, time-only, both, or an explicit unlimited search. Changing positions cancels the old search; completed bounded results are cached by settings. Unlimited or longer searches can use noticeable CPU and battery on mobile devices. Full-game review retains its fixed single-line budget. The [bundled engine notice](../apps/web/public/engine/NOTICE.md) records its GPLv3 license and exact source.
 

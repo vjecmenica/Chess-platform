@@ -4,6 +4,7 @@ import type { ReadinessResponse } from '@chess/contracts';
 import { registerChallengeRoutes } from './challenge-routes.js';
 import { registerGameRoutes } from './game-routes.js';
 import { createGameService, type GameService } from './game-service.js';
+import { registerExplorerRoutes } from './explorer-routes.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService }) {
@@ -21,6 +22,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   });
 
   if (challenges) {
+    registerExplorerRoutes(app, challenges.pool);
     const gameService = challenges.gameService ?? createGameService(challenges.pool);
     registerChallengeRoutes(app, challenges.pool, challenges.secureCookies,
       () => gameService.trustedNowMs());

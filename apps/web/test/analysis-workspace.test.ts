@@ -45,7 +45,7 @@ describe('analysis workspace sizing', () => {
     expect(app).not.toContain('analysis-pane-review');
     expect(app).toContain("(['moves', 'masters'] as const)");
     expect(css).toMatch(/\.review-below-board\s*\{[^}]*width: 100%/);
-    expect(app).not.toContain('<MastersPanel');
+    expect(app).toContain("analysisTab === 'masters' && analysis !== null && <MastersPanel");
     expect(css).toMatch(/\.board-resize-grip\s*\{[^}]*touch-action: none/);
     expect(css).toMatch(/\.board-stage \.board-frame\s*\{[^}]*var\(--board-size/);
     expect(app).toContain('setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width');
