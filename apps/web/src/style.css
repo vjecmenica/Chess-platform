@@ -517,3 +517,30 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 }
 .book-examples { padding: 6px 8px; font-size: 12px; }
 .book-examples summary { cursor: pointer; }
+
+/* Automatic analysis sizing budgets for the complete report, not just its idle button. */
+@media (min-width: 901px) {
+  .game-layout.analysis-workspace { width: 100%; max-width: 1800px;
+    grid-template-columns: minmax(0, var(--analysis-board-column, 1fr)) minmax(320px, 1fr); }
+  .analysis-workspace .play-column { padding-top: 26px; align-items: flex-end;
+    justify-self: center; width: min(100%, calc(var(--board-size, var(--default-board-size)) + 34px)); }
+  .analysis-workspace .analysis-footer-row { width: max(100%, 360px); max-width: calc(100vw - 36px); align-self: center; }
+  .analysis-workspace .play-column .clock { min-height: 40px; padding: 4px 10px; }
+  .analysis-workspace .play-column > .player-material-bottom { margin-bottom: 28px; }
+  .analysis-workspace .player-material-row { height: 25px; }
+  .analysis-workspace .captured-row { height: 25px; }
+  .analysis-workspace .captured-row img { width: 24px; height: 24px; }
+  .analysis-workspace .analysis-board-controls { gap: 3px; }
+  .analysis-workspace .analysis-board-controls button { min-height: 28px; padding: 3px 5px; font-size: 11px; }
+  .analysis-workspace .analysis-tool-group, .analysis-workspace .analysis-colors { gap: 2px; }
+  .analysis-workspace .analysis-board-controls .color-choice { width: 23px; min-width: 23px; }
+  .analysis-lower-panels { gap: 12px; }
+  .analysis-lower-panels .engine-result { max-height: 230px; overflow-y: auto; }
+  .computer-analysis-card .review-graph { height: 90px; }
+  .computer-analysis-card .review-results small { font-size: 10px; line-height: 1.25; }
+  .computer-analysis-card .review-player { padding: 5px; gap: 2px 4px; line-height: 1.2; }
+  .computer-analysis-card .review-count { padding: 3px; font-size: 10px; gap: 3px; }
+  .computer-analysis-card .review-count strong { font-size: 14px; }
+  .computer-analysis-card .review-average b { font-size: 16px; white-space: nowrap; }
+  .computer-analysis-card .review-average small { font-size: 10px; }
+}

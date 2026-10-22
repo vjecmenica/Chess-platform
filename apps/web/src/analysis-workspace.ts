@@ -26,3 +26,12 @@ export function evaluationBarState(evaluation: EngineEvaluation | null, fen: str
     : `White perspective ${evaluationLabel(evaluation)}`;
   return { whitePercent: 50 + score / 20, label };
 }
+
+/** Default only: explicit resizing remains width-constrained and can extend the page. */
+export function defaultAnalysisBoardSize(availableWidth: number, viewportHeight: number,
+  workspaceTop: number, upperChrome: number, lowerHeight: number, stacked: boolean): number {
+  if (stacked) return Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize));
+  const remaining = viewportHeight - workspaceTop - upperChrome - Math.max(320, lowerHeight) - 28;
+  return Math.round(Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize,
+    Math.max(minimumAnalysisBoardSize, remaining))));
+}

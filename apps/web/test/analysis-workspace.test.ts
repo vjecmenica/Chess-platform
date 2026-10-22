@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EvaluationBar, evaluationFillPercent } from '../src/EvaluationBar';
-import { availableAnalysisBoardWidth, evaluationBarState,
+import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, evaluationBarState,
   resizedBoardSize } from '../src/analysis-workspace';
 import type { EngineEvaluation } from '../src/engine-analysis';
 
@@ -14,6 +14,24 @@ function evaluation(fen = STANDARD_STARTING_FEN, kind: 'cp' | 'mate' = 'cp', val
 }
 
 describe('analysis workspace sizing', () => {
+  it('reserves desktop height for player strips, controls, and a completed report', () => {
+    // A 900px viewport with 48px above the workspace, 170px of board chrome,
+    // a 334px completed report, and 28px of gaps leaves a 320px board.
+    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(320);
+    expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 334, false)).toBe(500);
+    // The idle report button must still reserve space for the later graph/summary.
+    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 70, false)).toBe(334);
+    expect(defaultAnalysisBoardSize(280, 1080, 48, 170, 334, false)).toBe(280);
+  });
+
+  it('allows natural scrolling on short screens and after an explicit enlargement', () => {
+    expect(defaultAnalysisBoardSize(650, 600, 48, 170, 334, false)).toBe(240);
+    expect(defaultAnalysisBoardSize(340, 844, 48, 170, 600, true)).toBe(340);
+    expect(resizedBoardSize(320, 300, 300, 900)).toBe(620);
+    // A viewport resize recomputes the automatic default, independently of the manual size.
+    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(320);
+  });
+
   it('follows a diagonal drag and clamps to desktop and mobile space', () => {
     expect(availableAnalysisBoardWidth(1140, false)).toBe(768);
     expect(availableAnalysisBoardWidth(390, true)).toBe(356);

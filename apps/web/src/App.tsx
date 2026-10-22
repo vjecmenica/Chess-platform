@@ -30,7 +30,7 @@ import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
-import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
+import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
@@ -134,6 +134,7 @@ export function App() {
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
+  const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
   const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
@@ -412,6 +413,7 @@ export function App() {
   }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
 
   function showImportedGame(next: ImportedGame) {
+    setBoardSize(null);
     setImported(next);
     gameRef.current = next.game;
     setGame(next.game);
@@ -1007,6 +1009,31 @@ export function App() {
     return () => observer.disconnect();
   }, [analysisOpen, game?.id]);
 
+  useEffect(() => {
+    if (!analysisOpen || !gameLayoutRef.current) return;
+    const workspace = gameLayoutRef.current;
+    let frameId = 0;
+    const update = () => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => {
+        const stacked = window.matchMedia('(max-width: 900px)').matches;
+        const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
+        const frame = boardFrameRef.current?.getBoundingClientRect();
+        const lower = workspace.querySelector('.analysis-lower-panels')?.getBoundingClientRect();
+        setAutomaticBoardSize(defaultAnalysisBoardSize(
+          stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
+          window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY,
+          play && frame ? play.height - frame.height : 180, lower?.height ?? 320, stacked));
+      });
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(workspace);
+    const lower = workspace.querySelector('.analysis-lower-panels');
+    if (lower) observer.observe(lower);
+    window.addEventListener('resize', update); update();
+    return () => { observer.disconnect(); cancelAnimationFrame(frameId); window.removeEventListener('resize', update); };
+  }, [analysisOpen, game?.id]);
+
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
     return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches);
@@ -1101,10 +1128,11 @@ export function App() {
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
             ref={gameLayoutRef}
             style={{
+              '--analysis-board-column': boardSize === null ? '1fr' : `min(${boardSize + 34}px, calc(100% - 338px))`,
               '--board-alignment-offset': `${boardAlignmentOffset}px`,
-              ...(boardSize === null ? {} : {
-                '--board-size': `${boardSize}px`,
-                '--board-column-size': `${boardSize + 34}px`,
+              ...((boardSize ?? (analysisOpen ? automaticBoardSize : null)) === null ? {} : {
+                '--board-size': `${boardSize ?? automaticBoardSize}px`,
+                '--board-column-size': `${(boardSize ?? automaticBoardSize ?? 480) + 34}px`,
               }),
               ...(boardRowHeight === null ? {} : {
                 '--board-row-height': `${boardRowHeight}px`,
@@ -1311,7 +1339,7 @@ export function App() {
                     else if (analysis !== null && selectedReplayPly !== null)
                       setAnalysis(selectMain(analysis, game, selectedReplayPly));
                     if (!analysisOpen)
-                      setBoardSize(Math.round(boardFrameRef.current?.getBoundingClientRect().width ?? 720));
+                      setBoardSize(null);
                     setAnalysisOpen(!analysisOpen);
 
                     setGameReview(null);
