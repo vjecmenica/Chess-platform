@@ -79,7 +79,7 @@ export function isBookMove(data: MastersData, uci: string): boolean {
   return data.moves.some(move => move.uci === uci && move.games > 0);
 }
 
-// Bounded, short-lived position responses; no source games are available.
+// Bounded, short-lived aggregate responses; replay samples use a separate bounded route.
 export class MastersClient {
   private queue: Promise<void> = Promise.resolve();
   private cache = new Map<string, { data: MastersData; at: number }>();

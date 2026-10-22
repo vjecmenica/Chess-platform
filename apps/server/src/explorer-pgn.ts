@@ -13,7 +13,7 @@ async function* lines(file: string): AsyncGenerator<string> {
       if (!oversized) pending += part;
       if (pending.length > maxGameChars) { pending = ''; oversized = true; }
       if (part.endsWith('\n')) {
-        yield oversized ? '\0' : pending.replace(/\r?\n$/, '');
+        yield oversized ? '\0' : pending;
         pending = ''; oversized = false;
       }
     }
@@ -32,7 +32,7 @@ export async function* streamPgnGames(file: string): AsyncGenerator<string> {
     }
     if (!line.trim() && !text) continue;
     if (line.includes('\0') || text.length + line.length > maxGameChars) broken = true;
-    if (!broken) text += `${line}\n`;
+    if (!broken) text += raw;
     if (!header && line.trim()) movetext = true;
     if (!header) {
       for (const char of line.split(';')[0]!) {
@@ -67,7 +67,19 @@ export function explorerMainLine(text: string): string {
 }
 
 export interface ExplorerContribution { position: string; uci: string }
-export interface ExplorerGame { fingerprint: string; result: '1-0' | '0-1' | '1/2-1/2'; moves: ExplorerContribution[] }
+export interface ExplorerGame {
+  fingerprint: string; result: '1-0' | '0-1' | '1/2-1/2'; moves: ExplorerContribution[];
+  originalPgn: string; tags: Readonly<Record<string, string>>;
+  positions: { position: string; ply: number; uci: string | null }[];
+}
+
+export function explorerMetadata(tags: Readonly<Record<string, string>>) {
+  const tag = (name: string) => tags[name]?.trim() && !/^[?*-]+$/.test(tags[name]!.trim()) ? tags[name]! : null;
+  const rating = (name: string) => /^\d{1,4}$/.test(tags[name] ?? '') && Number(tags[name]) > 0 ? Number(tags[name]) : null;
+  return { white_name: tag('White'), black_name: tag('Black'), white_rating: rating('WhiteElo'), black_rating: rating('BlackElo'),
+    white_fide_id: tag('WhiteFideId'), black_fide_id: tag('BlackFideId'), game_date: tag('Date'),
+    event: tag('Event'), site: tag('Site'), round: tag('Round'), eco: tag('ECO'), opening: tag('Opening'), time_control: tag('TimeControl') };
+}
 
 export function prepareExplorerGame(text: string, maxPlies: number): ExplorerGame | null {
   if (text.includes('\0')) throw new Error('Oversized or damaged PGN.');
@@ -88,5 +100,14 @@ export function prepareExplorerGame(text: string, maxPlies: number): ExplorerGam
     const position = normalizedPositionKey(move.beforeFen);
     moves.set(`${position}:${move.uci}`, { position, uci: move.uci });
   }
-  return { fingerprint, result: game.result, moves: [...moves.values()] };
+  const positions = new Map<string, { position: string; ply: number; uci: string | null }>();
+  for (const move of game.moves.slice(0, maxPlies)) {
+    const position = normalizedPositionKey(move.beforeFen);
+    if (!positions.has(position)) positions.set(position, { position, ply: move.ply - 1, uci: move.uci });
+  }
+  const final = normalizedPositionKey(game.moves[Math.min(maxPlies, game.moves.length) - 1]!.afterFen);
+  if (!positions.has(final)) positions.set(final, { position: final, ply: Math.min(maxPlies, game.moves.length),
+    uci: game.moves[Math.min(maxPlies, game.moves.length)]?.uci ?? null });
+  return { fingerprint, result: game.result, moves: [...moves.values()], originalPgn: text,
+    tags: game.headers, positions: [...positions.values()] };
 }

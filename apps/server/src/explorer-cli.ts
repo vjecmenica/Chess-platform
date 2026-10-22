@@ -6,6 +6,12 @@ import { resolve } from 'node:path';
 async function main() {
   loadEnvironment();
   const args = process.argv.slice(2), files: string[] = [];
+  if (args.includes('--help')) {
+    console.log('Usage: npm run explorer:import -- --max-plies 24 --batch-size 100 file.pgn [more.pgn]');
+    console.log('Stores complete private games and tags. Index depth counts plies (24 = 12 full moves), not game length.');
+    console.log('Start with a small pilot in a disposable database. See docs/opening-explorer.md.');
+    return;
+  }
   let maxPlies = 24, batchSize = 100;
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--max-plies') maxPlies = Number(args[++i]);

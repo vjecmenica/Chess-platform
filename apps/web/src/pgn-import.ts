@@ -1,5 +1,5 @@
 import type { GameReadResponse } from '@chess/contracts';
-import { parsePgn } from '@chess/domain';
+import { parsePgn, type ParsedPgn } from '@chess/domain';
 
 export interface ImportedGame {
   readonly game: GameReadResponse;
@@ -8,7 +8,10 @@ export interface ImportedGame {
 }
 
 export function importPgn(text: string, id: string): ImportedGame {
-  const parsed = parsePgn(text);
+  return importParsedPgn(parsePgn(text), id);
+}
+
+export function importParsedPgn(parsed: ParsedPgn, id: string): ImportedGame {
   const timeControlTag = parsed.headers.TimeControl;
   const result = parsed.result === '*' ? null : parsed.result === '1/2-1/2'
     ? { outcome: 'draw' as const, reason: 'pgn_import' }

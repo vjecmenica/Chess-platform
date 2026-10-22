@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
 import type pg from 'pg';
-import { prepareExplorerGame, streamPgnGames, type ExplorerGame } from './explorer-pgn.js';
+import { explorerMetadata, prepareExplorerGame, streamPgnGames, type ExplorerGame } from './explorer-pgn.js';
 
 export interface ImportCounts { processed: number; accepted: number; skipped: number; invalid: number }
 export interface ImportReport extends ImportCounts { alreadyImported: boolean }
@@ -22,7 +22,7 @@ export async function importExplorerFile(pool: pg.Pool, file: string, options: {
     locked = (await client.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock(hashtext('chess-platform:explorer-import')) AS locked")).rows[0]!.locked;
     if (!locked) throw new Error('Another opening import is running. Retry after it finishes.');
-    // First pass reads bytes only. No source content or filesystem path is saved.
+    // First pass hashes bytes; only the basename is retained as import metadata.
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(file)) hash.update(chunk);
     const checksum = hash.digest('hex');
@@ -37,7 +37,7 @@ export async function importExplorerFile(pool: pg.Pool, file: string, options: {
       VALUES ($1, $2, 'running') ON CONFLICT (checksum) DO UPDATE SET status = 'running',
       processed = 0, accepted = 0, skipped = 0, invalid = 0, updated_at = now()`, [checksum, basename(file)]);
     const counts: ImportCounts = { processed: 0, accepted: 0, skipped: 0, invalid: 0 };
-    let batch: ExplorerGame[] = [], sinceFlush = 0;
+    let batch: ExplorerGame[] = [], sinceFlush = 0, batchChars = 0;
     const flush = async (complete = false) => {
       await client.query('BEGIN');
       try {
@@ -46,6 +46,30 @@ export async function importExplorerFile(pool: pg.Pool, file: string, options: {
           SELECT decode(value, 'hex') FROM jsonb_array_elements_text($1::jsonb)
           ON CONFLICT DO NOTHING RETURNING encode(fingerprint, 'hex') AS fingerprint`,
         [JSON.stringify(batch.map(game => game.fingerprint))])).rows : [];
+        // Backfill missing source records without contributing to aggregates again.
+        const firstCopies = new Map<string, ExplorerGame>();
+        for (const game of batch) if (!firstCopies.has(game.fingerprint)) firstCopies.set(game.fingerprint, game);
+        const unique = [...firstCopies.values()];
+        const records = unique.length ? (await client.query<{ id: string; fingerprint: string }>(`
+          INSERT INTO chess.explorer_records (fingerprint, original_pgn, tags, result,
+            white_name, black_name, white_rating, black_rating, white_fide_id, black_fide_id,
+            game_date, event, site, round, eco, opening, time_control)
+          SELECT decode(fingerprint, 'hex'), original_pgn, tags, result,
+            white_name, black_name, white_rating, black_rating, white_fide_id, black_fide_id,
+            game_date, event, site, round, eco, opening, time_control
+          FROM jsonb_to_recordset($1::jsonb) AS x(fingerprint text, original_pgn text, tags jsonb, result text,
+            white_name text, black_name text, white_rating integer, black_rating integer,
+            white_fide_id text, black_fide_id text, game_date text, event text, site text,
+            round text, eco text, opening text, time_control text)
+          ON CONFLICT (fingerprint) DO NOTHING RETURNING id::text, encode(fingerprint, 'hex') AS fingerprint`,
+        [JSON.stringify(unique.map(game => ({ fingerprint: game.fingerprint, original_pgn: game.originalPgn,
+          tags: game.tags, result: game.result, ...explorerMetadata(game.tags) })))])).rows : [];
+        const byFingerprint = new Map(unique.map(game => [game.fingerprint, game]));
+        const references = records.flatMap(row => byFingerprint.get(row.fingerprint)!.positions.map(position =>
+          ({ ...position, game_id: row.id })));
+        if (references.length) await client.query(`INSERT INTO chess.explorer_game_positions (position, game_id, ply, uci)
+          SELECT position, game_id, ply, uci FROM jsonb_to_recordset($1::jsonb)
+          AS x(position text, game_id bigint, ply integer, uci text)`, [JSON.stringify(references)]);
         const inserted = new Set(fresh.map(row => row.fingerprint));
         const counters = new Map<string, { position: string; uci: string; white: number; draws: number; black: number }>();
         for (const game of batch) {
@@ -70,7 +94,7 @@ export async function importExplorerFile(pool: pg.Pool, file: string, options: {
           counts.accepted, counts.skipped, counts.invalid, complete ? 'complete' : 'running']);
         await client.query('COMMIT');
       } catch (error) { await client.query('ROLLBACK'); throw error; }
-      batch = []; sinceFlush = 0;
+      batch = []; sinceFlush = 0; batchChars = 0;
       options.onProgress?.({ ...counts });
     };
     try {
@@ -78,9 +102,9 @@ export async function importExplorerFile(pool: pg.Pool, file: string, options: {
         counts.processed += 1; sinceFlush += 1;
         try {
           const game = prepareExplorerGame(text, maxPlies);
-          if (game) batch.push(game); else counts.skipped += 1;
+          if (game) { batch.push(game); batchChars += game.originalPgn.length; } else counts.skipped += 1;
         } catch { counts.invalid += 1; }
-        if (sinceFlush >= batchSize) await flush();
+        if (sinceFlush >= batchSize || batchChars >= 8_000_000) await flush();
       }
       await flush(true);
       return { ...counts, alreadyImported: false };

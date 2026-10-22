@@ -34,7 +34,7 @@ import { availableAnalysisBoardWidth, resizedBoardSize } from './analysis-worksp
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
-import { importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
+import { importParsedPgn, importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
 import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 
@@ -314,6 +314,8 @@ export function App() {
           await fetch(`/api/games/${challengeId}`, { cache: 'no-store' }),
         );
         const previous = gameRef.current;
+        // A completed source replay can replace this view while a platform read is in flight.
+        if (previous && previous.id !== found.id) return false;
         const confirmed = mergeConfirmedGame(previous, found);
         if (confirmed !== previous) {
           gameRef.current = confirmed;
@@ -396,7 +398,7 @@ export function App() {
   }, [session, challenge?.status, refreshChallenge]);
 
   useEffect(() => {
-    if (challenge?.status !== 'accepted' || challenge.yourSeat === null) return;
+    if (imported !== null || challenge?.status !== 'accepted' || challenge.yourSeat === null) return;
     void refreshGame();
     const stopUpdates = watchGameUpdates(
       () => new EventSource(`/api/games/${challengeId}/events`),
@@ -407,7 +409,7 @@ export function App() {
     document.addEventListener('visibilitychange', onVisible);
     return () => { stopUpdates(); window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible); };
-  }, [challenge?.status, challenge?.yourSeat, refreshGame]);
+  }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
 
   function showImportedGame(next: ImportedGame) {
     setImported(next);
@@ -1312,6 +1314,11 @@ export function App() {
                     role="tabpanel" aria-labelledby="analysis-tab-masters"
                     hidden={analysisTab !== 'masters'}>
                     {analysisTab === 'masters' && analysis !== null && <MastersPanel game={game} tree={analysis}
+                      onOpenGame={(parsed, id, ply) => {
+                        const next = importParsedPgn(parsed, 'explorer-' + id);
+                        showImportedGame(next);
+                        setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
+                      }}
                       onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
                         uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
                   </div>

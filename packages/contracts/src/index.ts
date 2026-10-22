@@ -91,3 +91,17 @@ export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {
 }
 export { timeControlPresets, defaultTimeControl, isTimeControlId } from './time-controls.js';
 export type { TimeControlId } from './time-controls.js';
+export interface ExplorerListedGame {
+  readonly id: string;
+  readonly white_name: string | null; readonly black_name: string | null;
+  readonly white_rating: number | null; readonly black_rating: number | null;
+  readonly white_fide_id: string | null; readonly black_fide_id: string | null;
+  readonly result: string; readonly game_date: string | null;
+  readonly event: string | null; readonly site: string | null; readonly round: string | null;
+  readonly eco: string | null; readonly opening: string | null; readonly time_control: string | null;
+  readonly ply: number; readonly uci: string | null;
+}
+export interface ExplorerGamePage {
+  readonly games: readonly ExplorerListedGame[];
+  readonly page: number; readonly hasMore: boolean;
+}

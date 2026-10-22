@@ -1,3 +1,5 @@
+import { ExplorerGames } from './ExplorerGames';
+import type { ParsedPgn } from '@chess/domain';
 import { useEffect, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisTree } from './analysis-model';
@@ -24,12 +26,13 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
           <span>Draw {(move.draws * 100 / move.games).toFixed(1)}%</span>
           <span>Black {(move.black * 100 / move.games).toFixed(1)}%</span>
         </div>)}</div>)}
-    <small>Source: licensed TWIC games · opening statistics only.</small>
+    <small>Source: licensed TWIC games · statistics and limited game replay.</small>
   </section>;
 }
 
-export function MastersPanel({ game, tree, onExplore }: {
+export function MastersPanel({ game, tree, onExplore, onOpenGame }: {
   game: GameReadResponse; tree: AnalysisTree; onExplore: (uci: string) => void;
+  onOpenGame: (game: ParsedPgn, id: string, ply: number) => void;
 }) {
   const fen = mastersPath(game, tree).fen;
   const [retry, setRetry] = useState(0);
@@ -46,6 +49,7 @@ export function MastersPanel({ game, tree, onExplore }: {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [fen, retry, game.id, game.status]);
   if (game.status !== 'finished') return null;
-  return <ExplorerContent result={state?.fen === fen ? state.result : null}
-    onExplore={onExplore} onRetry={() => { setState(null); setRetry(value => value + 1); }} />;
+  return <><ExplorerContent result={state?.fen === fen ? state.result : null}
+    onExplore={onExplore} onRetry={() => { setState(null); setRetry(value => value + 1); }} />
+    <ExplorerGames key={fen} fen={fen} onOpen={onOpenGame} /></>;
 }

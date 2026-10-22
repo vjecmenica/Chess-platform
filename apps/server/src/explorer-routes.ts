@@ -1,23 +1,29 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type pg from 'pg';
 import { createPositionFromFen, normalizedPositionKey } from '@chess/domain';
+import { registerExplorerGameRoutes } from './explorer-game-routes.js';
 import { requireGuest } from './guest-session.js';
 
 export function registerExplorerRoutes(app: FastifyInstance, pool: pg.Pool) {
   // Bounded process-local abuse guard; deploy a shared edge limit before public scale.
   const requests = new Map<string, { start: number; count: number }>();
+  async function authorize(request: FastifyRequest, reply: FastifyReply) {
+    const guest = await requireGuest(pool, request, reply);
+    if (!guest) return false;
+    const now = Date.now(), old = requests.get(guest.id);
+    const window = old && now - old.start < 60_000 ? old : { start: now, count: 0 };
+    window.count += 1; requests.set(guest.id, window);
+    if (requests.size > 10_000) requests.delete(requests.keys().next().value!);
+    if (window.count > 120) { reply.header('Retry-After', '60').code(429).send({ error: 'rate_limited' }); return false; }
+    return true;
+  }
+  registerExplorerGameRoutes(app, pool, authorize);
   app.get<{ Querystring: { fen: string } }>('/opening-explorer', { schema: { querystring: {
     type: 'object', required: ['fen'], additionalProperties: false,
     properties: { fen: { type: 'string', minLength: 10, maxLength: 120 } },
   } } }, async (request, reply) => {
     reply.header('Cache-Control', 'private, max-age=60');
-    const guest = await requireGuest(pool, request, reply);
-    if (!guest) return;
-    const now = Date.now(), old = requests.get(guest.id);
-    const window = old && now - old.start < 60_000 ? old : { start: now, count: 0 };
-    window.count += 1; requests.set(guest.id, window);
-    if (requests.size > 10_000) requests.delete(requests.keys().next().value!);
-    if (window.count > 120) return reply.header('Retry-After', '60').code(429).send({ error: 'rate_limited' });
+    if (!await authorize(request, reply)) return;
     let key: string;
     try { key = normalizedPositionKey(request.query.fen); }
     catch { return reply.code(400).send({ error: 'invalid_position' }); }
