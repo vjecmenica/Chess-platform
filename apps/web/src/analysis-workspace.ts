@@ -31,7 +31,8 @@ export function evaluationBarState(evaluation: EngineEvaluation | null, fen: str
 export function defaultAnalysisBoardSize(availableWidth: number, viewportHeight: number,
   workspaceTop: number, upperChrome: number, lowerHeight: number, stacked: boolean): number {
   if (stacked) return Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize));
-  const remaining = viewportHeight - workspaceTop - upperChrome - Math.max(320, lowerHeight) - 28;
+  // Budget for the compact cards; an expanded full-width report scrolls naturally.
+  const remaining = viewportHeight - workspaceTop - upperChrome - Math.max(320, Math.min(360, lowerHeight)) - 28;
   return Math.round(Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize,
     Math.max(minimumAnalysisBoardSize, remaining))));
 }

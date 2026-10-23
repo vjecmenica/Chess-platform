@@ -86,7 +86,8 @@ describe('shared game presentation', () => {
     expect(app.match(/<PlayerMaterialPanel/g)).toHaveLength(2);
     expect(app).not.toContain('material-below');
     expect(app).not.toContain('<MaterialTotal');
-    expect(app.indexOf('className="analysis-footer-row"')).toBeGreaterThan(app.indexOf('className="board-stage"'));
+    expect(app).not.toContain('className="analysis-footer-row"');
+    expect(app.indexOf('className="secondary analysis-flip"')).toBeGreaterThan(app.indexOf('className="game-controls"'));
   });
 
   it('renders below-board guidance and the clock notice only outside Analysis', () => {

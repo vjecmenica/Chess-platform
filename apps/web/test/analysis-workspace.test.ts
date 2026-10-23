@@ -30,6 +30,9 @@ describe('analysis workspace sizing', () => {
     expect(resizedBoardSize(320, 300, 300, 900)).toBe(620);
     // A viewport resize recomputes the automatic default, independently of the manual size.
     expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(320);
+    // A full-width report may expand without consuming all of the board's height.
+    expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 700, false)).toBe(474);
+    expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 360, false)).toBe(474);
   });
 
   it('follows a diagonal drag and clamps to desktop and mobile space', () => {

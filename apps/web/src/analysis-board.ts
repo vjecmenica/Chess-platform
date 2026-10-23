@@ -23,6 +23,15 @@ export interface AnalysisBoardState {
 const empty: PositionAnnotations = { arrows: [], marks: [] };
 const squarePattern = /^[a-h][1-8]$/;
 
+/** One completed pointer or keyboard gesture; a release outside cancels it. */
+export function applyAnnotationGesture(state: AnalysisBoardState, fen: string,
+  from: Square, to: Square | null): AnalysisBoardState {
+  if (to === null) return state;
+  const standard = { ...state, color: 'orange' as const };
+  return from === to ? toggleAnalysisMark(standard, fen, to)
+    : toggleAnalysisArrow(standard, fen, from, to);
+}
+
 export function analysisBoardStorageKey(gameId: string): string {
   return `chess-analysis-board:${gameId}:v1`;
 }

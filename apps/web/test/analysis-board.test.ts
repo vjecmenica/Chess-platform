@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { BoardArrows } from '../src/BoardArrows';
-import { analysisBoardStorageKey, boardOrientation, clearPositionAnnotations,
+import { applyAnnotationGesture, analysisBoardStorageKey, boardOrientation, clearPositionAnnotations,
   createAnalysisBoard, positionAnnotations, restoreAnalysisBoard, serializeAnalysisBoard,
   toggleAnalysisArrow, toggleAnalysisMark } from '../src/analysis-board';
 import { arrowCenter } from '../src/board-arrows';
@@ -13,6 +13,21 @@ const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 
 describe('browser-local analysis board controls', () => {
+  it('toggles circles and arrows through one gesture path, cancels outside releases, and clears only this position', () => {
+    const original = { ...createAnalysisBoard('game'), color: 'blue' as const };
+    const circle = applyAnnotationGesture(original, start, 'e4', 'e4');
+    expect(circle.positions[start]?.marks).toEqual([{ square: 'e4', color: 'orange' }]);
+    const arrow = applyAnnotationGesture(circle, start, 'e2', 'e4');
+    expect(arrow.positions[start]?.arrows).toEqual([{ from: 'e2', to: 'e4', color: 'orange' }]);
+    expect(applyAnnotationGesture(arrow, start, 'e2', null)).toBe(arrow);
+    const removed = applyAnnotationGesture(applyAnnotationGesture(arrow, start, 'e4', 'e4'), start, 'e2', 'e4');
+    expect(positionAnnotations(removed, start)).toEqual({ arrows: [], marks: [] });
+    const otherPosition = applyAnnotationGesture(arrow, afterE4, 'e7', 'e5');
+    const cleared = clearPositionAnnotations(otherPosition, start);
+    expect(positionAnnotations(cleared, start)).toEqual({ arrows: [], marks: [] });
+    expect(cleared.positions[afterE4]?.arrows).toHaveLength(1);
+    expect(original.positions).toEqual({});
+  });
   it('flips pieces, coordinates, and arrows without changing square identity', () => {
     expect(boardOrientation('white', false)).toBe('white');
     expect(boardOrientation('white', true)).toBe('black');

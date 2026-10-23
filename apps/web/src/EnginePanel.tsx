@@ -321,6 +321,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
       title={`${engineBuild}, GPLv3. Runs in this browser.`}>Engine license and source</a>
     </div>}
+    {!enabled && <p className="engine-idle">Evaluate the selected position with Stockfish in this browser.</p>}
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && (state.kind === 'searching' || state.kind === 'done') &&

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
+import { AnalysisNavigation } from './AnalysisNavigation';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { MastersPanel } from './MastersPanel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
@@ -14,9 +15,9 @@ import { PlayerMaterialPanel } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows } from './BoardArrows';
 import { analysisBoardStorageKey, annotationColors, boardOrientation,
-  clearPositionAnnotations, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
-  serializeAnalysisBoard, toggleAnalysisArrow, toggleAnalysisMark,
-  type AnalysisBoardState, type AnnotationColor } from './analysis-board';
+  applyAnnotationGesture, clearPositionAnnotations, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
+  serializeAnalysisBoard,
+  type AnalysisBoardState } from './analysis-board';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
@@ -140,7 +141,6 @@ export function App() {
   const [playerWorkspace, setPlayerWorkspace] = useState({ top: 22, height: 480 });
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
-  const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisWarning, setAnalysisWarning] = useState<string | null>(null);
@@ -733,16 +733,6 @@ export function App() {
 
   function chooseSquare(square: Square) {
     if (suppressClick.current) return;
-    if (analysisOpen && analysisTool !== 'move') {
-      if (analysisTool === 'square') editBoardAnnotations((state, fen) => toggleAnalysisMark(state, fen, square));
-      else if (annotationFrom === null) setAnnotationFrom(square);
-      else {
-        if (annotationFrom !== square)
-          editBoardAnnotations((state, fen) => toggleAnalysisArrow(state, fen, annotationFrom, square));
-        setAnnotationFrom(null);
-      }
-      return;
-    }
     const input = inputPosition();
     if (input === null) return;
     const piece = input.mode === 'premove'
@@ -771,7 +761,6 @@ export function App() {
   }
 
   function beginDrag(event: React.PointerEvent<HTMLButtonElement>, square: Square, piece: Piece | null) {
-    if (analysisOpen && analysisTool !== 'move') return;
     const input = inputPosition();
     const planned = input?.mode === 'premove'
       ? projectedPieces(input.positionFen, input.sideToMove, premovesRef.current).get(square) ?? null : null;
@@ -799,6 +788,7 @@ export function App() {
 
   function beginArrow(event: React.PointerEvent<HTMLButtonElement>, square: Square) {
     if (event.button !== 2 || pointer.current !== null || suppressDragMenu.current) return;
+    event.preventDefault();
     rightPointer.current = { id: event.pointerId, from: square };
     armArrowMenuSuppression();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -809,18 +799,18 @@ export function App() {
     if (active === null || active.id !== event.pointerId) return;
     const to = boardSquareAt(event.clientX, event.clientY);
     setArrowPreview(to !== null && to !== active.from ? { from: active.from, to,
-      ...(analysisOpen && analysisBoard !== null ? { color: analysisBoard.color } : {}) } : null);
+      ...(analysisOpen && analysisBoard !== null ? { color: 'orange' as const } : {}) } : null);
   }
 
   function endArrow(event: React.PointerEvent<HTMLButtonElement>) {
     const active = rightPointer.current;
     if (active === null || active.id !== event.pointerId) return;
+    event.preventDefault();
     rightPointer.current = null;
     setArrowPreview(null);
     const to = boardSquareAt(event.clientX, event.clientY);
     if (to !== null) {
-      if (analysisOpen) editBoardAnnotations((state, fen) => to === active.from
-        ? toggleAnalysisMark(state, fen, to) : toggleAnalysisArrow(state, fen, active.from, to));
+      if (analysisOpen) editBoardAnnotations((state, fen) => applyAnnotationGesture(state, fen, active.from, to));
       else setArrows(current => toggleArrow(current, active.from, to));
     }
     armArrowMenuSuppression();
@@ -1058,10 +1048,10 @@ export function App() {
   return (
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
-      <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
+      {analysisOpen ? <AnalysisNavigation imported={imported !== null} /> : <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
-      </header>
+      </header>}
       {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
         <h1>Challenge a friend.</h1>
@@ -1164,7 +1154,10 @@ export function App() {
                   <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
                 {!analysisOpen && <div className="evaluation-spacer" aria-hidden="true" />}
                 <div className="board-frame" ref={boardFrameRef}>
-                <div className="board" role="group" ref={boardRef} aria-label={`Chess board, ${orientation} side at the bottom`}>
+                <div className="board" role="group" ref={boardRef}
+                  onContextMenu={event => event.preventDefault()}
+                  title={analysisOpen ? 'Right-drag: arrow. Right-click or Shift+F10: circle. Shift+Enter on two squares: arrow. Escape: clear marks.' : undefined}
+                  aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
                     const ghost = planned !== null && planned !== piece ? planned : null;
@@ -1187,6 +1180,24 @@ export function App() {
                           armDragMenuSuppression();
                         }
                         cancelDrag();
+                      }}
+                      onKeyDown={event => {
+                        if (!analysisOpen) return;
+                        if (event.key === 'Escape') {
+                          event.preventDefault(); cancelDrag(); setSelected(null); setAnnotationFrom(null);
+                          rightPointer.current = null; setArrowPreview(null);
+                          editBoardAnnotations(clearPositionAnnotations);
+                        } else if (event.shiftKey && event.key === 'F10') {
+                          event.preventDefault();
+                          editBoardAnnotations((state, fen) => applyAnnotationGesture(state, fen, square, square));
+                        } else if (event.shiftKey && event.key === 'Enter') {
+                          event.preventDefault();
+                          if (annotationFrom === null) setAnnotationFrom(square);
+                          else {
+                            editBoardAnnotations((state, fen) => applyAnnotationGesture(state, fen, annotationFrom, square));
+                            setAnnotationFrom(null);
+                          }
+                        }
                       }}
                       onClick={() => chooseSquare(square)}>
                       {marks.has(square) && <span className="square-mark" aria-hidden="true"
@@ -1244,38 +1255,6 @@ export function App() {
               {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
-              {analysisOpen && analysisBoard?.gameId === game.id && displayedFen !== null &&
-                <div className="analysis-footer-row">
-                  <div className="analysis-board-controls" role="toolbar" aria-label="Analysis board controls"
-                  title={imported === null ? 'Board marks and orientation are saved only in this browser.'
-                    : 'Board marks and orientation last until this page is reloaded.'}>
-                  <button type="button" className="secondary" onClick={() =>
-                    setAnalysisBoard(current => current?.gameId === game.id
-                      ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>
-                  <div className="analysis-tool-group" role="group" aria-label="Board tool">
-                    {(['move', 'arrow', 'square'] as const).map(tool =>
-                      <button key={tool} type="button" className="secondary" aria-pressed={analysisTool === tool}
-                        title={tool === 'move' ? 'Explore legal moves' : tool === 'arrow'
-                          ? 'Click two squares to draw an arrow, or right-drag' : 'Click a square to mark it'}
-                        onClick={() => { setAnalysisTool(tool); setAnnotationFrom(null); setSelected(null); }}>
-                        {tool === 'move' ? 'Move' : tool === 'arrow' ? 'Arrow' : 'Square'}
-                      </button>)}</div>
-                  <div className="analysis-colors" role="group" aria-label="Board mark color">
-                    {(Object.keys(annotationColors) as AnnotationColor[]).map(color =>
-                      <button key={color} type="button" className="color-choice"
-                        aria-label={`${color} board marks`} aria-pressed={analysisBoard.color === color}
-                        title={`${color[0]?.toUpperCase()}${color.slice(1)} arrows and squares`}
-                        onClick={() => setAnalysisBoard(current => current?.gameId === game.id
-                          ? { ...current, color } : current)}>
-                        <span aria-hidden="true" style={{ backgroundColor: annotationColors[color].fill }} />
-                      </button>)}</div>
-                  <button type="button" className="secondary" disabled={boardNotes === null
-                    || boardNotes.arrows.length === 0 && boardNotes.marks.length === 0}
-                    onClick={() => { editBoardAnnotations(clearPositionAnnotations); setAnnotationFrom(null); }}>
-                    Clear marks
-                  </button>
-                  </div>
-                </div>}
               {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
                 ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
                   : canMove ? 'Select or drag one of your pieces.'
@@ -1339,6 +1318,9 @@ export function App() {
 
               </div>
               <div className="game-controls">
+                {analysisOpen && <button type="button" className="secondary analysis-flip"
+                  onClick={() => setAnalysisBoard(current => current?.gameId === game.id
+                    ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>}
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
@@ -1355,7 +1337,7 @@ export function App() {
                     setGameReview(null);
                     setPositionEvaluation(null);
                     resizeGesture.current = null;
-                    setAnalysisTool('move'); setAnnotationFrom(null);
+                    setAnnotationFrom(null);
                     setSelected(null); setPromotion(null); setAnalysisError(null);
                   }} /> : <p className="turn" role="status">{game.status === 'pending_adjudication'
                   ? game.pending?.kind === 'resignation'
@@ -1454,6 +1436,14 @@ export function App() {
 
             </aside>
             {analysisOpen && <div className="analysis-lower-panels">
+              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                sessionOnly={imported !== null}
+                fen={displayedFen} reviewHost={reviewHost}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
               <div className="opening-book-card">
                 {analysis !== null && <MastersPanel game={game} tree={analysis}
                       onOpenGame={(parsed, id, ply) => {
@@ -1464,14 +1454,6 @@ export function App() {
                       onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
                         uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
               </div>
-              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-                sessionOnly={imported !== null}
-                fen={displayedFen} reviewHost={reviewHost}
-                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
               <div className="computer-analysis-card" ref={setReviewHost} />
             </div>}
           </div>
