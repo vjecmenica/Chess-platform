@@ -3,6 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
+import { FutureChat } from './FutureChat';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { MastersPanel } from './MastersPanel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
@@ -1046,9 +1047,11 @@ export function App() {
   }
 
   return (
+    <>
+    {analysisOpen && <AnalysisNavigation imported={imported !== null} />}
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
-      {analysisOpen ? <AnalysisNavigation imported={imported !== null} /> : <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
+      {!analysisOpen && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
       </header>}
@@ -1123,7 +1126,7 @@ export function App() {
         {game === null && gameError === null && <p role="status">Loading the confirmed position…</p>}
         {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
-          <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
+          <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}${imported === null ? ' site-game-workspace' : ''}`}
             ref={gameLayoutRef}
             style={{
               '--analysis-board-column': `min(${(boardSize ?? automaticBoardSize ?? 440) + 50}px, calc(100% - 320px))`,
@@ -1435,6 +1438,7 @@ export function App() {
               </div>
 
             </aside>
+            <FutureChat siteGame={imported === null} />
             {analysisOpen && <div className="analysis-lower-panels">
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}
@@ -1461,5 +1465,6 @@ export function App() {
       </section>}
       {challenge?.status !== 'accepted' && imported === null && <footer>Play with focus. Learn from every game.</footer>}
     </main>
+    </>
   );
 }
