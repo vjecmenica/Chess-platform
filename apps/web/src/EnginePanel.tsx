@@ -114,7 +114,7 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   const selected = selectedPly === null ? null : review.evaluations[selectedPly];
   const fills = reviewAdvantageSegments(review.evaluations.map(graphCentipawns), width);
   return <div className="review-graph-wrap">
-    <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} role="group"
+    <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} preserveAspectRatio="none" role="group"
     aria-label="White-perspective evaluation by half-move, nonlinear scale clipped at plus or minus ten pawns; mate at the edge">
     {fills.map((fill, index) => <polygon key={index} points={fill.points}
       className={`review-fill-${fill.side}`} />)}
@@ -346,7 +346,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       })}
     </div>}
     {reviewHost && createPortal(<div className="review-content">
-    <strong>Computer Analysis</strong>
+    <div className="review-heading"><strong>Computer Analysis</strong>
     <div className="review-control">
       <button type="button" className="secondary" disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
@@ -359,10 +359,11 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
       </span>}
     </div>
+    </div>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
-      <small>White perspective · nonlinear display scale · mate at graph edge · {reviewMethodVersion}</small>
+      <small className="review-scale" title={`White perspective; nonlinear scale; mate at the graph edge. ${reviewMethodVersion}`}>White perspective · ±10 pawns</small>
       <div className="review-summary" aria-label="Computer Analysis summary">
         {(['white', 'black'] as const).map(side => {
           const summary = reviewSummary(review.review, side);
@@ -384,9 +385,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           </div>;
         })}
       </div>
-      <small>Accuracy is a local engine estimate, not an Elo rating or a measure of established strength.{' '}
+      <small className="review-method" title="Accuracy is a local engine estimate, not an Elo rating or a measure of established strength.">Local engine estimate · {' '}
         <a href="https://github.com/vjecmenica/Chess-platform/blob/main/docs/accuracy-method.md"
-          target="_blank" rel="noreferrer">{accuracyMethodVersion}</a>
+          target="_blank" rel="noreferrer" aria-label={`Accuracy methodology: ${accuracyMethodVersion}`}>Methodology</a>
       </small>
     </div>}
     </div>, reviewHost)}

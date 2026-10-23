@@ -18,16 +18,20 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
       className="secondary" onClick={onRetry}>Retry</button></p>}
     {data && (data.moves.length === 0 ? <p>No indexed games found for this position.</p>
       : <div className="masters-moves" role="list" aria-label="Opening candidate moves">
-        <div className="book-columns" aria-hidden="true"><span>Move</span><span>Played</span><span>Games</span><span>White / Draw / Black</span></div>
+        <div className="book-columns" aria-hidden="true"><span>Move</span><span>Played %</span><span>Games</span><span>White / Draw / Black</span></div>
         {data.moves.map(move => <div className="masters-move" role="listitem" key={move.uci}>
           <button type="button" onClick={() => onExplore(move.uci)}
             title={`Explore ${move.san} as a local analysis variation`}>{move.san}</button>
           <span>{playedPercentage(data.moves, move.games).toFixed(1)}%</span>
-          <span>{move.games.toLocaleString()} games</span>
-          <span className="book-outcomes">
-          <span>White {(move.white * 100 / move.games).toFixed(1)}%</span>
-          <span>Draw {(move.draws * 100 / move.games).toFixed(1)}%</span>
-          <span>Black {(move.black * 100 / move.games).toFixed(1)}%</span></span>
+          <span aria-label={`${move.games.toLocaleString()} games`}>{move.games.toLocaleString()}</span>
+          <span className="book-outcomes" role="img"
+            aria-label={`White ${(move.white * 100 / move.games).toFixed(1)}%, Draw ${(move.draws * 100 / move.games).toFixed(1)}%, Black ${(move.black * 100 / move.games).toFixed(1)}%`}>
+            {([['white', move.white], ['draw', move.draws], ['black', move.black]] as const).map(([side, count]) => {
+              const percent = count * 100 / move.games;
+              return <span key={side} className={`book-${side}`} style={{ width: `${percent}%` }}
+                title={`${side === 'draw' ? 'Draw' : side === 'white' ? 'White wins' : 'Black wins'}: ${percent.toFixed(1)}%`}
+                aria-hidden="true">{percent >= 15 ? `${Math.round(percent)}%` : ''}</span>;
+            })}</span>
         </div>)}</div>)}
     <small>Source: licensed TWIC games · statistics and limited game replay.</small>
   </section>;

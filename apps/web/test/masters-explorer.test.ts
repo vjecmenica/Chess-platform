@@ -33,6 +33,11 @@ describe('Masters opening explorer', () => {
     expect(render({ kind: 'error', message: 'Opening explorer timed out.' })).toContain('Retry');
     const html = render({ kind: 'ok', data: parseMastersResponse(response, game().position.fen) });
     expect(html).toContain('20 games');
+    expect(html).toContain('class="book-white" style="width:65%"');
+    expect(html).toContain('class="book-draw" style="width:25%"');
+    expect(html).toContain('class="book-black" style="width:10%"');
+    expect(html).toContain('Black wins: 10.0%');
+    expect(html).toContain('Played %');
     expect(html).toContain('White 65.0%'); expect(html).toContain('Draw 25.0%'); expect(html).toContain('Black 10.0%');
     expect(html).toContain('Explore Nf3 as a local analysis variation');
     expect(html).toContain('licensed TWIC');

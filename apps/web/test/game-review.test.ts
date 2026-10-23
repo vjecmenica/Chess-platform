@@ -85,6 +85,7 @@ describe('browser-local full-game review', () => {
       .toEqual([[null, 'Mate score'], [null, 'Mate score']]);
     const markup = renderToStaticMarkup(createElement(ReviewGraph,
       { review, selectedPly: 1, onSelectPly: () => {} }));
+    expect(markup).toContain('preserveAspectRatio="none"');
     expect(markup).toContain('White-perspective evaluation');
     expect(markup).toContain('class="review-selected"');
     expect(markup).toContain('role="button"');

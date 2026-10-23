@@ -137,6 +137,7 @@ export function App() {
   const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
   const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
+  const [playerWorkspace, setPlayerWorkspace] = useState({ top: 22, height: 480 });
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [analysisTool, setAnalysisTool] = useState<'move' | 'arrow' | 'square'>('move');
@@ -999,6 +1000,13 @@ export function App() {
     if (frame === null) return;
     const update = () => {
       setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
+      const layout = gameLayoutRef.current;
+      const top = layout?.querySelector('.play-column > .player-material-top')?.getBoundingClientRect();
+      const bottom = layout?.querySelector('.play-column > .player-material-bottom')?.getBoundingClientRect();
+      if (layout && top && bottom) setPlayerWorkspace({
+        top: Math.round(top.top - layout.getBoundingClientRect().top),
+        height: Math.round(bottom.bottom - top.top),
+      });
       setBoardAlignmentOffset(Math.round(frame.getBoundingClientRect().top
         - (gameLayoutRef.current?.getBoundingClientRect().top ?? 0)));
     };
@@ -1128,8 +1136,10 @@ export function App() {
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}`}
             ref={gameLayoutRef}
             style={{
-              '--analysis-board-column': boardSize === null ? '1fr' : `min(${boardSize + 34}px, calc(100% - 338px))`,
+              '--analysis-board-column': `min(${(boardSize ?? automaticBoardSize ?? 440) + 50}px, calc(100% - 320px))`,
               '--board-alignment-offset': `${boardAlignmentOffset}px`,
+              '--player-alignment-offset': `${playerWorkspace.top}px`,
+              '--player-workspace-height': `${playerWorkspace.height}px`,
               ...((boardSize ?? (analysisOpen ? automaticBoardSize : null)) === null ? {} : {
                 '--board-size': `${boardSize ?? automaticBoardSize}px`,
                 '--board-column-size': `${(boardSize ?? automaticBoardSize ?? 480) + 34}px`,
