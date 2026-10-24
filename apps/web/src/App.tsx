@@ -1030,7 +1030,7 @@ export function App() {
     return () => window.removeEventListener('keydown', navigate);
   }, [game, analysis, analysisOpen, displayedPly, selectedReplayPly]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const frame = boardFrameRef.current;
     if (frame === null) return;
     const update = () => {
@@ -1050,7 +1050,7 @@ export function App() {
     observer.observe(frame);
     if (frame.parentElement?.parentElement) observer.observe(frame.parentElement.parentElement);
     return () => observer.disconnect();
-  }, [analysisOpen, game?.id]);
+  }, [analysisOpen, game?.id, orientation]);
 
   useEffect(() => {
     if (!analysisOpen || !gameLayoutRef.current) return;

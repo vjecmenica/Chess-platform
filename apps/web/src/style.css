@@ -240,7 +240,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .masters-pane p { margin: 0; }
 .masters-panel { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; padding: 10px 12px;
   border: 1px solid #d2d9cb; border-radius: 8px; background: #fbfaf5; color: #33473b; font-size: 13px; }
-.masters-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.masters-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
 .masters-heading strong { font-size: 16px; }
 .masters-heading span, .masters-panel small { color: #617163; }
 .masters-panel p { margin: 0; }
@@ -401,6 +401,8 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   min-width: 0; padding-left: 8px; font-size: 14px; line-height: 1.35; }
 .final-result strong { font-size: 21px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .finished-result-actions { min-width: 0; }
+/* Balance the button's upper gap with the visible resize grip below it. */
+.finished-result-area:not(.compact) .finished-result-actions { padding-top: 6px; }
 .finished-result-actions button { padding: 7px 10px; white-space: nowrap; }
 .finished-result-area.compact .finished-result-actions { justify-self: end; }
 .result-resize-handle { display: flex; align-items: center; justify-content: center;
@@ -532,12 +534,12 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .board-stage .board-frame, .analysis-footer-row, .board-hint, .clock-policy {
   width: min(var(--board-size, var(--default-board-size)), calc(100% - 34px), 1080px); }
 .play-column > .player-material-panel { width: min(var(--board-size, var(--default-board-size)), calc(100% - 34px), 1080px); padding-left: 14px; }
-.play-column > .player-material-top { margin-bottom: 6px; }
-.play-column > .player-material-bottom { margin-top: 2px; margin-bottom: 38px; }
+.play-column > .player-material-top { margin-bottom: 8px; }
+.play-column > .player-material-bottom { margin-top: 4px; margin-bottom: 38px; }
 .play-column .player-material-row { left: 14px; }
 .play-column .player-material-top > .player-material-row { bottom: calc(100% + 3px); }
 .play-column .player-material-bottom > .player-material-row { top: calc(100% + 3px); }
-.play-column .clock { min-height: 48px; padding: 6px 10px; }
+.play-column .clock { min-height: 54px; padding: 8px 12px; }
 .play-column .player-label b { display: inline; margin-left: 8px; }
 .play-column .player-name-line { display: inline-flex; }
 .game-layout .game-sidebar { margin-top: var(--board-alignment-offset, 90px); height: var(--board-row-height, 480px);
@@ -584,7 +586,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .analysis-workspace .masters-heading strong,
 .analysis-workspace .engine-heading > strong,
 .analysis-workspace .review-heading > strong { font-size: 18px; line-height: 1.25; }
-.analysis-workspace .replay { padding: 0; border: 0; background: transparent; }
+.analysis-workspace .replay { margin: 0 0 6px; padding: 0; border: 0; background: transparent; }
 .analysis-workspace .replay-controls { grid-template-columns: repeat(4, minmax(44px, 64px)); justify-content: center; }
 .analysis-workspace .moves { border: 0; border-radius: 0; padding: 4px; scrollbar-gutter: auto; }
 .analysis-workspace .move-pair-row { min-height: 32px; }
@@ -628,10 +630,9 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
     grid-template-columns: minmax(0,var(--analysis-board-column,490px)) minmax(400px,1fr); }
   .analysis-workspace .play-column { grid-column: 1; padding-top: 22px; align-items: flex-end;
     justify-self: start; width: min(calc(100% - 16px), calc(var(--board-size, var(--default-board-size)) + 34px)); }
-  .analysis-workspace .game-sidebar { grid-column: 2; padding: 12px;
+  .analysis-workspace .game-sidebar { grid-column: 2; padding: 8px 12px;
     margin-top: var(--board-alignment-offset,64px); height: calc(var(--player-workspace-height,480px) + var(--player-alignment-offset,22px) - var(--board-alignment-offset,64px)); }
   .analysis-workspace .analysis-footer-row { width: max(100%, 404px); max-width: calc(100vw - 36px); align-self: center; }
-  .analysis-workspace .play-column .clock { min-height: 36px; padding: 4px 10px; }
   .analysis-workspace .play-column > .player-material-bottom { margin-bottom: 26px; }
   .analysis-workspace .player-material-row, .analysis-workspace .captured-row { height: 24px; }
   .analysis-workspace .captured-row img { width: 24px; height: 24px; }
