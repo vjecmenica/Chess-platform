@@ -16,7 +16,7 @@ import { PlayerMaterialPanel } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows } from './BoardArrows';
 import { analysisBoardStorageKey, annotationColors, boardOrientation,
-  applyAnnotationGesture, clearPositionAnnotations, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
+  applyAnnotationGesture, clearPositionAnnotations, clearPositionArrows, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
   serializeAnalysisBoard,
   type AnalysisBoardState } from './analysis-board';
 import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
@@ -141,6 +141,7 @@ export function App() {
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
+  const [evaluationPendingFen, setEvaluationPendingFen] = useState<string | null>(null);
   const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
   const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
@@ -442,6 +443,7 @@ export function App() {
     setSelectedReplayPly(null);
     setGameReview(null);
     setPositionEvaluation(null);
+    setEvaluationPendingFen(null);
     setPgnError(null);
     setSelected(null);
     setPromotion(null);
@@ -750,6 +752,9 @@ export function App() {
 
   function chooseSquare(square: Square) {
     if (suppressClick.current) return;
+    if (analysisOpen) editBoardAnnotations(clearPositionArrows);
+    else setArrows([]);
+    setArrowPreview(null);
     const input = inputPosition();
     if (input === null) return;
     const piece = input.mode === 'premove'
@@ -1195,7 +1200,8 @@ export function App() {
               </PlayerMaterialPanel>
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
-                  <EvaluationBar fen={displayedFen} evaluation={selectedEvaluation} />}
+                  <EvaluationBar gameId={game.id} fen={displayedFen} evaluation={selectedEvaluation}
+                    pending={evaluationPendingFen === displayedFen} />}
                 {!analysisOpen && <div className="evaluation-spacer" aria-hidden="true" />}
                 <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef}
@@ -1384,6 +1390,7 @@ export function App() {
 
                     setGameReview(null);
                     setPositionEvaluation(null);
+                    setEvaluationPendingFen(null);
                     resizeGesture.current = null;
                     setAnnotationFrom(null);
                     setSelected(null); setPromotion(null); setAnalysisError(null);
@@ -1492,7 +1499,8 @@ export function App() {
                 onSelectPly={ply => {
                   setAnalysis(current => current === null ? null : selectMain(current, game, ply));
                   setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                onEvaluationPendingChange={setEvaluationPendingFen} />}
               <div className="opening-book-card">
                 {analysis !== null && <MastersPanel game={game} tree={analysis}
                       onOpenGame={openExplorerGame} onExplore={exploreBookMove} />}

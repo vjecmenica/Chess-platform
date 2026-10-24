@@ -79,6 +79,11 @@ export function clearPositionAnnotations(state: AnalysisBoardState, fen: string)
   return { ...state, positions };
 }
 
+export function clearPositionArrows(state: AnalysisBoardState, fen: string): AnalysisBoardState {
+  if (positionAnnotations(state, fen).arrows.length === 0) return state;
+  return withPosition(state, fen, current => ({ ...current, arrows: [] }));
+}
+
 export function serializeAnalysisBoard(state: AnalysisBoardState): string {
   return JSON.stringify({ version: 1, ...state });
 }

@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { EvaluationBar, evaluationFillPercent } from '../src/EvaluationBar';
+import { EvaluationBar, evaluationFillPercent, evaluationVisualState } from '../src/EvaluationBar';
 import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, evaluationBarState,
   resizedBoardSize } from '../src/analysis-workspace';
 import type { EngineEvaluation } from '../src/engine-analysis';
@@ -68,7 +68,7 @@ describe('White-perspective evaluation bar', () => {
       ?.whitePercent).toBe(100);
     expect(evaluationBarState(evaluation(), blackToMove)).toBeNull();
     const html = renderToStaticMarkup(createElement(EvaluationBar,
-      { evaluation: evaluation(), fen: blackToMove }));
+      { gameId: 'game', evaluation: evaluation(), fen: blackToMove }));
     expect(html).toContain('No evaluation for this position');
     expect(html).not.toContain('+0.50');
     expect(html).toContain('evaluation-track unevaluated');
@@ -86,8 +86,31 @@ describe('White-perspective evaluation bar', () => {
     expect(evaluationFillPercent(null, 72)).toBe(72);
     expect(evaluationFillPercent(35, 72)).toBe(35);
     const current = renderToStaticMarkup(createElement(EvaluationBar,
-      { evaluation: evaluation(), fen: STANDARD_STARTING_FEN }));
+      { gameId: 'game', evaluation: evaluation(), fen: STANDARD_STARTING_FEN }));
     expect(current).toContain('White perspective +0.50');
+  });
+
+  it('retains visual colors across a pending/cache handoff without retaining the old score', () => {
+    const previous = evaluationVisualState(null, 'game', 72, false);
+    const lookup = evaluationVisualState(previous.visual, 'game', null, true);
+    expect(lookup).toEqual({ visual: { gameId: 'game', whitePercent: 72, hasValue: true }, unevaluated: false });
+    const cached = evaluationVisualState(lookup.visual, 'game', 38, false);
+    expect(cached.visual.whitePercent).toBe(38);
+    expect(cached.unevaluated).toBe(false);
+    const unavailable = evaluationVisualState(cached.visual, 'game', null, false);
+    expect(unavailable.unevaluated).toBe(true);
+    const differentGame = evaluationVisualState(cached.visual, 'other-game', null, true);
+    expect(differentGame.visual).toEqual({ gameId: 'other-game', whitePercent: 50, hasValue: false });
+    expect(differentGame.unevaluated).toBe(true);
+    const blackToMove = STANDARD_STARTING_FEN.replace(' w ', ' b ');
+    const pending = renderToStaticMarkup(createElement(EvaluationBar, {
+      gameId: 'game', evaluation: evaluation(), fen: blackToMove, pending: true,
+    }));
+    expect(pending).toContain('Evaluation pending for this position');
+    expect(pending).not.toContain('+0.50');
+    expect(pending).not.toContain('aria-valuenow');
+    expect(pending).not.toContain('aria-valuetext');
+    expect(pending).toContain('role="group"');
   });
 
   it('places mate at the correct edge, including a checkmated side to move', () => {

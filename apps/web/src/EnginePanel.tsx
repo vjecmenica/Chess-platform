@@ -150,11 +150,12 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, reviewHost, sessionOnly = false }: {
+  onEvaluationChange, onEvaluationPendingChange, reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
+  readonly onEvaluationPendingChange?: (fen: string | null) => void;
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
 }) {
@@ -262,6 +263,11 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
     [evaluation, onEvaluationChange]);
+  useEffect(() => {
+    onEvaluationPendingChange?.(evaluation === null && (review.kind === 'running'
+      || enabled && state.kind !== 'error') ? fen : null);
+  }, [fen, enabled, state.kind, review.kind, evaluation, onEvaluationPendingChange]);
+  useEffect(() => () => onEvaluationPendingChange?.(null), [onEvaluationPendingChange]);
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
