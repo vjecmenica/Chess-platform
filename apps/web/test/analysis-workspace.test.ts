@@ -15,9 +15,8 @@ function evaluation(fen = STANDARD_STARTING_FEN, kind: 'cp' | 'mate' = 'cp', val
 
 describe('analysis workspace sizing', () => {
   it('reserves desktop height for player strips, controls, and a completed report', () => {
-    // A 900px viewport with 48px above the workspace, 170px of board chrome,
-    // a 334px completed report, and 28px of gaps leaves a 320px board.
-    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(320);
+    // The height budget leaves 320px, so the usable desktop floor applies.
+    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(334);
     expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 334, false)).toBe(500);
     // The idle report button must still reserve space for the later graph/summary.
     expect(defaultAnalysisBoardSize(650, 900, 48, 170, 70, false)).toBe(334);
@@ -25,11 +24,11 @@ describe('analysis workspace sizing', () => {
   });
 
   it('allows natural scrolling on short screens and after an explicit enlargement', () => {
-    expect(defaultAnalysisBoardSize(650, 600, 48, 170, 334, false)).toBe(240);
+    expect(defaultAnalysisBoardSize(650, 600, 48, 170, 334, false)).toBe(334);
     expect(defaultAnalysisBoardSize(340, 844, 48, 170, 600, true)).toBe(340);
     expect(resizedBoardSize(320, 300, 300, 900)).toBe(620);
     // A viewport resize recomputes the automatic default, independently of the manual size.
-    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(320);
+    expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(334);
     // A full-width report may expand without consuming all of the board's height.
     expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 700, false)).toBe(474);
     expect(defaultAnalysisBoardSize(850, 1080, 48, 170, 360, false)).toBe(474);
@@ -38,6 +37,11 @@ describe('analysis workspace sizing', () => {
   it('follows a diagonal drag and clamps to desktop and mobile space', () => {
     expect(availableAnalysisBoardWidth(1140, false)).toBe(768);
     expect(availableAnalysisBoardWidth(390, true)).toBe(356);
+    // A wide site game keeps both the move list and chat usable at the board's limit.
+    expect(availableAnalysisBoardWidth(1600, false, true, true)).toBe(758);
+    expect(availableAnalysisBoardWidth(1540, false, true, false)).toBe(710);
+    expect(resizedBoardSize(500, 1000, 1000,
+      availableAnalysisBoardWidth(1404, false, true, true))).toBe(562);
     expect(resizedBoardSize(500, 60, 40, 680)).toBe(550);
     expect(resizedBoardSize(500, -80, -40, 680)).toBe(440);
     expect(resizedBoardSize(500, 1000, 1000, 680)).toBe(680);

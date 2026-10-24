@@ -1,6 +1,6 @@
 import { ExplorerGames } from './ExplorerGames';
 import type { ParsedPgn } from '@chess/domain';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisTree } from './analysis-model';
 import { mastersPath, playedPercentage, MastersClient, type MastersResult } from './masters-explorer';
@@ -37,7 +37,7 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
   </section>;
 }
 
-export function MastersPanel({ game, tree, onExplore, onOpenGame }: {
+export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore, onOpenGame }: {
   game: GameReadResponse; tree: AnalysisTree; onExplore: (uci: string) => void;
   onOpenGame: (game: ParsedPgn, id: string, ply: number) => void;
 }) {
@@ -60,4 +60,4 @@ export function MastersPanel({ game, tree, onExplore, onOpenGame }: {
     onExplore={onExplore} onRetry={() => { setState(null); setRetry(value => value + 1); }} />
     <details className="book-examples"><summary>Example games</summary>
       <ExplorerGames key={fen} fen={fen} onOpen={onOpenGame} /></details></>;
-}
+});

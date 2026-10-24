@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
@@ -39,6 +39,7 @@ import { FinishedResultArea } from './FinishedResultArea';
 import { importParsedPgn, importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
 import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
+import { advanceDragVisual } from './drag-visual';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
@@ -132,6 +133,8 @@ export function App() {
   const pgnErrorRef = useRef<HTMLParagraphElement | null>(null);
   const [selectedReplayPly, setSelectedReplayPly] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisTree | null>(null);
+  const analysisRef = useRef<AnalysisTree | null>(null);
+  analysisRef.current = analysis;
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
@@ -184,6 +187,17 @@ export function App() {
   const suppressDragMenu = useRef(false);
   const dragMenuReset = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ from: Square; piece: Piece; x: number; y: number } | null>(null);
+  const dragPieceRef = useRef<HTMLImageElement | null>(null);
+  const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const node = dragPieceRef.current;
+    const position = dragPositionRef.current;
+    if (drag !== null && node !== null && position !== null) {
+      node.style.left = `${position.x}px`;
+      node.style.top = `${position.y}px`;
+    }
+  }, [drag]);
 
   function updatePremoves(update: Premove[] | ((queue: readonly Premove[]) => Premove[])) {
     const next = typeof update === 'function' ? update(premovesRef.current) : update;
@@ -414,7 +428,7 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible); };
   }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
 
-  function showImportedGame(next: ImportedGame) {
+  const showImportedGame = useCallback((next: ImportedGame) => {
     setBoardSize(null);
     setImported(next);
     gameRef.current = next.game;
@@ -429,7 +443,7 @@ export function App() {
     setPgnError(null);
     setSelected(null);
     setPromotion(null);
-  }
+  }, []);
 
   function openPgn(text: string) {
     try { showImportedGame(importPgn(text, `import-${crypto.randomUUID()}`)); }
@@ -820,9 +834,11 @@ export function App() {
   function moveDrag(event: React.PointerEvent<HTMLButtonElement>) {
     const active = pointer.current;
     if (active === null || active.id !== event.pointerId) return;
-    if (!active.moved && Math.hypot(event.clientX - active.x, event.clientY - active.y) < 6) return;
-    active.moved = true;
-    setDrag({ from: active.from, piece: active.piece, x: event.clientX, y: event.clientY });
+    const step = advanceDragVisual(active, event.clientX, event.clientY, dragPieceRef.current);
+    if (step === 'idle') return;
+    dragPositionRef.current = { x: event.clientX, y: event.clientY };
+    if (step === 'started')
+      setDrag({ from: active.from, piece: active.piece, x: event.clientX, y: event.clientY });
   }
 
   function endDrag(event: React.PointerEvent<HTMLButtonElement>) {
@@ -830,6 +846,7 @@ export function App() {
     if (active === null || active.id !== event.pointerId) return;
     pointer.current = null;
     setDrag(null);
+    dragPositionRef.current = null;
     if (!active.moved) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
@@ -852,6 +869,7 @@ export function App() {
     const active = pointer.current;
     pointer.current = null;
     setDrag(null);
+    dragPositionRef.current = null;
     if (active !== null) {
       const origin = boardRef.current?.querySelector<HTMLButtonElement>(`[data-square="${active.from}"]`);
       if (origin?.hasPointerCapture(active.id)) origin.releasePointerCapture(active.id);
@@ -864,14 +882,28 @@ export function App() {
     dragMenuReset.current = window.setTimeout(() => { suppressDragMenu.current = false; }, 1_000);
   }
 
-  function submitAnalysisMove(tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,
-    promotionPiece?: 'q' | 'r' | 'b' | 'n') {
+  const submitAnalysisMove = useCallback((tree: AnalysisTree, current: GameReadResponse, from: Square, to: Square,
+    promotionPiece?: 'q' | 'r' | 'b' | 'n') => {
     const result = playAnalysisMove(tree, current, from, to, promotionPiece);
     if (result.accepted) {
       setAnalysis(result.tree);
       setAnalysisError(null);
     } else setAnalysisError(result.result.message);
-  }
+  }, []);
+
+  const exploreBookMove = useCallback((uci: string) => {
+    const tree = analysisRef.current;
+    const current = gameRef.current;
+    if (tree === null || current === null) return;
+    submitAnalysisMove(tree, current, uci.slice(0, 2) as Square,
+      uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined);
+  }, [submitAnalysisMove]);
+
+  const openExplorerGame = useCallback((parsed: Parameters<typeof importParsedPgn>[0], id: string, ply: number) => {
+    const next = importParsedPgn(parsed, 'explorer-' + id);
+    showImportedGame(next);
+    setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
+  }, [showImportedGame]);
 
   function selectMove(cursor: AnalysisCursor) {
     if (cursor.kind === 'branch') {
@@ -1035,7 +1067,8 @@ export function App() {
 
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
-    return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches);
+    return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches,
+      imported === null && window.matchMedia('(min-width: 1400px)').matches, analysisOpen);
   }
 
   function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
@@ -1255,7 +1288,7 @@ export function App() {
                     game.timeControl !== null && 'initialMs' in game.timeControl
                       ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
               </PlayerMaterialPanel>
-              {drag !== null && <img className="drag-piece" src={pieceImage(drag.piece)} alt=""
+              {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
               {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
@@ -1450,13 +1483,7 @@ export function App() {
                 }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation} />}
               <div className="opening-book-card">
                 {analysis !== null && <MastersPanel game={game} tree={analysis}
-                      onOpenGame={(parsed, id, ply) => {
-                        const next = importParsedPgn(parsed, 'explorer-' + id);
-                        showImportedGame(next);
-                        setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
-                      }}
-                      onExplore={uci => submitAnalysisMove(analysis, game, uci.slice(0, 2) as Square,
-                        uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined)} />}
+                      onOpenGame={openExplorerGame} onExplore={exploreBookMove} />}
               </div>
               <div className="computer-analysis-card" ref={setReviewHost} />
             </div>}

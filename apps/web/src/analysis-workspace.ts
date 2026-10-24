@@ -3,10 +3,16 @@ import { graphCentipawns } from './game-review';
 
 export const minimumAnalysisBoardSize = 240;
 export const maximumAnalysisBoardSize = 1080;
+const minimumDefaultDesktopBoardSize = 334;
 
-export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean): number {
-  // Reserve the evaluation bar in both layouts, and the move panel and gap on desktop.
-  return Math.max(0, workspaceWidth - (stacked ? 34 : 34 + 320 + 18));
+export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean,
+  chatRail = false, analysis = false): number {
+  // The wide site-game grid reserves a 320px chat rail, a 440px move panel,
+  // its gaps, and the space around the square board inside its column.
+  const reserve = stacked ? 34 : chatRail
+    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 18 + 34)
+    : 34 + 320 + 18;
+  return Math.max(0, workspaceWidth - reserve);
 }
 
 export function resizedBoardSize(startSize: number, deltaX: number, deltaY: number,
@@ -31,8 +37,9 @@ export function evaluationBarState(evaluation: EngineEvaluation | null, fen: str
 export function defaultAnalysisBoardSize(availableWidth: number, viewportHeight: number,
   workspaceTop: number, upperChrome: number, lowerHeight: number, stacked: boolean): number {
   if (stacked) return Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize));
-  // Budget for the compact cards; an expanded full-width report scrolls naturally.
+  // Budget for the compact cards, but keep the desktop board usable on short screens.
+  // The extra height scrolls naturally, as does an expanded full-width report.
   const remaining = viewportHeight - workspaceTop - upperChrome - Math.max(320, Math.min(360, lowerHeight)) - 28;
   return Math.round(Math.max(0, Math.min(availableWidth, maximumAnalysisBoardSize,
-    Math.max(minimumAnalysisBoardSize, remaining))));
+    Math.max(minimumDefaultDesktopBoardSize, remaining))));
 }
