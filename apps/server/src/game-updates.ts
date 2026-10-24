@@ -3,7 +3,7 @@ import type pg from 'pg';
 export interface GameUpdateHub {
   start(): Promise<void>;
   subscribe(gameId: string, onUpdate: (version: number) => void,
-    onUnavailable: () => void): () => void;
+    onUnavailable: () => void, onChat?: (id: string) => void): () => void;
   stop(): Promise<void>;
 }
 
@@ -11,7 +11,7 @@ const channel = 'chess_game_updates';
 
 export function createGameUpdateHub(pool: pg.Pool): GameUpdateHub {
   const subscribers = new Map<string, Set<{
-    update: (version: number) => void; unavailable: () => void;
+    update: (version: number) => void; unavailable: () => void; chat: ((id: string) => void) | undefined;
   }>>();
   let listener: pg.PoolClient | null = null;
   let starting: Promise<void> | null = null;
@@ -41,9 +41,11 @@ export function createGameUpdateHub(pool: pg.Pool): GameUpdateHub {
         try {
           const event: unknown = JSON.parse(message.payload);
           if (typeof event !== 'object' || event === null || !('id' in event)
-            || !('version' in event) || typeof event.id !== 'string'
-            || typeof event.version !== 'number') return;
-          for (const subscriber of subscribers.get(event.id) ?? []) subscriber.update(event.version);
+            || typeof event.id !== 'string') return;
+          for (const subscriber of subscribers.get(event.id) ?? []) {
+            if ('version' in event && typeof event.version === 'number') subscriber.update(event.version);
+            if ('chatId' in event && typeof event.chatId === 'string') subscriber.chat?.(event.chatId);
+          }
         } catch { /* Ignore malformed notifications; a reconnect read remains authoritative. */ }
       });
       try { await client.query(`LISTEN ${channel}`); }
@@ -57,8 +59,8 @@ export function createGameUpdateHub(pool: pg.Pool): GameUpdateHub {
   }
 
   function subscribe(gameId: string, update: (version: number) => void,
-    unavailable: () => void): () => void {
-    const subscriber = { update, unavailable };
+    unavailable: () => void, chat?: (id: string) => void): () => void {
+    const subscriber = { update, unavailable, chat };
     const group = subscribers.get(gameId) ?? new Set<typeof subscriber>();
     group.add(subscriber);
     subscribers.set(gameId, group);

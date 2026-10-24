@@ -3,7 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
-import { FutureChat } from './FutureChat';
+import { GameChat } from './GameChat';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { MastersPanel } from './MastersPanel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
@@ -128,6 +128,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
+  const [chatRevision, setChatRevision] = useState(0);
   const [imported, setImported] = useState<ImportedGame | null>(null);
   const [pgnText, setPgnText] = useState('');
   const [pgnError, setPgnError] = useState<string | null>(null);
@@ -422,7 +423,7 @@ export function App() {
     void refreshGame();
     const stopUpdates = watchGameUpdates(
       () => new EventSource(`/api/games/${challengeId}/events`),
-      refreshGame, () => gameFetch.current, pollIntervalMs);
+      refreshGame, () => gameFetch.current, pollIntervalMs, () => setChatRevision(value => value + 1));
     const onFocus = () => { void refreshGame(); };
     const onVisible = () => { if (!document.hidden) void refreshGame(); };
     window.addEventListener('focus', onFocus);
@@ -1490,7 +1491,8 @@ export function App() {
               </div>
 
             </aside>
-            <FutureChat siteGame={imported === null} />
+            {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
+              side={game.yourSeat} active={game.status === 'active'} csrfToken={session.csrfToken} revision={chatRevision} />}
             {analysisOpen && <div className="analysis-lower-panels">
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}

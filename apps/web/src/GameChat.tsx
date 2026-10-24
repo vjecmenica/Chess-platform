@@ -1,0 +1,151 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { GameChatHistory, GameChatMessage, GameSide } from '@chess/contracts';
+import { chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom } from './game-chat';
+
+interface Props { gameId: string; side: GameSide; active: boolean; csrfToken: string; revision: number }
+
+export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameSide }) {
+  return <li>
+    <div className="game-chat-meta"><strong>{item.side === side ? 'You' : 'Opponent'} · {item.side === 'white' ? 'White' : 'Black'}</strong>
+      <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
+        {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+    <p>{item.text}</p>
+  </li>;
+}
+
+export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
+  const [messages, setMessages] = useState<GameChatMessage[]>([]);
+  const messagesRef = useRef(messages);
+  // Send acknowledgements can arrive before older opponent messages are fetched.
+  // Advance this cursor only from a history read, never from a send acknowledgement.
+  const historyCursor = useRef('0');
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [canSend, setCanSend] = useState(active);
+  const [newMessages, setNewMessages] = useState(false);
+  const storageKey = `game-chat-hidden:${gameId}:${side}`;
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
+  });
+  const list = useRef<HTMLOListElement>(null);
+  const following = useRef(true);
+  const pending = useRef<{ requestId: string; text: string } | null>(null);
+  const posting = useRef(false);
+  const mounted = useRef(false);
+  const reading = useRef(false);
+  const requested = useRef(false);
+
+  const receive = useCallback((incoming: readonly GameChatMessage[]) => {
+    const next = mergeChatMessages(messagesRef.current, incoming);
+    const changed = next.at(-1)?.id !== messagesRef.current.at(-1)?.id;
+    messagesRef.current = next;
+    setMessages(next);
+    if (changed && !following.current) setNewMessages(true);
+  }, []);
+  const refresh = useCallback(async () => {
+    requested.current = true;
+    if (reading.current) return;
+    reading.current = true;
+    try {
+      while (requested.current && mounted.current) {
+        requested.current = false;
+        const after = historyCursor.current;
+        const history = await chatResponse<GameChatHistory>(await fetch(
+          `/api/games/${gameId}/chat?after=${after}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }));
+        if (!mounted.current) return;
+        historyCursor.current = history.messages.at(-1)?.id ?? after;
+        receive(history.messages);
+        setCanSend(history.canSend);
+        setLoaded(true);
+        setError(null);
+      }
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error && 'definitive' in cause
+        ? cause.message : 'Chat could not connect. Please retry.');
+    } finally { reading.current = false; }
+  }, [gameId, receive]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const onFocus = () => { void refresh(); };
+    const onVisible = () => { if (!document.hidden) void refresh(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { mounted.current = false; window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible); };
+  }, [refresh]);
+  useEffect(() => { void refresh(); }, [revision, active, refresh]);
+  useLayoutEffect(() => {
+    if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [messages, hidden]);
+
+  function toggleHidden() {
+    setHidden(value => {
+      try { localStorage.setItem(storageKey, String(!value)); } catch { /* Hiding still works without storage. */ }
+      return !value;
+    });
+  }
+  async function send() {
+    if (posting.current || !active || !canSend) return;
+    const body = pending.current ?? { requestId: crypto.randomUUID(), text: text.trim() };
+    if (!body.text) return;
+    pending.current = body;
+    posting.current = true;
+    setSending(true);
+    setError(null);
+    try {
+      const sent = await chatResponse<GameChatMessage>(await fetch(`/api/games/${gameId}/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken,
+          'Idempotency-Key': body.requestId }, body: JSON.stringify({ text: body.text }), signal: AbortSignal.timeout(10_000),
+      }));
+      pending.current = null;
+      if (!mounted.current) return;
+      receive([sent]);
+      setText('');
+      void refresh();
+    } catch (cause) {
+      if (typeof cause === 'object' && cause !== null && 'definitive' in cause && cause.definitive) pending.current = null;
+      if (mounted.current) setError(cause instanceof Error && 'definitive' in cause
+        ? cause.message : 'Message delivery is uncertain. Retry to confirm.');
+    } finally {
+      posting.current = false;
+      if (mounted.current) setSending(false);
+    }
+  }
+
+  return <details className="game-chat" open>
+    <summary>Game chat</summary>
+    <div className="game-chat-content">
+    <div className="game-chat-header"><span>Players only</span>
+      <button className="secondary" type="button" onClick={toggleHidden} aria-pressed={hidden}>
+        {hidden ? 'Show chat' : 'Hide chat'}</button></div>
+    {!hidden && <>
+      <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
+        aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
+          following.current = nearChatBottom(event.currentTarget);
+          if (following.current) setNewMessages(false);
+        }}>
+        {!loaded && !error && <li className="game-chat-empty">Loading chat…</li>}
+        {loaded && messages.length === 0 && <li className="game-chat-empty">No messages yet.</li>}
+        {messages.map(item => <ChatMessage key={item.id} item={item} side={side} />)}
+      </ol>
+      {newMessages && <button className="secondary" type="button" onClick={() => {
+        following.current = true; setNewMessages(false);
+        if (list.current) list.current.scrollTop = list.current.scrollHeight;
+      }}>New messages ↓</button>}
+      {error && <div className="game-chat-error"><p role="alert">{error}</p>
+        <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
+      {active && canSend ? <form onSubmit={event => { event.preventDefault(); void send(); }}>
+        <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Message your opponent</label>
+        <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
+          placeholder="Message your opponent" disabled={sending} onChange={event => {
+            pending.current = null; setText(event.target.value);
+          }} />
+        <button type="submit" disabled={sending || !text.trim()}>{sending ? 'Sending…' : pending.current ? 'Retry send' : 'Send'}</button>
+      </form> : <p className="game-chat-read-only">Game ended · Chat is read-only</p>}
+    </>}
+    </div>
+  </details>;
+}

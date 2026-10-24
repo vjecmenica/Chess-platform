@@ -73,6 +73,19 @@ export interface GameReadResponse extends GameState {
   readonly history: readonly SavedMove[];
 }
 
+export interface GameChatMessage {
+  /** Decimal bigint cursor; never convert it to a JavaScript number. */
+  readonly id: string;
+  readonly side: GameSide;
+  readonly text: string;
+  readonly sentAt: string;
+}
+
+export interface GameChatHistory {
+  readonly messages: readonly GameChatMessage[];
+  readonly canSend: boolean;
+}
+
 export interface MoveAcceptedResponse {
   readonly accepted: true;
   readonly move: SavedMove;

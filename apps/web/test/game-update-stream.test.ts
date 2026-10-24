@@ -9,8 +9,13 @@ class FakeSource implements GameUpdateSource {
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   ongame: ((event: Event) => void) | null = null;
+  onchat: ((event: Event) => void) | null = null;
+  onping: ((event: Event) => void) | null = null;
   closed = false;
-  addEventListener(_type: 'game', listener: (event: Event) => void) { this.ongame = listener; }
+  addEventListener(type: 'game' | 'chat' | 'ping', listener: (event: Event) => void) {
+    if (type === 'chat') this.onchat = listener;
+    else if (type === 'ping') this.onping = listener; else this.ongame = listener;
+  }
   close() { this.closed = true; }
 }
 
@@ -25,6 +30,73 @@ function confirmedGame(plies: number): GameReadResponse {
 }
 
 describe('confirmed game stream', () => {
+  it('recovers a silent proxy connection while heartbeats avoid normal polling', async () => {
+    vi.useFakeTimers();
+    try {
+      const first = new FakeSource(), second = new FakeSource();
+      const create = vi.fn().mockReturnValueOnce(first).mockReturnValue(second);
+      const game = vi.fn(async () => {}), chat = vi.fn();
+      const stop = watchGameUpdates(create, game, () => null, 100, chat, 350);
+      first.onopen?.(new Event('open'));
+      await vi.advanceTimersByTimeAsync(300);
+      first.onping?.(new Event('ping'));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(game).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(150);
+      expect(first.closed).toBe(true);
+      expect(create).toHaveBeenCalledTimes(2);
+      second.onopen?.(new Event('open'));
+      await Promise.resolve();
+      expect(chat).toHaveBeenCalled();
+      stop();
+    } finally { vi.useRealTimers(); }
+  });
+  it('recreates a permanently closed connection after a proxy failure and stops fallback on recovery', async () => {
+    vi.useFakeTimers();
+    try {
+      const first = new FakeSource(), second = new FakeSource();
+      const create = vi.fn().mockReturnValueOnce(first).mockReturnValue(second);
+      const game = vi.fn(async () => {}), chat = vi.fn();
+      const stop = watchGameUpdates(create, game, () => null, 100, chat);
+      first.onerror?.(new Event('error'));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(first.closed).toBe(true);
+      second.onopen?.(new Event('open'));
+      await Promise.resolve();
+      const reads = game.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(400);
+      expect(game).toHaveBeenCalledTimes(reads);
+      const chats = chat.mock.calls.length;
+      first.onchat?.(new Event('chat'));
+      expect(chat).toHaveBeenCalledTimes(chats);
+      second.onchat?.(new Event('chat'));
+      expect(chat).toHaveBeenCalledTimes(chats + 1);
+      stop();
+      expect(second.closed).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+  it('refreshes chat separately from moves and catches up on reconnect or fallback', async () => {
+    vi.useFakeTimers();
+    try {
+      const source = new FakeSource();
+      const game = vi.fn(async () => {}), chat = vi.fn();
+      const stop = watchGameUpdates(() => source, game, () => null, 100, chat);
+      source.onchat?.(new Event('chat'));
+      expect(chat).toHaveBeenCalledTimes(1);
+      expect(game).not.toHaveBeenCalled();
+      source.onerror?.(new Event('error'));
+      await vi.advanceTimersByTimeAsync(200);
+      expect(chat).toHaveBeenCalledTimes(4);
+      source.onopen?.(new Event('open'));
+      await vi.advanceTimersByTimeAsync(200);
+      expect(chat).toHaveBeenCalledTimes(5);
+      stop();
+      source.onchat?.(new Event('chat'));
+      expect(chat).toHaveBeenCalledTimes(5);
+    } finally { vi.useRealTimers(); }
+  });
   it('fetches a pushed opponent move immediately and releases a legal premove', async () => {
     const source = new FakeSource();
     const queue: Premove[] = [{ id: 'queued', from: 'e7', to: 'e5' }];

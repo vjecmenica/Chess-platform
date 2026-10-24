@@ -66,11 +66,13 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       };
       unsubscribe = updates.subscribe(request.params.id, version => {
         if (!closed) reply.raw.write(`event: game\ndata: ${JSON.stringify({ version })}\n\n`);
-      }, close);
+      }, close, messageId => {
+        if (!closed) reply.raw.write(`event: chat\ndata: ${JSON.stringify({ messageId })}\n\n`);
+      });
       reply.raw.on('close', close);
       reply.raw.write(': connected\n\n');
       heartbeat = setInterval(() => {
-        if (!closed) reply.raw.write(': heartbeat\n\n');
+        if (!closed) reply.raw.write('event: ping\ndata: {}\n\n');
       }, 15_000);
     });
 

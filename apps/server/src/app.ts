@@ -5,6 +5,7 @@ import { registerChallengeRoutes } from './challenge-routes.js';
 import { registerGameRoutes } from './game-routes.js';
 import { createGameService, type GameService } from './game-service.js';
 import { registerExplorerRoutes } from './explorer-routes.js';
+import { registerGameChatRoutes } from './game-chat.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService }) {
@@ -27,6 +28,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
     registerChallengeRoutes(app, challenges.pool, challenges.secureCookies,
       () => gameService.trustedNowMs());
     registerGameRoutes(app, challenges.pool, gameService);
+    registerGameChatRoutes(app, challenges.pool);
   }
 
   return app;
