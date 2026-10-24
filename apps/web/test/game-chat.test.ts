@@ -2,8 +2,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import type { GameChatMessage } from '@chess/contracts';
-import { chatResponse, mergeChatMessages, nearChatBottom } from '../src/game-chat';
-import { ChatMessage, GameChat } from '../src/GameChat';
+import { chatComposerState, chatResponse, mergeChatMessages, nearChatBottom } from '../src/game-chat';
+import { ChatComposer, ChatMessage, GameChat } from '../src/GameChat';
 
 function message(id: string): GameChatMessage {
   return { id, side: 'white', text: '<b>Plain text</b>', sentAt: '2026-10-24T10:00:00Z' };
@@ -36,23 +36,48 @@ it('keeps long message text together with its sender and the timestamp in a sepa
   expect(html).toContain(`<p><strong>You</strong>: <span>${text}</span></p><time`);
   expect(html).toContain('class="game-chat-message"');
 });
-it('renders a labeled composer only while active, with a local hide control', () => {
-  const props = { gameId: 'game', side: 'white' as const, active: true, csrfToken: 'token', revision: 0 };
+it('waits for server permission without flashing a read-only notice, including finished games', () => {
+  const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
   const html = renderToStaticMarkup(createElement(GameChat, props));
-  expect(html).toContain('Message your opponent');
-  expect(html).toContain('maxLength="500"');
+  expect(html).toContain('Loading chat');
   expect(html).toContain('<h2 id="chat-heading-game">Game chat</h2>');
   expect(html).toContain('aria-expanded="true" aria-controls="chat-content-game">Hide</button>');
   expect(html).not.toMatch(/<details|<summary|Hide chat|Show chat/);
-  const finished = renderToStaticMarkup(createElement(GameChat, { ...props, active: false }));
-  expect(finished).toContain('Chat is read-only');
+  expect(html).not.toContain('Chat is read-only');
+  const finished = renderToStaticMarkup(createElement(GameChat, { ...props, gameStatus: 'finished' }));
+  expect(finished).not.toContain('Chat is read-only');
   expect(finished).not.toContain('<form');
+});
+it('follows server permission across finalization and renders an enabled post-game composer', () => {
+  const props = { gameId: 'game', text: 'Well played', sending: false, retrying: false,
+    onSend: () => {}, onText: () => {} };
+  const active = { status: 'active' as const, canSend: true };
+  const refreshing = chatComposerState(active, 'finished');
+  const pending = renderToStaticMarkup(createElement(ChatComposer, { ...props, state: refreshing }));
+  expect(pending).toContain('<form aria-busy="true"');
+  expect(pending).toContain('disabled=""');
+  expect(pending).not.toContain('read-only');
+  const state = chatComposerState({ status: 'finished', canSend: true }, 'finished');
+  const finished = renderToStaticMarkup(createElement(ChatComposer, { ...props, state }));
+  expect(finished).toContain('Message your opponent');
+  expect(finished).toContain('maxLength="500"');
+  expect(finished).not.toContain('disabled=""');
+  expect(finished).not.toContain('read-only');
+  for (const status of ['waiting', 'pending_adjudication', 'aborted'] as const) {
+    const state = chatComposerState({ status, canSend: false }, status);
+    const html = renderToStaticMarkup(createElement(ChatComposer, { ...props, state }));
+    expect(html).toContain('Chat is read-only');
+    expect(html).not.toContain('<form');
+    expect(chatComposerState({ status, canSend: false }, 'finished')).toBe('loading');
+  }
+  expect(chatComposerState(null, 'finished')).toBe('loading');
+  expect(chatComposerState({ status: 'finished', canSend: false }, 'finished')).toBe('read_only');
 });
 it('uses the existing game-and-seat hidden preference and keeps Show available without chat content', () => {
   const getItem = vi.fn((key: string) => key === 'game-chat-hidden:game:white' ? 'true' : null);
   vi.stubGlobal('localStorage', { getItem });
   try {
-    const props = { gameId: 'game', side: 'white' as const, active: true, csrfToken: 'token', revision: 0 };
+    const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
     const html = renderToStaticMarkup(createElement(GameChat, props));
     expect(getItem).toHaveBeenCalledWith('game-chat-hidden:game:white');
     expect(html).toContain('data-hidden="true"');
@@ -62,7 +87,7 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     expect(html).not.toContain('role="log"');
     const opponent = renderToStaticMarkup(createElement(GameChat, { ...props, side: 'black' }));
     expect(opponent).toContain('data-hidden="false"');
-    expect(opponent).toContain('<form');
+    expect(opponent).toContain('role="log"');
   } finally { vi.unstubAllGlobals(); }
 });
 it('distinguishes definite rejections from uncertain delivery so retries keep their identity', async () => {

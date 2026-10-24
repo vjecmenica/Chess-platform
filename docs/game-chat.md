@@ -1,9 +1,12 @@
 # Participant game chat
 
 Site games have a private text conversation between their two existing guest seats.
-Imported PGNs, opening-book replays, and blank analysis have no chat. Messages remain
-readable after a game ends, but new sends require an active game. Guest-session
-expiry still applies; knowing a challenge URL does not grant access to its chat.
+Imported PGNs, opening-book replays, and blank analysis have no chat. Both original
+participants may read and send in active or finished games, including during
+post-game Analysis. Checkmate, resignation, draws, and timeouts use the same rule.
+`waiting`, `pending_adjudication`, and `aborted` games remain read-only; no lifecycle
+exception is introduced. Guest-session expiry still applies; knowing a challenge
+URL does not grant access to its chat.
 
 Apply `017_game_chat.sql` with `npm run db:migrate` before deploying the server.
 This forward migration adds only `chess.game_chat_messages` and its indexes.
@@ -19,11 +22,15 @@ unbounded pagination endpoint. The browser also caps its list at 100 messages.
 `X-CSRF-Token`, and UUID `Idempotency-Key`. Text is trimmed and must contain 1–500
 characters. A retry with the same game, side, key and trimmed text returns the
 original message, even after the game ends. Reusing that key for different text
-returns 409. A fresh send after finalization returns 409. Each side may send five
+returns 409. A fresh send in a read-only state returns 409. Each side may send five
 messages per rolling ten seconds; excess requests return 429 and `Retry-After: 10`.
 Rate checks and inserts share the game-row transaction lock with finalization, so
 they remain ordered across server processes. Chat never changes game versions,
 move receipts, authoritative clock values, or the clock deadline ordering rules.
+The composer uses the server's `canSend` response. Initial permission loading shows
+no read-only notice; a status change keeps an existing composer visible but disabled
+until refreshed permission arrives. This never grants spectators access: finished
+game chat is still the original players' private conversation, not a public thread.
 
 The existing participant-authorized SSE connection carries distinct `chat` events
 alongside `game` events. PostgreSQL NOTIFY becomes visible only after the message

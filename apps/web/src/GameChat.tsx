@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { GameChatHistory, GameChatMessage, GameSide } from '@chess/contracts';
-import { chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom } from './game-chat';
+import type { GameChatHistory, GameChatMessage, GameSide, GameState } from '@chess/contracts';
+import { chatComposerState, chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom,
+  type ChatPermission } from './game-chat';
 
-interface Props { gameId: string; side: GameSide; active: boolean; csrfToken: string; revision: number }
+interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number }
 
 export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameSide }) {
   return <li className="game-chat-message">
@@ -12,7 +13,21 @@ export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameS
   </li>;
 }
 
-export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
+export function ChatComposer({ gameId, state, text, sending, retrying, onSend, onText }: {
+  gameId: string; state: ReturnType<typeof chatComposerState>; text: string; sending: boolean; retrying: boolean;
+  onSend: () => void; onText: (text: string) => void;
+}) {
+  if (state === 'loading') return null;
+  if (state === 'read_only') return <p className="game-chat-read-only">Chat is read-only</p>;
+  return <form aria-busy={state === 'refreshing'} onSubmit={event => { event.preventDefault(); onSend(); }}>
+    <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Message your opponent</label>
+    <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
+      placeholder="Message your opponent" disabled={sending || state !== 'allowed'} onChange={event => onText(event.target.value)} />
+    <button type="submit" disabled={sending || state !== 'allowed' || !text.trim()}>{sending ? 'Sending…' : retrying ? 'Retry send' : 'Send'}</button>
+  </form>;
+}
+
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision }: Props) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
   // Send acknowledgements can arrive before older opponent messages are fetched.
@@ -22,7 +37,10 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
   const [sending, setSending] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [canSend, setCanSend] = useState(active);
+  const [permission, setPermission] = useState<ChatPermission | null>(null);
+  const statusRef = useRef(gameStatus);
+  statusRef.current = gameStatus;
+  const composerState = chatComposerState(permission, gameStatus);
   const [newMessages, setNewMessages] = useState(false);
   const storageKey = `game-chat-hidden:${gameId}:${side}`;
   const [hidden, setHidden] = useState(() => {
@@ -50,13 +68,14 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
     try {
       while (requested.current && mounted.current) {
         requested.current = false;
+        const statusAtRead = statusRef.current;
         const after = historyCursor.current;
         const history = await chatResponse<GameChatHistory>(await fetch(
           `/api/games/${gameId}/chat?after=${after}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }));
         if (!mounted.current) return;
         historyCursor.current = history.messages.at(-1)?.id ?? after;
         receive(history.messages);
-        setCanSend(history.canSend);
+        setPermission({ status: statusAtRead, canSend: history.canSend });
         setLoaded(true);
         setError(null);
       }
@@ -75,7 +94,7 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
     return () => { mounted.current = false; window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible); };
   }, [refresh]);
-  useEffect(() => { void refresh(); }, [revision, active, refresh]);
+  useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
   useLayoutEffect(() => {
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [messages, hidden]);
@@ -87,7 +106,7 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
     });
   }
   async function send() {
-    if (posting.current || !active || !canSend) return;
+    if (posting.current || composerState !== 'allowed') return;
     const body = pending.current ?? { requestId: crypto.randomUUID(), text: text.trim() };
     if (!body.text) return;
     pending.current = body;
@@ -135,14 +154,8 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
       }}>New messages ↓</button>}
       {error && <div className="game-chat-error"><p role="alert">{error}</p>
         <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
-      {active && canSend ? <form onSubmit={event => { event.preventDefault(); void send(); }}>
-        <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Message your opponent</label>
-        <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
-          placeholder="Message your opponent" disabled={sending} onChange={event => {
-            pending.current = null; setText(event.target.value);
-          }} />
-        <button type="submit" disabled={sending || !text.trim()}>{sending ? 'Sending…' : pending.current ? 'Retry send' : 'Send'}</button>
-      </form> : <p className="game-chat-read-only">Game ended · Chat is read-only</p>}
+      <ChatComposer gameId={gameId} state={composerState} text={text} sending={sending} retrying={pending.current !== null}
+        onSend={() => { void send(); }} onText={value => { pending.current = null; setText(value); }} />
     </>}
     </div>
   </aside>;

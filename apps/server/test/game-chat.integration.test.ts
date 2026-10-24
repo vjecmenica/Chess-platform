@@ -65,8 +65,10 @@ describe('participant game chat against PostgreSQL', () => {
       headers: { cookie: white.cookie } })).statusCode).toBe(400);
   });
 
-  it('deduplicates concurrent retries across servers, rejects changed bodies and limits each sender independently', async () => {
+  it('preserves concurrent retry protection and independent rate limits after a game finishes', async () => {
     const { server, white, black, id, url } = await setup();
+    expect((await server.inject({ method: 'POST', url: `/games/${id}/resign`,
+      headers: headers(white), payload: { expectedVersion: 0 } })).statusCode).toBe(200);
     const otherServer = app();
     const requestId = randomUUID();
     const replies = await Promise.all([send(server, url, white, 'Hello', requestId),
@@ -81,11 +83,11 @@ describe('participant game chat against PostgreSQL', () => {
     const history = (await server.inject({ url, headers: { cookie: white.cookie } })).json<GameChatHistory>();
     expect(history.messages).toHaveLength(6);
     expect(history.messages.map(item => BigInt(item.id))).toEqual(history.messages.map(item => BigInt(item.id)).sort((a, b) => a < b ? -1 : 1));
-    expect((await server.inject({ url: `/games/${id}`, headers: { cookie: white.cookie } })).json().version).toBe(0);
+    expect((await server.inject({ url: `/games/${id}`, headers: { cookie: white.cookie } })).json().version).toBe(1);
   });
 
   it('restores bounded ordered history after restart and preserves successful retries after finalization', async () => {
-    const { server, white, black, id, url } = await setup();
+    const { server, white, black, outsider, id, url } = await setup();
     const requestId = randomUUID();
     const first = (await send(server, url, white, 'Good luck', requestId)).json<GameChatMessage>();
     const second = (await send(server, url, black, 'You too')).json<GameChatMessage>();
@@ -96,11 +98,18 @@ describe('participant game chat against PostgreSQL', () => {
     const resignation = await restarted.inject({ method: 'POST', url: `/games/${id}/resign`,
       headers: headers(white), payload: { expectedVersion: 0 } });
     expect(resignation.statusCode).toBe(200);
+    const conversation = [first, second];
     for (const who of [white, black]) {
       expect((await restarted.inject({ url, headers: { cookie: who.cookie } })).json<GameChatHistory>())
-        .toEqual({ canSend: false, messages: [first, second] });
-      expect((await send(restarted, url, who, 'Too late')).statusCode).toBe(409);
+        .toEqual({ canSend: true, messages: [...conversation] });
+      const response = await send(restarted, url, who, 'Well played');
+      expect(response.statusCode).toBe(201);
+      conversation.push(response.json<GameChatMessage>());
     }
+    for (const who of [white, black]) expect((await restarted.inject({ url, headers: { cookie: who.cookie } }))
+      .json<GameChatHistory>()).toEqual({ canSend: true, messages: conversation });
+    expect((await send(restarted, url, outsider, 'Spectator')).statusCode).toBe(403);
+    expect((await restarted.inject({ url, headers: { cookie: outsider.cookie } })).statusCode).toBe(403);
     expect((await send(restarted, url, white, 'Good luck', requestId)).json()).toEqual(first);
     // Seed synthetic history to exercise the fixed API cap without relaxing the send rate limit.
     await pool.query(`INSERT INTO chess.game_chat_messages (game_id, sender_side, request_id, body)
@@ -112,16 +121,18 @@ describe('participant game chat against PostgreSQL', () => {
     const { server, white, black, id, url } = await setup();
     const [sent, finished] = await Promise.all([send(server, url, black, 'Last message'),
       server.inject({ method: 'POST', url: `/games/${id}/resign`, headers: headers(white), payload: { expectedVersion: 0 } })]);
-    expect([201, 409]).toContain(sent.statusCode);
+    expect(sent.statusCode).toBe(201);
     expect(finished.statusCode).toBe(200);
     const history = (await server.inject({ url, headers: { cookie: black.cookie } })).json<GameChatHistory>();
-    expect(history.canSend).toBe(false);
-    expect(history.messages).toHaveLength(sent.statusCode === 201 ? 1 : 0);
+    expect(history.canSend).toBe(true);
+    expect(history.messages).toHaveLength(1);
     expect((await server.inject({ url: `/games/${id}`, headers: { cookie: black.cookie } })).json().version).toBe(1);
   });
 
-  it('delivers separate committed chat events across servers and reconnects from the last cursor', async () => {
+  it.each(['active', 'finished'])('delivers private committed events and reconnect history in a %s game', async status => {
     const { server, white, black, outsider, id, url } = await setup();
+    if (status === 'finished') expect((await server.inject({ method: 'POST', url: `/games/${id}/resign`,
+      headers: headers(white), payload: { expectedVersion: 0 } })).statusCode).toBe(200);
     const reader = app();
     expect((await reader.inject({ url: `/games/${id}/events`, headers: { cookie: outsider.cookie } })).statusCode).toBe(403);
     const origin = await reader.listen({ host: '127.0.0.1', port: 0 });
@@ -142,5 +153,41 @@ describe('participant game chat against PostgreSQL', () => {
       expect((await reader.inject({ url: `${url}?after=${first.id}`, headers: { cookie: black.cookie } }))
         .json<GameChatHistory>().messages).toEqual([missed]);
     } finally { clearTimeout(timeout); abort.abort(); }
+  });
+
+  it.each(['checkmate', 'agreement', 'timeout'])('allows both original seats to chat after a %s result', async reason => {
+    const { server, white, black, outsider, id, url } = await setup();
+    // Chat permissions depend on the durable final status, not the chess result reason.
+    const result = reason === 'agreement' ? { outcome: 'draw', reason } : { outcome: 'win', winner: 'black', reason };
+    await pool.query(`UPDATE chess.games SET status = 'finished', result = $2::jsonb, clock_phase = 'stopped',
+      white_first_move_deadline_at = NULL WHERE id = $1`, [id, JSON.stringify(result)]);
+    for (const who of [white, black]) {
+      expect((await server.inject({ url, headers: { cookie: who.cookie } })).json<GameChatHistory>().canSend).toBe(true);
+      expect((await send(server, url, who, 'Post-game conversation')).statusCode).toBe(201);
+    }
+    expect((await server.inject({ url, headers: { cookie: white.cookie } })).json<GameChatHistory>().messages
+      .map(item => item.side)).toEqual(['white', 'black']);
+    expect((await send(server, url, outsider, 'Public comment')).statusCode).toBe(403);
+    expect((await server.inject({ url, headers: { cookie: outsider.cookie } })).statusCode).toBe(403);
+    expect((await server.inject({ method: 'POST', url, headers: { cookie: white.cookie,
+      'idempotency-key': randomUUID() }, payload: { text: 'Missing CSRF' } })).statusCode).toBe(403);
+  });
+
+  it.each(['waiting', 'pending_adjudication', 'aborted'])('keeps %s games read-only while preserving history and receipts', async status => {
+    const { server, white, black, outsider, id, url } = await setup();
+    const requestId = randomUUID();
+    const original = (await send(server, url, white, 'Existing history', requestId)).json<GameChatMessage>();
+    await pool.query(`UPDATE chess.games SET status = $2, result = $3::jsonb, clock_phase = 'stopped',
+      white_first_move_deadline_at = NULL WHERE id = $1`,
+    [id, status, status === 'aborted' ? JSON.stringify({ outcome: 'aborted', reason: 'first_move_deadline' }) : null]);
+    for (const who of [white, black]) {
+      expect((await server.inject({ url, headers: { cookie: who.cookie } })).json<GameChatHistory>())
+        .toEqual({ canSend: false, messages: [original] });
+      const response = await send(server, url, who, 'Not allowed');
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error).toBe('chat_read_only');
+    }
+    expect((await send(server, url, white, 'Existing history', requestId)).json()).toEqual(original);
+    expect((await send(server, url, outsider, 'Still private')).statusCode).toBe(403);
   });
 });

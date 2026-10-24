@@ -1492,7 +1492,7 @@ export function App() {
 
             </aside>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
-              side={game.yourSeat} active={game.status === 'active'} csrfToken={session.csrfToken} revision={chatRevision} />}
+              side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision} />}
             {analysisOpen && <div className="analysis-lower-panels">
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}

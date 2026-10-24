@@ -1,7 +1,13 @@
-import type { GameChatMessage } from '@chess/contracts';
+import type { GameChatMessage, GameState } from '@chess/contracts';
 
 export const chatMessageLimit = 500;
 export const chatHistoryLimit = 100;
+
+export interface ChatPermission { status: GameState['status']; canSend: boolean }
+export function chatComposerState(permission: ChatPermission | null, status: GameState['status']) {
+  if (permission?.status === status) return permission.canSend ? 'allowed' : 'read_only';
+  return permission?.canSend ? 'refreshing' : 'loading';
+}
 
 export function mergeChatMessages(current: readonly GameChatMessage[], incoming: readonly GameChatMessage[]) {
   const messages = new Map(current.map(item => [item.id, item]));
@@ -18,7 +24,7 @@ const errors: Record<string, string> = {
   invalid_csrf_token: 'Your guest session changed. Refresh to reconnect.',
   not_a_participant: 'Chat is only available to this game’s two players.',
   empty_message: 'Enter a message before sending.',
-  chat_read_only: 'The game has ended. Chat is read-only.',
+  chat_read_only: 'Chat is read-only for this game state.',
   chat_rate_limited: 'Please wait 10 seconds before sending more messages.',
   request_id_conflict: 'This retry belongs to a different message.',
 };

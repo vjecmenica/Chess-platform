@@ -11,6 +11,9 @@ interface MessageRow { id: string; sender_side: GameSide; body: string; created_
 function message(row: MessageRow): GameChatMessage {
   return { id: row.id, side: row.sender_side, text: row.body, sentAt: row.created_at.toISOString() };
 }
+function canSendChat(status: string): boolean {
+  return status === 'active' || status === 'finished';
+}
 
 export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): void {
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>('/games/:id/chat',
@@ -31,7 +34,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
       const { rows } = await pool.query<MessageRow>(`SELECT id, sender_side, body, created_at
         FROM chess.game_chat_messages WHERE game_id = $1 AND id > $2::bigint ORDER BY id DESC LIMIT 100`,
       [request.params.id, after]);
-      return { messages: rows.reverse().map(message), canSend: access.status === 'active' };
+      return { messages: rows.reverse().map(message), canSend: canSendChat(access.status) };
     });
 
   app.post<{ Params: { id: string }; Body: { text: string } }>('/games/:id/chat',
@@ -65,7 +68,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
           if (previous.body !== text) return reply.code(409).send({ error: 'request_id_conflict' });
           return message(previous);
         }
-        if (access.status !== 'active') return reply.code(409).send({ error: 'chat_read_only' });
+        if (!canSendChat(access.status)) return reply.code(409).send({ error: 'chat_read_only' });
         const recent = await client.query(`SELECT id FROM chess.game_chat_messages
           WHERE game_id = $1 AND sender_side = $2 AND created_at > clock_timestamp() - interval '10 seconds'
           ORDER BY created_at DESC LIMIT 5`, [request.params.id, side]);
