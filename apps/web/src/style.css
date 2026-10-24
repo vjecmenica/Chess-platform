@@ -679,12 +679,29 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .analysis-workspace .review-results { gap: 6px; }
 .analysis-workspace .review-graph { height: 112px; }
 .analysis-workspace .review-summary { max-width: 1000px; width: 100%; }
+.move-times { border-top: 1px solid #e2dfd6; padding-top: 7px; min-width: 0; }
+.move-times summary { cursor: pointer; color: #32463a; font-weight: 650; }
+.move-times summary:focus-visible, .move-time-link:focus-visible { outline: 3px solid #a66422; outline-offset: 2px; }
+.move-times p { margin: 5px 0 7px; color: #6d7168; font-size: 12px; }
+.move-times-list { display: grid; gap: 3px; max-height: 240px; overflow-y: auto; padding-right: 4px; }
+.move-time-row { display: grid; grid-template-columns: 34px 54px minmax(0, 1fr) 48px;
+  align-items: center; gap: 7px; min-height: 25px; font-variant-numeric: tabular-nums; }
+.move-time-number { color: #6d7168; }
+.move-time-link { border: 0; background: transparent; color: #263d31; text-align: left; padding: 2px;
+  font: inherit; cursor: pointer; }
+.move-time-link:hover { text-decoration: underline; }
+.move-time-track { height: 8px; border-radius: 4px; background: #eee9df; overflow: hidden; }
+.move-time-bar { display: block; height: 100%; border-radius: inherit; }
+.move-time-white { background: #b68a5c; }
+.move-time-black { background: #56675b; }
+.move-time-value { text-align: right; }
 .analysis-workspace .review-player { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .analysis-workspace .review-average { grid-column: auto; flex-wrap: wrap; }
 .analysis-workspace .review-average[data-accuracy-method] { grid-column: span 2; }
 .analysis-workspace .review-count { flex-direction: row; gap: 6px; font-size: 12px; }
 .analysis-workspace .game-controls { position: relative; }
 .analysis-workspace .analysis-flip { float: right; margin-left: 10px; min-height: 36px; }
+.game-controls .pgn-download { float: right; margin-left: 10px; min-height: 36px; }
 .analysis-workspace .square-mark { border-radius: 50%; background: transparent !important; }
 .analysis-workspace .replay { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .analysis-workspace .replay-position { margin: 0; }
@@ -699,6 +716,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 @media (max-width: 540px) {
   .analysis-navigation nav { font-size: 12px; gap: 10px; }
   .analysis-navigation nav [aria-disabled="true"] { display: none; }
+  .analysis-workspace .analysis-flip, .game-controls .pgn-download { float: none; margin: 0 6px 6px 0; }
   .analysis-workspace .review-average { grid-column: 1/-1; }
   .analysis-workspace .review-average[data-accuracy-method] { grid-column: 1/-1; }
   .analysis-workspace .review-count { font-size: 11px; }

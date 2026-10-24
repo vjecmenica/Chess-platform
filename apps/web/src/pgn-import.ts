@@ -5,6 +5,7 @@ export interface ImportedGame {
   readonly game: GameReadResponse;
   readonly headers: Readonly<Record<string, string>>;
   readonly result: '1-0' | '0-1' | '1/2-1/2' | '*';
+  readonly notes: Readonly<Record<string, { readonly comment: string }>>;
 }
 
 export function importPgn(text: string, id: string): ImportedGame {
@@ -13,12 +14,16 @@ export function importPgn(text: string, id: string): ImportedGame {
 
 export function importParsedPgn(parsed: ParsedPgn, id: string): ImportedGame {
   const timeControlTag = parsed.headers.TimeControl;
+  const clocks = new Map(parsed.annotations.filter(note => note.remainingMsAfterMove !== undefined)
+    .map(note => [note.ply, note.remainingMsAfterMove!]));
+  const notes = Object.fromEntries(parsed.annotations.filter(note => note.comment !== undefined)
+    .map(note => [`m${note.ply}`, { comment: note.comment! }]));
   const result = parsed.result === '*' ? null : parsed.result === '1/2-1/2'
     ? { outcome: 'draw' as const, reason: 'pgn_import' }
     : { outcome: 'win' as const, reason: 'pgn_import',
       winner: parsed.result === '1-0' ? 'white' as const : 'black' as const };
   return {
-    headers: parsed.headers, result: parsed.result,
+    headers: parsed.headers, result: parsed.result, notes,
     game: {
       id, version: 1, status: 'finished', position: {
         fen: parsed.finalFen, sideToMove: parsed.sideToMove }, result,
@@ -28,7 +33,7 @@ export function importParsedPgn(parsed: ParsedPgn, id: string): ImportedGame {
       timeControl: timeControlTag?.trim() && timeControlTag.trim() !== '-'
         ? { source: 'pgn', raw: timeControlTag } : null,
       rated: false, yourSeat: 'white',
-      history: parsed.moves.map(move => ({ ...move, remainingMsAfterMove: null })),
+      history: parsed.moves.map(move => ({ ...move, remainingMsAfterMove: clocks.get(move.ply) ?? null })),
     },
   };
 }

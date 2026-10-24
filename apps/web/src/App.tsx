@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { ChallengeSummary, GameReadResponse, GuestSessionResponse,
+import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
@@ -29,6 +29,8 @@ import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVa
   selectBranch, selectMain, serializeAnalysis, setMoveNote,
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
 import { ClockPanel, historicalClockMs } from './ClockPanel';
+import { simplePgnTimeControl } from './move-times';
+import { canExportGame, downloadGamePgn } from './pgn-export';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
@@ -433,7 +435,7 @@ export function App() {
     setImported(next);
     gameRef.current = next.game;
     setGame(next.game);
-    setAnalysis(createAnalysisTree(next.game));
+    setAnalysis({ ...createAnalysisTree(next.game), notes: next.notes });
     setAnalysisBoard(createAnalysisBoard(next.game.id));
     setAnalysisOpen(true);
 
@@ -902,7 +904,7 @@ export function App() {
   const openExplorerGame = useCallback((parsed: Parameters<typeof importParsedPgn>[0], id: string, ply: number) => {
     const next = importParsedPgn(parsed, 'explorer-' + id);
     showImportedGame(next);
-    setAnalysis({ ...createAnalysisTree(next.game), cursor: { kind: 'main', ply } });
+    setAnalysis({ ...createAnalysisTree(next.game), notes: next.notes, cursor: { kind: 'main', ply } });
   }, [showImportedGame]);
 
   function selectMove(cursor: AnalysisCursor) {
@@ -972,6 +974,11 @@ export function App() {
   const coordinates = game === null ? null : boardCoordinates(orientation);
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
+  const importedHasClocks = imported?.game.history.some(move => move.remainingMsAfterMove !== null) ?? false;
+  const importedInitialMs = simplePgnTimeControl(imported?.headers.TimeControl)?.initialMs ?? null;
+  const importedHistoricalMs = (side: GameSide): number | null | undefined => !importedHasClocks ? undefined
+    : analysis?.cursor.kind === 'branch' ? null
+      : historicalClockMs(game?.history ?? [], displayedPly, side, importedInitialMs, true);
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
@@ -1177,7 +1184,8 @@ export function App() {
             <div className="play-column">
               <PlayerMaterialPanel side={topSide} pieces={captured?.[topSide] ?? []}
                 advantage={material} placement="top">
-                {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide} />
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide}
+                  historicalMs={importedHistoricalMs(topSide)} />
                   : <ClockPanel clock={game.clocks} side={topSide}
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
@@ -1281,7 +1289,8 @@ export function App() {
               </div>
               <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
                 advantage={material} placement="bottom">
-                {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide} />
+                {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
+                  historicalMs={importedHistoricalMs(bottomSide)} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
@@ -1357,6 +1366,9 @@ export function App() {
                 {analysisOpen && <button type="button" className="secondary analysis-flip"
                   onClick={() => setAnalysisBoard(current => current?.gameId === game.id
                     ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>}
+                {canExportGame(game) && <button type="button" className="secondary pgn-download"
+                  title="Download this game's main line and available headers. Clocks and analysis comments are not included."
+                  onClick={() => downloadGamePgn(game, imported?.headers)}>Download PGN</button>}
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}

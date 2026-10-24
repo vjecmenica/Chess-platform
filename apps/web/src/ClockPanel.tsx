@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { ClockState, GameSide, SavedMove } from '@chess/contracts';
 import { PlayerIdentity } from './PlayerIdentity';
+import { ClockValue, formatClock } from './ClockValue';
+export { formatClock } from './ClockValue';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
   side: GameSide, initialMs: number | null, timed: boolean): number | null {
-  if (!timed || initialMs === null) return null;
+  if (!timed) return null;
   for (let index = Math.min(ply, history.length) - 1; index >= 0; index -= 1) {
     if (history[index]!.side === side) return history[index]!.remainingMsAfterMove;
   }
@@ -21,21 +23,6 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
   const deadlineMs = clock.firstMoveDeadlineMs[side];
   return deadlineMs === null ? null
     : Math.max(0, deadlineMs - clock.serverNowMs - Math.max(0, elapsedMs));
-}
-
-export function formatClock(milliseconds: number): string {
-  const hundredths = Math.ceil(Math.max(0, milliseconds) / 10);
-  const seconds = milliseconds > 30_000 ? Math.ceil(milliseconds / 1000)
-    : Math.floor(hundredths / 100);
-  const main = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  return milliseconds <= 30_000 ? `${main}.${String(hundredths % 100).padStart(2, '0')}` : main;
-}
-
-function ClockValue({ milliseconds }: { milliseconds: number }) {
-  const value = formatClock(milliseconds);
-  const [main, fraction] = value.split('.');
-  return <><span>{main}</span>{fraction !== undefined &&
-    <span className="clock-hundredths">.{fraction}</span>}</>;
 }
 
 export function ClockPanel({ clock, side, isYou, historicalMs, showStatus = true }: {

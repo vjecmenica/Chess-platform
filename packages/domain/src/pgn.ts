@@ -8,9 +8,79 @@ export interface ParsedPgn {
   readonly finalFen: string;
   readonly sideToMove: 'white' | 'black';
   readonly moves: readonly MoveRecord[];
+  readonly annotations: readonly { readonly ply: number; readonly comment?: string;
+    readonly remainingMsAfterMove?: number }[];
 }
 
 const resultTokens = new Set(['1-0', '0-1', '1/2-1/2', '*']);
+
+function clockMilliseconds(value: string): number | null {
+  const match = /^(\d+):(\d{1,2})(?::(\d{1,2}))?(?:\.(\d{1,3}))?$/.exec(value.trim());
+  if (!match) return null;
+  const first = Number(match[1]);
+  const middle = Number(match[2]);
+  const last = match[3] === undefined ? null : Number(match[3]);
+  if (middle > 59 || last !== null && last > 59) return null;
+  const seconds = last === null ? first * 60 + middle : first * 3600 + middle * 60 + last;
+  const milliseconds = seconds * 1000 + Number((match[4] ?? '').padEnd(3, '0'));
+  return Number.isSafeInteger(milliseconds) ? milliseconds : null;
+}
+
+function mainlineText(text: string): { clean: string; annotations: ParsedPgn['annotations']; plyCount: number } {
+  const tokens: string[] = [];
+  const notes = new Map<number, { comment?: string; remainingMsAfterMove?: number }>();
+  let token = '';
+  let ply = 0;
+  const flush = () => {
+    if (!token) return;
+    const number = /^(\d+)(\.{1,3})(.*)$/.exec(token);
+    if (number) {
+      tokens.push(`${number[1]}${number[2]}`);
+      token = number[3]!;
+      if (!token) return;
+    }
+    tokens.push(token);
+    if (!resultTokens.has(token) && !/^\d+\.{1,3}$/.test(token) && token !== '...') ply += 1;
+    token = '';
+  };
+  const comment = (raw: string) => {
+    const previous = notes.get(ply) ?? {};
+    const ordinary = raw.replace(/\[%clk\b([^\]]*)\]/gi, (directive, value: string) => {
+      const milliseconds = clockMilliseconds(value);
+      if (milliseconds === null || ply === 0) return directive;
+      previous.remainingMsAfterMove = milliseconds;
+      return '';
+    }).trim().replace(/\s+/g, ' ');
+    if (ordinary) {
+      const combined = previous.comment ? `${previous.comment}\n${ordinary}` : ordinary;
+      if (combined.length > 2000) throw new Error('A PGN comment exceeds the 2,000-character analysis limit.');
+      previous.comment = combined;
+    }
+    if (previous.comment !== undefined || previous.remainingMsAfterMove !== undefined) notes.set(ply, previous);
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!;
+    if (char === '{' || char === ';') {
+      flush();
+      if (char === '{') {
+        const end = text.indexOf('}', index + 1);
+        if (end < 0) throw new Error('A PGN comment is missing its closing brace.');
+        comment(text.slice(index + 1, end));
+        index = end;
+      } else {
+        const end = text.indexOf('\n', index + 1);
+        comment(text.slice(index + 1, end < 0 ? undefined : end));
+        index = end < 0 ? text.length : end;
+      }
+    } else if (/[()$!?}]/.test(char)) {
+      throw new Error('This import supports one main line only; variations and PGN annotations are not supported.');
+    } else if (/\s/.test(char)) flush();
+    else token += char;
+  }
+  flush();
+  return { clean: tokens.join(' '), plyCount: ply,
+    annotations: [...notes].map(([at, note]) => ({ ply: at, ...note })) };
+}
 
 export function parsePgn(text: string): ParsedPgn {
   if (text.trim().length === 0) throw new Error('Enter PGN text or choose a .pgn file.');
@@ -30,10 +100,8 @@ export function parsePgn(text: string): ParsedPgn {
   }
   const movetext = lines.slice(index).join('\n').trim();
   if (!movetext) throw new Error('PGN move text must end with a result (or *).');
-  if (/[{}();$!?]/.test(movetext)) {
-    throw new Error('This import supports one main line only; comments, variations, and PGN annotations are not supported yet.');
-  }
-  const marker = /(?:^|\s)(1-0|0-1|1\/2-1\/2|\*)\s*$/.exec(movetext)?.[1];
+  const mainline = mainlineText(movetext);
+  const marker = /(?:^|\s)(1-0|0-1|1\/2-1\/2|\*)\s*$/.exec(mainline.clean)?.[1];
   if (!marker || !resultTokens.has(marker)) throw new Error('PGN move text must end with 1-0, 0-1, 1/2-1/2, or *.');
   if (headers.Result !== undefined && headers.Result !== marker) {
     throw new Error('The Result header does not match the move text.');
@@ -46,7 +114,7 @@ export function parsePgn(text: string): ParsedPgn {
   let chess: Chess;
   try {
     chess = new Chess();
-    chess.loadPgn(text, { strict: true });
+    chess.loadPgn(`${lines.slice(0, index).join('\n')}\n\n${mainline.clean}`, { strict: true });
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : 'unknown move';
     const illegalMove = /^Invalid move in PGN: (.{1,24})$/.exec(detail)?.[1];
@@ -54,6 +122,8 @@ export function parsePgn(text: string): ParsedPgn {
       : 'Invalid PGN syntax or illegal move. Check the move text.');
   }
   const history = chess.history({ verbose: true });
+  if (history.length !== mainline.plyCount)
+    throw new Error('Invalid PGN syntax or illegal move. Check the move text.');
   if (history.length > 1_000) throw new Error('PGN import is limited to 1,000 half-moves.');
   if (chess.isCheckmate() && marker !== (chess.turn() === 'w' ? '0-1' : '1-0'))
     throw new Error('The PGN result conflicts with checkmate on the board.');
@@ -68,5 +138,5 @@ export function parsePgn(text: string): ParsedPgn {
   }));
   return { headers: { ...headers, Result: marker }, result: marker as ParsedPgn['result'],
     startingFen: moves[0]?.beforeFen ?? chess.fen(), finalFen: chess.fen(),
-    sideToMove: chess.turn() === 'w' ? 'white' : 'black', moves };
+    sideToMove: chess.turn() === 'w' ? 'white' : 'black', moves, annotations: mainline.annotations };
 }

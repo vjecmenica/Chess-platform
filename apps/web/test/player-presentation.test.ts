@@ -46,6 +46,19 @@ describe('shared game presentation', () => {
     expect(app).not.toContain('className="imported-result"');
   });
 
+  it('shows only annotated historical clocks for imported players', () => {
+    const imported = importPgn('[White "Ada"]\n[Black "Ben"]\n\n1. e4 {[%clk 0:00:29.45]} e5 *', 'timed');
+    const white = renderToStaticMarkup(createElement(ImportedPlayerRow,
+      { imported, side: 'white', historicalMs: 29_450 }));
+    const black = renderToStaticMarkup(createElement(ImportedPlayerRow,
+      { imported, side: 'black', historicalMs: null }));
+    expect(white).toContain('00:29');
+    expect(white).toContain('clock-hundredths');
+    expect(white).toContain('clock-warning');
+    expect(black).toContain('>—</strong>');
+    expect(black).not.toContain('05:00');
+  });
+
   it('aligns the board and sidebar on desktop and removes the offset when stacked', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toMatch(/--board-top-offset: 36px/);

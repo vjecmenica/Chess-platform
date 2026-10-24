@@ -88,6 +88,8 @@ describe('display clocks', () => {
     expect(historicalClockMs(history, 2, 'black', 300_000, true)).toBe(302_250);
     expect(historicalClockMs(history, 3, 'white', 300_000, true)).toBeNull();
     expect(historicalClockMs(history, 2, 'white', 300_000, false)).toBeNull();
+    expect(historicalClockMs(history, 0, 'white', null, true)).toBeNull();
+    expect(historicalClockMs(history, 2, 'black', null, true)).toBe(302_250);
     const shown = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
     expect(shown).toContain('05:03');

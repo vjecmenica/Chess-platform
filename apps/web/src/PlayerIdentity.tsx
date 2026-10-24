@@ -1,5 +1,6 @@
 import type { GameSide } from '@chess/contracts';
 import type { ImportedGame } from './pgn-import';
+import { ClockValue } from './ClockValue';
 
 export function importedPlayer(imported: ImportedGame, side: GameSide): {
   name: string; rating: string | null;
@@ -20,11 +21,14 @@ export function PlayerIdentity({ side, name, rating }: {
   </span>;
 }
 
-export function ImportedPlayerRow({ imported, side }: {
-  imported: ImportedGame; side: GameSide;
+export function ImportedPlayerRow({ imported, side, historicalMs }: {
+  imported: ImportedGame; side: GameSide; historicalMs?: number | null | undefined;
 }) {
   const player = importedPlayer(imported, side);
-  return <div className="clock clock-no-status imported-player">
+  return <div className={`clock clock-no-status imported-player${historicalMs !== undefined && historicalMs !== null && historicalMs <= 30_000 ? ' clock-warning' : ''}`}
+    aria-label={historicalMs === undefined ? undefined : `${side} clock at selected move`}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
+    {historicalMs !== undefined && <strong aria-live="off">{historicalMs === null
+      ? '—' : <ClockValue milliseconds={historicalMs} />}</strong>}
   </div>;
 }

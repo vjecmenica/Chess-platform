@@ -7,6 +7,7 @@ import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
+import { MoveTimes } from './MoveTimes';
 
 type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
@@ -361,6 +362,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </span>}
     </div>
     </div>
+    <MoveTimes game={game} onSelectPly={onSelectPly} />
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />

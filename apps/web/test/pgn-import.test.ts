@@ -42,7 +42,10 @@ describe('local PGN analysis', () => {
       .rejects.toThrow('Could not read this PGN file.');
     await expect(importPgnFile({ size: 1_000_001, text: async () => '' }, 'large'))
       .rejects.toThrow('smaller than 1 MB');
-    await expect(importPgnFile(new File(['1. e4 {comment} *'], 'annotated.pgn'), 'unsupported'))
+    const annotated = await importPgnFile(new File(['1. e4 {comment [%clk 0:04:59]} *'], 'annotated.pgn'), 'annotated');
+    expect(annotated.game.history[0]?.remainingMsAfterMove).toBe(299_000);
+    expect(annotated.notes.m1).toEqual({ comment: 'comment' });
+    await expect(importPgnFile(new File(['1. e4 (1. d4) *'], 'variation.pgn'), 'unsupported'))
       .rejects.toThrow('one main line only');
   });
 

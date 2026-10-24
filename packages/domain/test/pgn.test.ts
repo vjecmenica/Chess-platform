@@ -31,9 +31,30 @@ describe('PGN import', () => {
     expect(() => parsePgn('1. e4 e5')).toThrow('must end');
   });
 
+  it('associates mainline comments and clocks with the move occurrence, even after repetition', () => {
+    const game = parsePgn('1. Nf3 {First visit [%clk 0:05:00]} Nf6 2. Ng1 Ng8 '
+      + '3. Nf3 {Later visit [%clk 0:04:42.25]} Nf6 ;quiet reply\n*');
+    expect(game.moves[0]?.beforeFen.split(' ').slice(0, 4))
+      .toEqual(game.moves[4]?.beforeFen.split(' ').slice(0, 4));
+    expect(game.annotations).toEqual([
+      { ply: 1, comment: 'First visit', remainingMsAfterMove: 300_000 },
+      { ply: 5, comment: 'Later visit', remainingMsAfterMove: 282_250 },
+      { ply: 6, comment: 'quiet reply' },
+    ]);
+  });
+
+  it('keeps malformed clock directives as comments without changing legal moves', () => {
+    const game = parsePgn('1. e4 {[%clk 0:99:00] useful note} e5 {[%clk 4:58]} *');
+    expect(game.moves.map(move => move.san)).toEqual(['e4', 'e5']);
+    expect(game.annotations).toEqual([
+      { ply: 1, comment: '[%clk 0:99:00] useful note' },
+      { ply: 2, remainingMsAfterMove: 298_000 },
+    ]);
+  });
+
   it('rejects unsupported annotations and variations rather than dropping them', () => {
     expect(() => parsePgn('1. e4 (1. d4) e5 *')).toThrow('one main line');
-    expect(() => parsePgn('1. e4 {idea} e5 *')).toThrow('one main line');
     expect(() => parsePgn('1. e4 $1 e5 *')).toThrow('one main line');
+    expect(() => parsePgn('1. e4 {unfinished e5 *')).toThrow('closing brace');
   });
 });
