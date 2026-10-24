@@ -44,9 +44,10 @@ older opponent message. Uncertain send failures retain the retry key; editing th
 draft starts a new request. Reads and sends time out after ten seconds. Messages
 render as text, never HTML.
 
-The desktop rail stays beside the board. On narrower screens it becomes an
-expandable section below the board/moves. Hide chat is local to the browser, game,
-and seat and survives refresh; it does not delete history or notify the opponent.
+The desktop rail stays beside the board. On narrower screens it becomes a
+section below the board/moves. The Hide/Show button is the only collapse control.
+Hiding is local to the browser, game, and seat and survives refresh; it does not
+delete history or notify the opponent.
 The list follows new messages only while the reader is near its bottom. Otherwise,
 a New messages control lets the reader jump down explicitly.
 

@@ -6,7 +6,7 @@ interface Props { gameId: string; side: GameSide; active: boolean; csrfToken: st
 
 export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameSide }) {
   return <li>
-    <div className="game-chat-meta"><strong>{item.side === side ? 'You' : 'Opponent'} · {item.side === 'white' ? 'White' : 'Black'}</strong>
+    <div className="game-chat-meta"><strong>{item.side === side ? 'You' : 'Opponent'}</strong>
       <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
         {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
     <p>{item.text}</p>
@@ -115,12 +115,11 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
     }
   }
 
-  return <details className="game-chat" open>
-    <summary>Game chat</summary>
-    <div className="game-chat-content">
-    <div className="game-chat-header"><span>Players only</span>
-      <button className="secondary" type="button" onClick={toggleHidden} aria-pressed={hidden}>
-        {hidden ? 'Show chat' : 'Hide chat'}</button></div>
+  return <aside className="game-chat" data-hidden={hidden} aria-labelledby={`chat-heading-${gameId}`}>
+    <div className="game-chat-header"><div><h2 id={`chat-heading-${gameId}`}>Game chat</h2><span>Players only</span></div>
+      <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
+        aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
+    <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
     {!hidden && <>
       <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
         aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
@@ -147,5 +146,5 @@ export function GameChat({ gameId, side, active, csrfToken, revision }: Props) {
       </form> : <p className="game-chat-read-only">Game ended · Chat is read-only</p>}
     </>}
     </div>
-  </details>;
+  </aside>;
 }
