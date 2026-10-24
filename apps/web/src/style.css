@@ -686,11 +686,11 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
 .review-tabs button[aria-selected="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
 .review-tabs button:focus-visible, .move-time-column:focus-visible { outline: 3px solid #a66422; outline-offset: -3px; }
 .review-tabs button:disabled { opacity: .5; cursor: default; }
-.move-times { width: 100%; max-width: 920px; margin: 0 auto; min-width: 0; }
-.move-times-key { display: flex; justify-content: space-between; color: #647064; font-size: 11px; margin-bottom: 5px; }
-.move-times-scroll { overflow-x: auto; padding: 0 2px 5px; }
-.move-times-plot { position: relative; display: grid; width: 100%; height: 162px; margin-bottom: 22px;
-  background: linear-gradient(to bottom, #f5f0e7 0 50%, #eee8dd 50% 100%);
+.review-content > [role="tabpanel"] { min-width: 0; }
+.move-times { width: 100%; min-width: 0; }
+.move-times-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding: 0 2px 5px; }
+.move-times-plot { position: relative; display: grid; width: 100%; height: 260px; margin-bottom: 22px;
+  background: #fff;
   border: 1px solid #d7d1c6; border-radius: 4px; }
 .move-times-baseline { position: absolute; top: 50%; right: 0; left: 0; height: 1px;
   background: #8e877a; pointer-events: none; }
@@ -698,14 +698,22 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   background: transparent; cursor: pointer; z-index: 1; }
 .move-time-column:hover { background: #9c7c5420; }
 .move-time-column[aria-current="step"] { background: #9c7c5433; box-shadow: inset 0 0 0 1px #8b6949; }
-.move-time-bar { position: absolute; left: 50%; width: min(72%, 23px); transform: translateX(-50%);
+.move-time-bar { position: absolute; left: 50%; width: calc(100% - 3px); transform: translateX(-50%);
   min-height: 2px; }
-.move-time-white .move-time-bar { bottom: 50%; background: #b48b5e; border-radius: 2px 2px 0 0; }
-.move-time-black .move-time-bar { top: 50%; background: #536458; border-radius: 0 0 2px 2px; }
+.move-time-white .move-time-bar { bottom: 50%; background: #eee9d9; border: 1px solid #c2bdad; border-radius: 2px 2px 0 0; }
+.move-time-black .move-time-bar { top: 50%; background: #333b36; border-radius: 0 0 2px 2px; }
 .move-time-gap { position: absolute; top: calc(50% - 2px); left: 50%; width: 3px; height: 3px;
   transform: translateX(-50%); border-radius: 50%; background: #a8a399; }
 .move-time-axis-label { position: absolute; bottom: -20px; left: 0; color: #716e64; font-size: 10px; }
-.move-times-detail { min-height: 22px; color: #35473a; font-size: 12px; font-variant-numeric: tabular-nums; }
+.move-time-clocks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.move-time-clocks polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.move-time-clocks circle { fill: currentColor; }
+.move-time-clock-white { color: #356db1; }
+.move-time-clock-black { color: #078ac2; stroke-dasharray: 5 3; }
+.move-time-tooltip { position: fixed; z-index: 50; display: grid; gap: 3px; width: 260px; max-width: calc(100% - 16px);
+  padding: 9px 11px; border: 1px solid #7e6b52; border-radius: 5px; background: #34281f; color: #fff8ed;
+  font-size: 13px; line-height: 1.4; font-variant-numeric: tabular-nums; pointer-events: none; }
+.move-time-tooltip strong { font-size: 14px; }
 .analysis-workspace .review-player { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .analysis-workspace .review-average { grid-column: auto; flex-wrap: wrap; }
 .analysis-workspace .review-average[data-accuracy-method] { grid-column: span 2; }
@@ -728,6 +736,7 @@ footer { margin-top: 36px; color: #617163; font-size: 13px; }
   .analysis-navigation nav { font-size: 12px; gap: 10px; }
   .analysis-navigation nav [aria-disabled="true"] { display: none; }
   .analysis-workspace .analysis-flip, .game-controls .pgn-download { float: none; margin: 0 6px 6px 0; }
+  .move-times-plot { height: 230px; }
   .analysis-workspace .review-average { grid-column: 1/-1; }
   .analysis-workspace .review-average[data-accuracy-method] { grid-column: 1/-1; }
   .analysis-workspace .review-count { font-size: 11px; }

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { importPgn } from '../src/pgn-import';
 import { moveTimes, simplePgnTimeControl } from '../src/move-times';
 import { MoveTimes, moveTimeDescription } from '../src/MoveTimes';
+import { moveTimeTooltipPosition, recordedClockSegments } from '../src/move-times-chart';
 
 describe('recorded move times', () => {
   it('uses simple PGN controls without coercing unsupported metadata', () => {
@@ -19,9 +20,9 @@ describe('recorded move times', () => {
     expect(moveTimes(game).map(move => move.elapsedMs)).toEqual([null, null, 5_000, 5_000]);
     const html = renderToStaticMarkup(createElement(MoveTimes,
       { game, selectedPly: 3, onSelectPly: () => {} }));
-    expect(html).toContain('White above');
-    expect(html).toContain('Black below');
-    expect(html).toContain('max-width:360px');
+    expect(html).not.toContain('>White above<');
+    expect(html).not.toContain('>Black below<');
+    expect(html).not.toContain('max-width:');
     expect(html).toContain('2. Nf3 · 5.0 seconds spent · 04:56 remaining');
     expect(html).toContain('aria-current="step"');
     expect(html).toContain('1. e4 · time spent unavailable · 04:58 remaining');
@@ -62,8 +63,45 @@ describe('recorded move times', () => {
       { game, selectedPly: 50, onSelectPly: () => {} }));
     expect(html.match(/class="move-time-column/g)).toHaveLength(100);
     expect(html).toContain('min-width:1300px');
-    expect(html).toContain('max-width:920px');
+    expect(html).not.toContain('max-width:');
     expect(html).toContain('aria-current="step"');
     expect(html).toContain('50... Ng8');
+  });
+
+  it('breaks each clock line at that player’s missing sample without adding clock values', () => {
+    const game = importPgn('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 *', 'gaps').game;
+    const samples = [300_000, 200_000, null, 190_000, 290_000, null, 280_000, 180_000];
+    const history = game.history.map((move, index) => ({ ...move, remainingMsAfterMove: samples[index]! }));
+    const segments = recordedClockSegments(history);
+    expect(segments.map(segment => ({ side: segment.side,
+      samples: segment.points.map(point => [point.ply, point.remainingMs]) }))).toEqual([
+      { side: 'white', samples: [[1, 300_000]] },
+      { side: 'white', samples: [[5, 290_000], [7, 280_000]] },
+      { side: 'black', samples: [[2, 200_000], [4, 190_000]] },
+      { side: 'black', samples: [[8, 180_000]] },
+    ]);
+    for (const segment of segments) for (const point of segment.points) {
+      expect(point.x).toBeGreaterThan(0);
+      expect(point.x).toBeLessThan(1000);
+      expect(segment.side === 'white' ? point.y < 120 : point.y > 120).toBe(true);
+    }
+    expect(recordedClockSegments(game.history)).toEqual([]);
+  });
+
+  it('keeps tooltip data honest and positions it within desktop and mobile edges', () => {
+    expect(moveTimeDescription({ ply: 4, side: 'black', san: 'exd5', elapsedMs: null }, null))
+      .toBe('2... exd5 · time spent unavailable · recorded clock unavailable');
+    expect(moveTimeDescription({ ply: 5, side: 'white', san: 'Nf3', elapsedMs: 1250 }, 29_450))
+      .toBe('3. Nf3 · 1.3 seconds spent · 00:29.45 remaining');
+    for (const width of [390, 1440]) {
+      for (const anchor of [{ left: 0, right: 13, top: 0, bottom: 20 },
+        { left: width - 13, right: width, top: 800, bottom: 840 }]) {
+        const position = moveTimeTooltipPosition(anchor, { width: 260, height: 90 }, { width, height: 844 });
+        expect(position.left).toBeGreaterThanOrEqual(8);
+        expect(position.left + 260).toBeLessThanOrEqual(width - 8);
+        expect(position.top).toBeGreaterThanOrEqual(8);
+        expect(position.top + 90).toBeLessThanOrEqual(836);
+      }
+    }
   });
 });
