@@ -5,11 +5,10 @@ import { chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom } fro
 interface Props { gameId: string; side: GameSide; active: boolean; csrfToken: string; revision: number }
 
 export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameSide }) {
-  return <li>
-    <div className="game-chat-meta"><strong>{item.side === side ? 'You' : 'Opponent'}</strong>
-      <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
-        {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
-    <p>{item.text}</p>
+  return <li className="game-chat-message">
+    <p><strong>{item.side === side ? 'You' : 'Opponent'}</strong>{': '}<span>{item.text}</span></p>
+    <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
+      {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
   </li>;
 }
 

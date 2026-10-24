@@ -21,6 +21,7 @@ it('only follows new messages when the reader is near the bottom', () => {
 it('escapes message markup, labels ownership without a side suffix, and includes a readable timestamp', () => {
   const html = renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'black' }));
   expect(html).toContain('Opponent');
+  expect(html).toContain('<p><strong>Opponent</strong>: <span>&lt;b&gt;Plain text&lt;/b&gt;</span></p>');
   expect(html).not.toMatch(/White|Black/);
   expect(renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'white' })))
     .toContain('<strong>You</strong>');
@@ -28,6 +29,12 @@ it('escapes message markup, labels ownership without a side suffix, and includes
   expect(html).not.toContain('<b>Plain text</b>');
   expect(html).toContain('dateTime="2026-10-24T10:00:00Z"');
   expect(html).toMatch(/<time[^>]+>[^<]+<\/time>/);
+});
+it('keeps long message text together with its sender and the timestamp in a separate column', () => {
+  const text = `A longer message\n${'UnbrokenText'.repeat(25)}`;
+  const html = renderToStaticMarkup(createElement(ChatMessage, { item: { ...message('2'), text }, side: 'white' }));
+  expect(html).toContain(`<p><strong>You</strong>: <span>${text}</span></p><time`);
+  expect(html).toContain('class="game-chat-message"');
 });
 it('renders a labeled composer only while active, with a local hide control', () => {
   const props = { gameId: 'game', side: 'white' as const, active: true, csrfToken: 'token', revision: 0 };
