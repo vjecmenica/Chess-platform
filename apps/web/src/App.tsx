@@ -1366,7 +1366,7 @@ export function App() {
                 {analysisOpen && <button type="button" className="secondary analysis-flip"
                   onClick={() => setAnalysisBoard(current => current?.gameId === game.id
                     ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>}
-                {canExportGame(game) && <button type="button" className="secondary pgn-download"
+                {analysisOpen && canExportGame(game) && <button type="button" className="secondary pgn-download"
                   title="Download this game's main line and available headers. Clocks and analysis comments are not included."
                   onClick={() => downloadGamePgn(game, imported?.headers)}>Download PGN</button>}
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}

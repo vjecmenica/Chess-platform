@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
@@ -8,6 +8,7 @@ import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
 import { MoveTimes } from './MoveTimes';
+import { moveTimes } from './move-times';
 
 type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
@@ -167,6 +168,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const [unlimitedTime, setUnlimitedTime] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
+  const [reviewTab, setReviewTab] = useState<'computer' | 'times'>('computer');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -175,6 +177,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const cache = useRef<EngineCache | null>(null);
   const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
+  const hasMoveTimes = useMemo(() => moveTimes(game).some(move => move.elapsedMs !== null), [game]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -349,7 +352,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     </div>}
     {reviewHost && createPortal(<div className="review-content">
     <div className="review-heading"><strong>Computer Analysis</strong>
-    <div className="review-control">
+    {reviewTab === 'computer' && <div className="review-control">
       <button type="button" className="secondary" disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
           runner.current?.cancel(); setReview({ kind: 'cancelled' }); onReviewChange(null);
@@ -360,9 +363,31 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         {review.progress.completed} / {review.progress.total} positions
         {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
       </span>}
+    </div>}
     </div>
+    <div className="review-tabs" role="tablist" aria-label="Game analysis views"
+      onKeyDown={event => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault(); event.stopPropagation();
+        const next = event.key === 'ArrowRight' ? 'times' : 'computer';
+        if (next === 'times' && !hasMoveTimes) return;
+        setReviewTab(next);
+        event.currentTarget.querySelector<HTMLButtonElement>(`[aria-controls="${next === 'times'
+          ? 'move-times-view' : 'computer-analysis-view'}"]`)?.focus();
+      }}>
+      <button type="button" role="tab" aria-selected={reviewTab === 'computer'}
+        aria-controls="computer-analysis-view" tabIndex={reviewTab === 'computer' ? 0 : -1}
+        onClick={() => setReviewTab('computer')}>Computer Analysis</button>
+      <button type="button" role="tab" aria-selected={reviewTab === 'times'}
+        aria-controls="move-times-view" tabIndex={reviewTab === 'times' ? 0 : -1} disabled={!hasMoveTimes}
+        title={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
+        onClick={() => setReviewTab('times')}>Move times</button>
     </div>
-    <MoveTimes game={game} onSelectPly={onSelectPly} />
+    <div id="move-times-view" role="tabpanel" aria-label="Move times" hidden={reviewTab !== 'times'}>
+      {reviewTab === 'times' && <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />}
+    </div>
+    <div id="computer-analysis-view" role="tabpanel" aria-label="Computer Analysis"
+      hidden={reviewTab !== 'computer'}>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
@@ -393,6 +418,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           target="_blank" rel="noreferrer" aria-label={`Accuracy methodology: ${accuracyMethodVersion}`}>Methodology</a>
       </small>
     </div>}
+    </div>
     </div>, reviewHost)}
   </section>;
 }

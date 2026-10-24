@@ -46,7 +46,7 @@ function finish(worker: FakeWorker, pv = 'e2e4 e7e5 g1f3') {
 
 describe('browser Stockfish controller', () => {
   it('keeps interactive settings collapsed beside the engine toggle', () => {
-    const game = { id: 'test', status: 'finished', history: [], position: { fen: start,
+    const game = { id: 'test', status: 'finished', history: [], timeControl: null, position: { fen: start,
       sideToMove: 'white' }, result: { outcome: 'draw', reason: 'agreement' } } as GameReadResponse;
     const html = renderToStaticMarkup(createElement(EnginePanel, { game, fen: start,
       selectedPly: 0, onSelectPly: () => {}, onReviewChange: () => {},

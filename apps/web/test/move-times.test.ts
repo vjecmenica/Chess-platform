@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { importPgn } from '../src/pgn-import';
 import { moveTimes, simplePgnTimeControl } from '../src/move-times';
-import { MoveTimes } from '../src/MoveTimes';
+import { MoveTimes, moveTimeDescription } from '../src/MoveTimes';
 
 describe('recorded move times', () => {
   it('uses simple PGN controls without coercing unsupported metadata', () => {
@@ -17,11 +17,17 @@ describe('recorded move times', () => {
     const game = importPgn('[TimeControl "300+3"]\n\n1. e4 {[%clk 0:04:58]} e5 {[%clk 0:04:57]} '
       + '2. Nf3 {[%clk 0:04:56]} Nc6 {[%clk 0:04:55]} *', 'timed').game;
     expect(moveTimes(game).map(move => move.elapsedMs)).toEqual([null, null, 5_000, 5_000]);
-    const html = renderToStaticMarkup(createElement(MoveTimes, { game, onSelectPly: () => {} }));
-    expect(html).toContain('Move times');
-    expect(html).toContain('5.0s');
-    expect(html).toContain('Show move 3, Nf3');
+    const html = renderToStaticMarkup(createElement(MoveTimes,
+      { game, selectedPly: 3, onSelectPly: () => {} }));
+    expect(html).toContain('White above');
+    expect(html).toContain('Black below');
+    expect(html).toContain('max-width:360px');
+    expect(html).toContain('2. Nf3 · 5.0 seconds spent · 04:56 remaining');
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain('1. e4 · time spent unavailable · 04:58 remaining');
     expect(html.match(/move-time-bar/g)).toHaveLength(2);
+    expect(html.match(/move-time-gap/g)).toHaveLength(2);
+    expect(moveTimeDescription(moveTimes(game)[2]!, null)).toContain('recorded clock unavailable');
   });
 
   it('derives the site clock handoff but never invents time for its free first White move', () => {
@@ -37,9 +43,27 @@ describe('recorded move times', () => {
     const imported = importPgn('[TimeControl "300+3"]\n\n1. e4 {[%clk 0:04:58]} e5 '
       + '2. Nf3 {[%clk broken]} Nc6 {[%clk 0:04:55]} 3. Bb5 {[%clk 0:04:51]} *', 'missing').game;
     expect(moveTimes(imported).map(move => move.elapsedMs)).toEqual([null, null, null, null, null]);
-    expect(renderToStaticMarkup(createElement(MoveTimes, { game: imported, onSelectPly: () => {} })))
+    expect(renderToStaticMarkup(createElement(MoveTimes,
+      { game: imported, selectedPly: null, onSelectPly: () => {} })))
       .toBe('');
     const unknownControl = { ...imported, timeControl: { source: 'pgn' as const, raw: '40/7200:3600' } };
     expect(moveTimes(unknownControl).every(move => move.elapsedMs === null)).toBe(true);
+  });
+
+  it('keeps long main lines chronological with one focusable bar per ply', () => {
+    const short = importPgn('[TimeControl "300+3"]\n\n1. Nf3 {[%clk 0:04:58]} Nf6 {[%clk 0:04:59]} '
+      + '2. Ng1 {[%clk 0:04:56]} Ng8 {[%clk 0:04:57]} *', 'short').game;
+    const game = { ...short, history: Array.from({ length: 100 }, (_, index) => ({
+      ...short.history[index % 4]!, ply: index + 1,
+      side: index % 2 === 0 ? 'white' as const : 'black' as const,
+      remainingMsAfterMove: 300_000 - index * 1000,
+    })) };
+    const html = renderToStaticMarkup(createElement(MoveTimes,
+      { game, selectedPly: 50, onSelectPly: () => {} }));
+    expect(html.match(/class="move-time-column/g)).toHaveLength(100);
+    expect(html).toContain('min-width:1300px');
+    expect(html).toContain('max-width:920px');
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain('50... Ng8');
   });
 });
