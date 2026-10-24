@@ -1,4 +1,32 @@
 import type { GameSide, SavedMove } from '@chess/contracts';
+import type { TimedMove } from './move-times';
+
+export interface PlayerTimeSummary {
+  readonly totalMoves: number;
+  readonly measuredMoves: number;
+  readonly longest: TimedMove | null;
+  readonly averageMs: number | null;
+  readonly lastRecorded: { readonly ply: number; readonly san: string; readonly remainingMs: number } | null;
+}
+
+export function summarizeMoveTimes(history: readonly SavedMove[], measured: readonly TimedMove[]):
+  Readonly<Record<GameSide, PlayerTimeSummary>> {
+  const summarize = (side: GameSide): PlayerTimeSummary => {
+    const moves = history.filter(move => move.side === side);
+    const known = measured.filter(move => move.side === side && move.elapsedMs !== null);
+    let longest: TimedMove | null = null;
+    let totalMs = 0;
+    for (const move of known) {
+      totalMs += move.elapsedMs!;
+      if (longest === null || move.elapsedMs! > longest.elapsedMs!) longest = move;
+    }
+    const last = [...moves].reverse().find(move => move.remainingMsAfterMove !== null);
+    return { totalMoves: moves.length, measuredMoves: known.length, longest,
+      averageMs: known.length === 0 ? null : totalMs / known.length,
+      lastRecorded: last ? { ply: last.ply, san: last.san, remainingMs: last.remainingMsAfterMove! } : null };
+  };
+  return { white: summarize('white'), black: summarize('black') };
+}
 
 export interface ClockPoint {
   readonly ply: number;
