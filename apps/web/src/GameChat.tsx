@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { GameChatHistory, GameChatMessage, GameSide, GameState } from '@chess/contracts';
+import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
+import { sitePlayerName } from './PlayerIdentity';
 import { chatComposerState, chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom,
   type ChatPermission } from './game-chat';
 
-interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number }
+interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
+  playerNames?: GamePlayerNames | undefined }
 
-export function ChatMessage({ item, side }: { item: GameChatMessage; side: GameSide }) {
+export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
+  playerNames?: GamePlayerNames | undefined }) {
+  const name = sitePlayerName(playerNames, item.side);
+  const label = playerNames?.[item.side] ? name : `${name} (${item.side === 'white' ? 'White' : 'Black'})`;
   return <li className="game-chat-message">
-    <p><strong>{item.side === side ? 'You' : 'Opponent'}</strong>{': '}<span>{item.text}</span></p>
+    <p><strong aria-label={`${label}, ${item.side === side ? 'you' : 'opponent'}`}>{label}</strong>{': '}<span>{item.text}</span></p>
     <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
       {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
   </li>;
@@ -27,7 +32,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision }: Props) {
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames }: Props) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
   // Send acknowledgements can arrive before older opponent messages are fetched.
@@ -146,7 +151,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision }: Prop
         }}>
         {!loaded && !error && <li className="game-chat-empty">Loading chat…</li>}
         {loaded && messages.length === 0 && <li className="game-chat-empty">No messages yet.</li>}
-        {messages.map(item => <ChatMessage key={item.id} item={item} side={side} />)}
+        {messages.map(item => <ChatMessage key={item.id} item={item} side={side} playerNames={playerNames} />)}
       </ol>
       {newMessages && <button className="secondary" type="button" onClick={() => {
         following.current = true; setNewMessages(false);

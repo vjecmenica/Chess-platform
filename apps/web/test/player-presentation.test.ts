@@ -9,6 +9,22 @@ import { ImportedPlayerRow, importedPlayer } from '../src/PlayerIdentity';
 import { importPgn, importedResultDisplay } from '../src/pgn-import';
 
 describe('shared game presentation', () => {
+  it('uses names for each linked seat in live and historical panels, with a neutral guest fallback', () => {
+    const playerNames = { white: 'walnut_white', black: 'cream_black' };
+    for (const side of ['white', 'black'] as const) {
+      for (const historicalMs of [undefined, 287_000]) {
+        const html = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side,
+          isYou: false, playerNames, historicalMs, showStatus: false }));
+        expect(html).toContain(`player-name">${playerNames[side]}</span>`);
+        expect(html).toContain(`<b>${side === 'white' ? 'White' : 'Black'}</b>`);
+      }
+    }
+    const guest = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side: 'black',
+      isYou: true, playerNames: { white: 'walnut_white', black: null } }));
+    expect(guest).toContain('player-name">Guest</span>');
+    expect(guest).not.toContain('walnut_white');
+  });
+
   it('puts imported names and available numeric ratings at the left of player rows', () => {
     const imported = importPgn('[White "Ada"]\n[Black "Ben"]\n[WhiteElo "1820"]\n[BlackElo "?"]\n\n1. e4 e5 1-0', 'imported');
     expect(importedPlayer(imported, 'white')).toEqual({ name: 'Ada', rating: '1820' });
@@ -25,7 +41,7 @@ describe('shared game presentation', () => {
     const guest = renderToStaticMarkup(createElement(ClockPanel, {
       clock: null, side: 'white', isYou: true,
     }));
-    expect(guest).toMatch(/player-name">You<\/span>.*<b>White<\/b>/);
+    expect(guest).toMatch(/player-name">Guest<\/span>.*<b>White<\/b>/);
     expect(guest).not.toContain('player-rating');
   });
 

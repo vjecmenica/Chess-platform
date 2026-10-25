@@ -61,6 +61,25 @@ describe('confirmed game state', () => {
     expect(mergeConfirmedGame(game(), confirmed)).toBe(confirmed);
   });
 
+  it('preserves seat names through acknowledgements and accepts refreshed names at the same move version', () => {
+    const playerNames = { white: 'linked_white', black: null };
+    const initial = { ...game(), playerNames };
+    const moved = applyAcceptedMove(initial, accepted)!;
+    expect(moved.playerNames).toEqual(playerNames);
+    const action = applyAcceptedAction(moved, { accepted: true, game: { ...accepted.game, version: 2 } });
+    expect(action?.playerNames).toEqual(playerNames);
+    const refreshed = mergeConfirmedGame(moved, { ...moved, playerNames: { white: 'linked_white', black: 'linked_black' } });
+    expect(refreshed.playerNames?.black).toBe('linked_black');
+    const otherGame = { ...game(), id: 'another-game', playerNames: { white: null, black: null } };
+    expect(mergeConfirmedGame(null, otherGame).playerNames).toEqual({ white: null, black: null });
+    const pending = { ...initial, status: 'pending_adjudication' as const,
+      pending: { kind: 'resignation' as const, resigningSide: 'white' as const } };
+    const finished = applyAcceptedAction(pending, { accepted: true, game: { ...game(1),
+      position: pending.position, status: 'finished', result: { outcome: 'win', reason: 'resignation', winner: 'black' } } });
+    expect(finished?.playerNames).toEqual(playerNames);
+    expect(finished).not.toHaveProperty('pending');
+  });
+
   it('appends a timed move when readiness has advanced the state version', () => {
     const ready = game(0);
     const waitingForMove = { ...ready, version: 2 };

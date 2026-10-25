@@ -1,6 +1,10 @@
-import type { GameSide } from '@chess/contracts';
+import type { GamePlayerNames, GameSide } from '@chess/contracts';
 import type { ImportedGame } from './pgn-import';
 import { ClockValue } from './ClockValue';
+
+export function sitePlayerName(names: GamePlayerNames | undefined, side: GameSide): string {
+  return names?.[side] ?? 'Guest';
+}
 
 export function importedPlayer(imported: ImportedGame, side: GameSide): {
   name: string; rating: string | null;

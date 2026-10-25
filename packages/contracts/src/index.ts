@@ -69,7 +69,10 @@ export interface GameState {
   readonly yourSeat: GameSide;
 }
 
+export type GamePlayerNames = Readonly<Record<GameSide, string | null>>;
 export interface GameReadResponse extends GameState {
+  /** Authorized site-game reads only; null means the seat has not been explicitly linked. */
+  readonly playerNames?: GamePlayerNames;
   readonly history: readonly SavedMove[];
 }
 

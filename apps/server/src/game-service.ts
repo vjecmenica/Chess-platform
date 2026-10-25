@@ -239,6 +239,12 @@ function savedMove(record: MoveRecord, remainingMsAfterMove: number | null): Sav
 
 async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
   yourSeat: Side, atMs: number): Promise<GameReadResponse> {
+  const players = (await client.query<{ white: string | null; black: string | null }>(
+    `SELECT wa.username AS white, ba.username AS black FROM chess.guest_sessions w
+      JOIN chess.guest_sessions b ON b.id = $2
+      LEFT JOIN chess.accounts wa ON wa.id = w.account_id
+      LEFT JOIN chess.accounts ba ON ba.id = b.account_id WHERE w.id = $1`,
+    [row.creator_guest_id, row.acceptor_guest_id])).rows[0]!;
   const { rows } = await client.query<{ ply: number; remaining_ms_after_move: number | null }>(
     'SELECT ply, remaining_ms_after_move FROM chess.game_moves WHERE game_id = $1 ORDER BY ply',
     [row.id]);
@@ -247,6 +253,7 @@ async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
     throw new Error('Saved clock history does not match game history.');
   }
   return { ...gameState(row, game, yourSeat, atMs),
+    playerNames: { white: players.white, black: players.black },
     history: history.map((move, index) => savedMove(move, rows[index]!.remaining_ms_after_move)) };
 }
 

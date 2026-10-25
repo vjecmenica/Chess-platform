@@ -1195,6 +1195,7 @@ export function App() {
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide}
                   historicalMs={importedHistoricalMs(topSide)} />
                   : <ClockPanel clock={game.clocks} side={topSide}
+                  playerNames={game.playerNames}
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
@@ -1301,6 +1302,7 @@ export function App() {
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
                   historicalMs={importedHistoricalMs(bottomSide)} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
+                  playerNames={game.playerNames}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
                     game.timeControl !== null && 'initialMs' in game.timeControl
@@ -1494,7 +1496,8 @@ export function App() {
 
             </aside>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
-              side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision} />}
+              side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
+              playerNames={game.playerNames} />}
             {analysisOpen && <div className="analysis-lower-panels">
               {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
                 sessionOnly={imported !== null}

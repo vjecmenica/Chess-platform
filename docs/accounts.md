@@ -26,6 +26,14 @@ SSE, and private participant chat. Receipt IDs and game versions are unchanged.
 Knowing a link, logging in, or supplying another participant's identifiers grants
 no access. There are no public account/game/chat endpoints.
 
+Authorized game reads include each seat's explicitly linked username, or null for
+an unlinked seat. Player strips and private chat use this shared seat data rather
+than the viewer's current account. Unlinked players appear as Guest, with their
+side retained where needed. Linking sends a metadata refresh through the existing
+game stream without incrementing the move version. Names are not stored in move
+receipts or duplicated on chat messages. Imported PGN identities are unchanged.
+The account dialog closes with its Close button or Escape, never a backdrop click.
+
 Unlinked guest games remain available through the existing guest flow. Only link
 a guest session on a browser you control. Losing an unlinked guest cookie still
 loses access; an expired guest session cannot be claimed later merely from a URL.

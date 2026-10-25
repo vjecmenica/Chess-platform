@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { ClockState, GameSide, SavedMove } from '@chess/contracts';
-import { PlayerIdentity } from './PlayerIdentity';
+import type { ClockState, GamePlayerNames, GameSide, SavedMove } from '@chess/contracts';
+import { PlayerIdentity, sitePlayerName } from './PlayerIdentity';
 import { ClockValue, formatClock } from './ClockValue';
 export { formatClock } from './ClockValue';
 
@@ -25,10 +25,11 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
     : Math.max(0, deadlineMs - clock.serverNowMs - Math.max(0, elapsedMs));
 }
 
-export function ClockPanel({ clock, side, isYou, historicalMs, showStatus = true }: {
+export function ClockPanel({ clock, side, isYou, playerNames, historicalMs, showStatus = true }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
+  playerNames?: GamePlayerNames | undefined;
   historicalMs?: number | null | undefined;
   showStatus?: boolean;
 }) {
@@ -57,7 +58,7 @@ export function ClockPanel({ clock, side, isYou, historicalMs, showStatus = true
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   return <div className={`clock ${!showStatus ? 'clock-no-status' : ''} ${historicalMs === undefined && clock?.activeSide === side ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <PlayerIdentity side={side} name={isYou ? 'You' : 'Opponent'} />
+      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} />
       <strong aria-live="off">{valueMs === null
         ? historicalMs !== undefined ? '—' : 'Untimed' : <ClockValue milliseconds={valueMs} />}</strong>
       {showStatus && historicalMs === undefined && <small>{clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'

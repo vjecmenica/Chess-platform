@@ -197,4 +197,50 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect(new Set([...first.games, ...second.games].map((game: { id: string }) => game.id)).size).toBe(21);
     expect((await read(app, await browser(app), '/account/games')).statusCode).toBe(401);
   });
+
+  it('returns both explicit seat names to participants in live and finished reads and pushes a link refresh', async () => {
+    const { app, white, black, outsider, id } = await setup(); const whiteName = username(), blackName = username();
+    await auth(app, white, 'register', { username: whiteName, password });
+    await auth(app, black, 'register', { username: blackName, password });
+    expect((await read(app, white, `/games/${id}`)).json().playerNames).toEqual({ white: null, black: null });
+    await auth(app, white, 'link-guest');
+    expect((await read(app, black, `/games/${id}`)).json().playerNames).toEqual({ white: whiteName, black: null });
+    const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+    const abort = new AbortController(); const timeout = setTimeout(() => abort.abort(), 3000);
+    try {
+      const response = await fetch(`${origin}/games/${id}/events`, { headers: { cookie: white.cookie }, signal: abort.signal });
+      const stream = response.body!.getReader(); await stream.read();
+      expect((await auth(app, black, 'link-guest')).statusCode).toBe(200);
+      let event = '';
+      while (!event.includes('event: game')) event += new TextDecoder().decode((await stream.read()).value);
+      expect(event).toContain('"version":0');
+      await stream.cancel();
+    } finally { clearTimeout(timeout); abort.abort(); }
+    const playerNames = { white: whiteName, black: blackName };
+    for (const who of [white, black]) expect((await read(app, who, `/games/${id}`)).json()).toMatchObject({ version: 0, status: 'active', playerNames });
+    const denied = await read(app, outsider, `/games/${id}`);
+    expect(denied.statusCode).toBe(403); expect(denied.body).not.toContain(whiteName); expect(denied.body).not.toContain(blackName);
+    expect((await post(app, white, `/games/${id}/resign`, { expectedVersion: 0 })).statusCode).toBe(200);
+    const restarted = server();
+    for (const who of [white, black]) expect((await read(restarted, who, `/games/${id}`)).json()).toMatchObject({ status: 'finished', playerNames });
+    // Signing out and switching accounts changes access, never the account already linked to the seat.
+    await auth(app, black, 'logout');
+    await auth(app, black, 'register', { username: username(), password });
+    expect((await read(app, black, `/games/${id}`)).statusCode).toBe(403);
+    expect((await read(app, white, `/games/${id}`)).json().playerNames).toEqual(playerNames);
+  });
+
+  it('keeps an unlinked seat unnamed after account switching and logout', async () => {
+    const { app, white, black, id } = await setup(); const whiteName = username();
+    await auth(app, white, 'register', { username: whiteName, password }); await auth(app, white, 'link-guest');
+    const firstName = username(), secondName = username();
+    await auth(app, black, 'register', { username: firstName, password });
+    await auth(app, black, 'register', { username: secondName, password });
+    const expected = { white: whiteName, black: null };
+    const switched = await read(app, black, `/games/${id}`);
+    expect(switched.json().playerNames).toEqual(expected);
+    expect(switched.body).not.toContain(firstName); expect(switched.body).not.toContain(secondName);
+    await auth(app, black, 'logout');
+    expect((await read(app, black, `/games/${id}`)).json().playerNames).toEqual(expected);
+  });
 });

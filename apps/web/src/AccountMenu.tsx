@@ -99,8 +99,7 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
     <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
       dialog.current?.showModal(); void load();
     }}>{state?.account?.username ?? 'Account'}</button>
-    <dialog ref={dialog} className="account-dialog" aria-labelledby="account-heading"
-      onClick={event => { if (event.target === dialog.current) dialog.current.close(); }}>
+    <dialog ref={dialog} className="account-dialog" aria-labelledby="account-heading">
       <div className="account-dialog-body">
         <div className="account-title"><h2 id="account-heading">{state?.account ? 'Your account' : mode === 'register' ? 'Register' : 'Log in'}</h2>
           <button type="button" className="secondary" onClick={() => dialog.current?.close()}>Close</button></div>

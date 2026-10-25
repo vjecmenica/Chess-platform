@@ -68,12 +68,13 @@ export function applyAcceptedMove(current: GameReadResponse | null,
   if (current === null || response.game.version !== current.version + 1
     || response.move.ply !== current.history.length + 1) return current;
   const history: SavedMove[] = [...current.history, response.move];
-  return { ...response.game, history };
+  return { ...response.game, ...(current.playerNames === undefined ? {} : { playerNames: current.playerNames }), history };
 }
 
 export function applyAcceptedAction(current: GameReadResponse | null,
   response: GameActionAcceptedResponse): GameReadResponse | null {
   if (current === null || response.game.version !== current.version + 1
     || response.game.position.fen !== current.position.fen) return current;
-  return { ...response.game, history: current.history };
+  return { ...response.game, ...(current.playerNames === undefined ? {} : { playerNames: current.playerNames }),
+    history: current.history };
 }

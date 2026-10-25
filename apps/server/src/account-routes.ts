@@ -119,6 +119,11 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
           AND other.account_id = $2 LIMIT 1`, [guest.id, account.id]);
       if (conflict.rowCount) return reply.code(409).send({ error: 'opposite_seat_linked' });
       await client.query('UPDATE chess.guest_sessions SET account_id = $2 WHERE id = $1', [guest.id, account.id]);
+      // Seat display metadata changed; refresh connected participants without changing move versions.
+      if (owner.account_id === null) await client.query(`SELECT pg_notify('chess_game_updates',
+        json_build_object('id', g.id, 'version', g.version)::text)
+        FROM chess.games g JOIN chess.challenges c ON c.id = g.id
+        WHERE c.creator_guest_id = $1 OR c.acceptor_guest_id = $1`, [guest.id]);
       await client.query('COMMIT');
       return { account, guestLinked: true };
     } finally {

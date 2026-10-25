@@ -8,6 +8,18 @@ import { ChatComposer, ChatMessage, GameChat } from '../src/GameChat';
 function message(id: string): GameChatMessage {
   return { id, side: 'white', text: '<b>Plain text</b>', sentAt: '2026-10-24T10:00:00Z' };
 }
+it('labels existing chat messages from their linked seat rather than the viewer account', () => {
+  const playerNames = { white: 'walnut_white', black: 'cream_black' };
+  const render = (sender: 'white' | 'black', names = playerNames) => renderToStaticMarkup(
+    createElement(ChatMessage, { item: { ...message('1'), side: sender }, side: 'black', playerNames: names }));
+  expect(render('white')).toContain('<strong aria-label="walnut_white, opponent">walnut_white</strong>');
+  expect(render('black')).toContain('<strong aria-label="cream_black, you">cream_black</strong>');
+  const guest = renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'black',
+    playerNames: { white: null, black: 'cream_black' } }));
+  expect(guest).toContain('Guest (White)');
+  expect(guest).not.toContain('walnut_white');
+  expect(guest).not.toContain('cream_black');
+});
 it('merges reconnect history and send receipts without duplicates, preserves bigint order, and caps the list', () => {
   expect(mergeChatMessages([message('9007199254740993')], [message('9007199254740992'), message('9007199254740993')])
     .map(item => item.id)).toEqual(['9007199254740992', '9007199254740993']);
@@ -18,13 +30,11 @@ it('only follows new messages when the reader is near the bottom', () => {
   expect(nearChatBottom({ scrollHeight: 600, scrollTop: 100, clientHeight: 200 })).toBe(false);
   expect(nearChatBottom({ scrollHeight: 600, scrollTop: 370, clientHeight: 200 })).toBe(true);
 });
-it('escapes message markup, labels ownership without a side suffix, and includes a readable timestamp', () => {
+it('escapes message markup, disambiguates guest senders, and includes a readable timestamp', () => {
   const html = renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'black' }));
-  expect(html).toContain('Opponent');
-  expect(html).toContain('<p><strong>Opponent</strong>: <span>&lt;b&gt;Plain text&lt;/b&gt;</span></p>');
-  expect(html).not.toMatch(/White|Black/);
+  expect(html).toContain('<p><strong aria-label="Guest (White), opponent">Guest (White)</strong>: <span>&lt;b&gt;Plain text&lt;/b&gt;</span></p>');
   expect(renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'white' })))
-    .toContain('<strong>You</strong>');
+    .toContain('<strong aria-label="Guest (White), you">Guest (White)</strong>');
   expect(html).toContain('&lt;b&gt;Plain text&lt;/b&gt;');
   expect(html).not.toContain('<b>Plain text</b>');
   expect(html).toContain('dateTime="2026-10-24T10:00:00Z"');
@@ -33,7 +43,7 @@ it('escapes message markup, labels ownership without a side suffix, and includes
 it('keeps long message text together with its sender and the timestamp in a separate column', () => {
   const text = `A longer message\n${'UnbrokenText'.repeat(25)}`;
   const html = renderToStaticMarkup(createElement(ChatMessage, { item: { ...message('2'), text }, side: 'white' }));
-  expect(html).toContain(`<p><strong>You</strong>: <span>${text}</span></p><time`);
+  expect(html).toContain(`<p><strong aria-label="Guest (White), you">Guest (White)</strong>: <span>${text}</span></p><time`);
   expect(html).toContain('class="game-chat-message"');
 });
 it('waits for server permission without flashing a read-only notice, including finished games', () => {
