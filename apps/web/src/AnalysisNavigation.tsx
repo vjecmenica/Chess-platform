@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
+
 /** Future sections are explicitly unavailable, never links to invented destinations. */
-export function AnalysisNavigation({ imported }: { imported: boolean }) {
+export function AnalysisNavigation({ imported, accountControl }: { imported: boolean; accountControl?: ReactNode }) {
   return <header className="analysis-navigation">
     <div className="analysis-navigation-inner">
       <a className="analysis-brand" href="/" aria-label="Chess Platform home">♞</a>
@@ -13,6 +15,7 @@ export function AnalysisNavigation({ imported }: { imported: boolean }) {
       <input className="navigation-search" disabled aria-label="Search (not available yet)"
         placeholder="Search games, players, openings…" title="Search is not available yet" />
       <a className="open-game" href="/">{imported ? 'Open another game' : 'Create another challenge'}</a>
+      {accountControl}
     </div>
   </header>;
 }

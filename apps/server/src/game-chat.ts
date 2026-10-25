@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { GameChatMessage, GameSide } from '@chess/contracts';
 import { requireGuest } from './guest-session.js';
+import { participantGuestId } from './account-session.js';
 
 const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const params = { type: 'object', required: ['id'], additionalProperties: false,
@@ -22,12 +23,13 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
       reply.header('Cache-Control', 'no-store');
       const guest = await requireGuest(pool, request, reply);
       if (!guest) return;
+      const seatId = await participantGuestId(pool, request, guest, request.params.id);
       const after = request.query.after ?? '0';
       if (BigInt(after) > 9223372036854775807n) return reply.code(400).send({ error: 'invalid_cursor' });
       const access = (await pool.query<Access>(`SELECT g.status, c.creator_guest_id, c.acceptor_guest_id
         FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1`, [request.params.id])).rows[0];
       if (!access) return reply.code(404).send({ error: 'game_not_found' });
-      if (guest.id !== access.creator_guest_id && guest.id !== access.acceptor_guest_id) {
+      if (seatId !== access.creator_guest_id && seatId !== access.acceptor_guest_id) {
         return reply.code(403).send({ error: 'not_a_participant' });
       }
       // A bounded latest window also catches up after a long disconnection without replaying a backlog.
@@ -45,6 +47,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
       reply.header('Cache-Control', 'no-store');
       const guest = await requireGuest(pool, request, reply, true);
       if (!guest) return;
+      const seatId = await participantGuestId(pool, request, guest, request.params.id);
       const text = request.body.text.trim();
       if (!text) return reply.code(400).send({ error: 'empty_message' });
       const requestId = request.headers['idempotency-key'] as string;
@@ -58,8 +61,8 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
           FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1 FOR UPDATE OF g`,
         [request.params.id])).rows[0];
         if (!access) return reply.code(404).send({ error: 'game_not_found' });
-        const side = guest.id === access.creator_guest_id ? 'white'
-          : guest.id === access.acceptor_guest_id ? 'black' : null;
+        const side = seatId === access.creator_guest_id ? 'white'
+          : seatId === access.acceptor_guest_id ? 'black' : null;
         if (!side) return reply.code(403).send({ error: 'not_a_participant' });
         const previous = (await client.query<MessageRow>(`SELECT id, sender_side, body, created_at
           FROM chess.game_chat_messages WHERE game_id = $1 AND sender_side = $2 AND request_id = $3`,

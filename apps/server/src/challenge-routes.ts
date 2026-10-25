@@ -5,6 +5,7 @@ import type { ChallengeSummary, GuestSessionResponse } from '@chess/contracts';
 import { defaultTimeControl, isTimeControlId, timeControlPresets, type TimeControlId } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { createGuest, currentGuest, requireGuest } from './guest-session.js';
+import { currentAccount, participantGuestId } from './account-session.js';
 
 const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const idParams = { type: 'object', required: ['id'], additionalProperties: false,
@@ -92,11 +93,12 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
       if (guest === null) return;
       const row = await findChallenge(pool, request.params.id);
       if (row === null) return reply.code(404).send({ error: 'challenge_not_found' });
-      if (row.acceptor_guest_id !== null && row.creator_guest_id !== guest.id
-        && row.acceptor_guest_id !== guest.id) {
+      const seatId = await participantGuestId(pool, request, guest, row.id);
+      if (row.acceptor_guest_id !== null && row.creator_guest_id !== seatId
+        && row.acceptor_guest_id !== seatId) {
         return reply.code(403).send({ error: 'not_a_participant' });
       }
-      return summary(row, guest.id);
+      return summary(row, seatId);
     });
 
   app.post<{ Params: { id: string } }>('/challenges/:id/accept',
@@ -109,6 +111,14 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
       let row: ChallengeRow | null;
       try {
         await client.query('BEGIN');
+        const account = await currentAccount(client, request, guest);
+        if (account) await client.query('SELECT id FROM chess.accounts WHERE id = $1 FOR UPDATE', [account.id]);
+        const seatId = await participantGuestId(client, request, guest, request.params.id);
+        const existing = await findChallenge(client, request.params.id);
+        if (existing?.creator_guest_id === seatId) {
+          await client.query('ROLLBACK');
+          return reply.code(403).send({ error: 'cannot_accept_own_challenge' });
+        }
         const changed = await client.query<{ id: string; time_control: TimeControlId }>(
           `UPDATE chess.challenges SET acceptor_guest_id = $2, accepted_at = now()
             WHERE id = $1 AND acceptor_guest_id IS NULL AND creator_guest_id <> $2
@@ -135,15 +145,17 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
         client.release();
       }
       if (row === null) return reply.code(404).send({ error: 'challenge_not_found' });
-      if (row.creator_guest_id === guest.id) return reply.code(403).send({ error: 'cannot_accept_own_challenge' });
-      if (row.acceptor_guest_id !== guest.id) return reply.code(409).send({ error: 'seat_taken' });
-      return summary(row, guest.id);
+      const seatId = await participantGuestId(pool, request, guest, row.id);
+      if (row.creator_guest_id === seatId) return reply.code(403).send({ error: 'cannot_accept_own_challenge' });
+      if (row.acceptor_guest_id !== seatId) return reply.code(409).send({ error: 'seat_taken' });
+      return summary(row, seatId);
     });
 }
 
 export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
+    await pool.query('SELECT token_hash FROM chess.account_sessions LIMIT 0');
     await pool.query('SELECT id, time_control FROM chess.challenges LIMIT 0');
     await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,
       white_first_move_deadline_at, black_first_move_deadline_at FROM chess.games LIMIT 0`);

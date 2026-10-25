@@ -10,15 +10,15 @@ export interface GuestSession {
   readonly csrfToken: string;
 }
 
-function cookieToken(header: string | undefined): string | null {
+export function cookieToken(header: string | undefined, name = cookieName): string | null {
   const matches = header?.split(';').map(part => part.trim())
-    .filter(part => part.startsWith(`${cookieName}=`)) ?? [];
+    .filter(part => part.startsWith(`${name}=`)) ?? [];
   if (matches.length !== 1) return null;
-  const token = matches[0]!.slice(cookieName.length + 1);
+  const token = matches[0]!.slice(name.length + 1);
   return /^[a-f0-9]{64}$/.test(token) ? token : null;
 }
 
-function tokenHash(token: string): Buffer {
+export function tokenHash(token: string): Buffer {
   return createHash('sha256').update(token).digest();
 }
 
@@ -33,14 +33,28 @@ export async function currentGuest(pool: pg.Pool, request: FastifyRequest): Prom
   return guest ? { id: guest.id, csrfToken: guest.csrf_token } : null;
 }
 
-export async function createGuest(pool: pg.Pool, reply: FastifyReply, secureCookies: boolean): Promise<GuestSession> {
+export async function createGuest(pool: Pick<pg.Pool, 'query'>, reply: FastifyReply, secureCookies: boolean): Promise<GuestSession> {
   const token = randomBytes(32).toString('hex');
   const guest = { id: randomUUID(), csrfToken: randomBytes(32).toString('hex') };
   await pool.query(`INSERT INTO chess.guest_sessions (id, token_hash, csrf_token, expires_at)
     VALUES ($1, $2, $3, now() + interval '30 days')`, [guest.id, tokenHash(token), guest.csrfToken]);
-  reply.header('Set-Cookie', `${cookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionSeconds}${
-    secureCookies ? '; Secure' : ''}`);
+  setSessionCookie(reply, cookieName, token, secureCookies);
   return guest;
+}
+
+export function setSessionCookie(reply: FastifyReply, name: string, token: string,
+  secure: boolean, maxAge = sessionSeconds): void {
+  reply.setCookie(name, token, { httpOnly: true, sameSite: 'lax', path: '/', secure, maxAge });
+}
+
+export async function rotateGuest(pool: Pick<pg.Pool, 'query'>, reply: FastifyReply,
+  secure: boolean, guest: GuestSession): Promise<GuestSession> {
+  const token = randomBytes(32).toString('hex');
+  const csrfToken = randomBytes(32).toString('hex');
+  await pool.query(`UPDATE chess.guest_sessions SET token_hash = $2, csrf_token = $3,
+    expires_at = now() + interval '30 days' WHERE id = $1`, [guest.id, tokenHash(token), csrfToken]);
+  setSessionCookie(reply, cookieName, token, secure);
+  return { id: guest.id, csrfToken };
 }
 
 export function validCsrf(request: FastifyRequest, guest: GuestSession): boolean {

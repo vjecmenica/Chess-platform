@@ -3,6 +3,7 @@ import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
+import { AccountMenu } from './AccountMenu';
 import { GameChat } from './GameChat';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { MastersPanel } from './MastersPanel';
@@ -55,8 +56,8 @@ const errors: Record<string, string> = {
   invalid_csrf_token: 'Your guest session changed. Refresh the page and try again.',
   challenge_not_found: 'This challenge link does not exist.',
   game_not_found: 'The saved game could not be found.',
-  not_a_participant: 'This challenge belongs to two other guests.',
-  cannot_accept_own_challenge: 'Open this link in another browser or private window to join as a second guest.',
+  not_a_participant: 'This game is private to its participants.',
+  cannot_accept_own_challenge: 'You cannot accept your own challenge.',
   seat_taken: 'Another guest has already accepted this challenge.',
   wrong_turn: 'It is not your turn. The position will be refreshed.',
   illegal_move: 'That move is not legal in the confirmed position.',
@@ -1094,12 +1095,13 @@ export function App() {
 
   return (
     <>
-    {analysisOpen && <AnalysisNavigation imported={imported !== null} />}
+    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       {!analysisOpen && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
+        <AccountMenu csrfToken={session?.csrfToken} />
       </header>}
       {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>

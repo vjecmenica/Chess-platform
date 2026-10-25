@@ -8,6 +8,11 @@ post-game Analysis. Checkmate, resignation, draws, and timeouts use the same rul
 exception is introduced. Guest-session expiry still applies; knowing a challenge
 URL does not grant access to its chat.
 
+With migration `018_accounts.sql`, a signed-in account can also use an explicitly
+linked original guest seat. [Account linking](accounts.md) preserves the same
+participant-only history, sender side, retries, and rate limits across browsers;
+it does not introduce viewer access or a public discussion thread.
+
 Apply `017_game_chat.sql` with `npm run db:migrate` before deploying the server.
 This forward migration adds only `chess.game_chat_messages` and its indexes.
 Messages contain a game reference, server-derived side, UUID retry key, plain text,

@@ -118,3 +118,8 @@ export interface ExplorerGamePage {
   readonly games: readonly ExplorerListedGame[];
   readonly page: number; readonly hasMore: boolean;
 }
+export interface AccountIdentity { readonly id: string; readonly username: string }
+export interface AccountState { readonly account: AccountIdentity | null; readonly guestLinked: boolean }
+export interface AccountGame { readonly id: string; readonly side: 'white' | 'black';
+  readonly status: string; readonly createdAt: string }
+export interface AccountGames { readonly games: readonly AccountGame[]; readonly next: string | null }

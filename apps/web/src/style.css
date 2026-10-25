@@ -59,6 +59,28 @@ button:focus-visible { outline: 3px solid #a47a37; outline-offset: 3px; }
 .secondary { background: transparent; color: #143d30; }
 footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta); }
 
+.account-trigger { flex: 0 0 auto; max-width: min(12rem, 35vw); margin-left: auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: normal; }
+.analysis-navigation .account-trigger { margin-left: 0; color: #fbf8f1; border-color: #99836a; }
+.account-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 32px);
+  overflow: auto; padding: 0; border: 1px solid #9a856b; border-radius: 8px;
+  background: #fffdf8; color: #1d352c; font: inherit; font-size: var(--text-body);
+  line-height: 1.5; font-weight: 400; letter-spacing: normal; }
+.account-dialog::backdrop { background: #241c1466; }
+.account-dialog-body { padding: 20px; }
+.account-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.account-title h2 { margin: 0; }
+.account-dialog small { font-size: var(--text-meta); color: var(--text-muted); }
+.account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.account-dialog h3 { font-size: var(--text-body); margin: 20px 0 8px; }
+.account-games { max-height: 220px; overflow-y: auto; padding-left: 20px; }
+.account-games li { margin: 6px 0; }
+.account-dialog .account-games a { color: #604326; overflow-wrap: anywhere; }
+@media (max-width: 540px) {
+  header:not(.analysis-navigation) { flex-wrap: wrap; }
+  .analysis-navigation .open-game { display: none; }
+}
+
 /* The board and the side panel share one viewport-height workspace. */
 .challenge-page { max-width: 1660px; padding: 10px 18px 18px; }
 .game-area { margin-top: 10px; }

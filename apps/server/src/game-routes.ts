@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type pg from 'pg';
-import { requireGuest } from './guest-session.js';
+import { currentGuest, requireGuest } from './guest-session.js';
+import { participantGuestId } from './account-session.js';
 import { createGameService, type ActionBody, type Arrival, type ClaimBody, type GameAction,
   type GameService, type MoveBody, type WallClock } from './game-service.js';
 import { createGameUpdateHub } from './game-updates.js';
@@ -39,7 +40,7 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       reply.header('Cache-Control', 'no-store');
       const guest = await requireGuest(pool, request, reply);
       if (guest === null) return;
-      const result = await service.read(request.params.id, guest.id);
+      const result = await service.read(request.params.id, await participantGuestId(pool, request, guest, request.params.id));
       return reply.code(result.status).send(result.body);
     });
 
@@ -47,7 +48,8 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
     async (request, reply) => {
       const guest = await requireGuest(pool, request, reply);
       if (guest === null) return;
-      const access = await service.read(request.params.id, guest.id);
+      const seatId = await participantGuestId(pool, request, guest, request.params.id);
+      const access = await service.read(request.params.id, seatId);
       if (access.status !== 200) return reply.code(access.status).send(access.body);
       await updates.start();
       reply.hijack();
@@ -72,7 +74,13 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       reply.raw.on('close', close);
       reply.raw.write(': connected\n\n');
       heartbeat = setInterval(() => {
-        if (!closed) reply.raw.write('event: ping\ndata: {}\n\n');
+        void (async () => {
+          const refreshed = await currentGuest(pool, request);
+          if (!refreshed || await participantGuestId(pool, request, refreshed, request.params.id) !== seatId) {
+            close(); return;
+          }
+          if (!closed) reply.raw.write('event: ping\ndata: {}\n\n');
+        })().catch(close);
       }, 15_000);
     });
 
@@ -91,7 +99,7 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       const guest = await requireGuest(pool, request, reply, true);
       if (guest === null) return;
       if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
-      const result = await service.ready(request.params.id, guest.id);
+      const result = await service.ready(request.params.id, await participantGuestId(pool, request, guest, request.params.id));
       return reply.code(result.status).send(result.body);
     });
 
@@ -115,7 +123,7 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
       const arrival = arrivals.get(request);
       if (!arrival) throw new Error('Move arrival was not recorded.');
-      const result = await service.move(request.params.id, guest.id, requestId, request.body, arrival);
+      const result = await service.move(request.params.id, await participantGuestId(pool, request, guest, request.params.id), requestId, request.body, arrival);
       return reply.code(result.status).send(result.body);
     });
 
@@ -142,7 +150,7 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
         if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
         const arrival = arrivals.get(request);
         if (!arrival) throw new Error('Game action arrival was not recorded.');
-        const result = await service.action(request.params.id, guest.id, requestId, kind, request.body, arrival);
+        const result = await service.action(request.params.id, await participantGuestId(pool, request, guest, request.params.id), requestId, kind, request.body, arrival);
         return reply.code(result.status).send(result.body);
       });
   }
@@ -166,7 +174,7 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
       const arrival = arrivals.get(request);
       if (!arrival) throw new Error('Draw claim arrival was not recorded.');
-      const result = await service.claim(request.params.id, guest.id, requestId, request.body, arrival);
+      const result = await service.claim(request.params.id, await participantGuestId(pool, request, guest, request.params.id), requestId, request.body, arrival);
       return reply.code(result.status).send(result.body);
     });
 }
