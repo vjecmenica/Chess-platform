@@ -70,9 +70,8 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 33px/);
     expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
     expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
-    expect(css).toMatch(/\.player-rating \{[^}]*font-size: 14px; font-weight: 700/);
-    expect(css).toMatch(/\.clock-no-status \.player-label \{ font-size: 16px/);
-    expect(css).toMatch(/\.clock-no-status \.player-rating \{ font-size: 15px/);
+    expect(css).toMatch(/\.player-rating \{[^}]*font-size: var\(--text-body\); font-weight: 700/);
+    expect(css).toMatch(/\.player-label \{[^}]*font-size: var\(--text-body\)/);
   });
 
   it('attaches material to each player in orientation order without duplicating it below the board', () => {

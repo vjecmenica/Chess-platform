@@ -26,12 +26,16 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
           <span aria-label={`${move.games.toLocaleString()} games`}>{move.games.toLocaleString()}</span>
           <span className="book-outcomes" role="img"
             aria-label={`White ${(move.white * 100 / move.games).toFixed(1)}%, Draw ${(move.draws * 100 / move.games).toFixed(1)}%, Black ${(move.black * 100 / move.games).toFixed(1)}%`}>
-            {([['white', move.white], ['draw', move.draws], ['black', move.black]] as const).map(([side, count]) => {
+            <span className="book-outcome-bar" aria-hidden="true">{([['white', move.white], ['draw', move.draws], ['black', move.black]] as const).map(([side, count]) => {
               const percent = count * 100 / move.games;
               return <span key={side} className={`book-${side}`} style={{ width: `${percent}%` }}
                 title={`${side === 'draw' ? 'Draw' : side === 'white' ? 'White wins' : 'Black wins'}: ${percent.toFixed(1)}%`}
-                aria-hidden="true">{percent >= 15 ? `${Math.round(percent)}%` : ''}</span>;
+                aria-hidden="true" />;
             })}</span>
+            <span className="book-outcome-values" aria-hidden="true">
+              {[move.white, move.draws, move.black].map((count, index) => <span key={index}>
+                {Math.round(count * 100 / move.games)}%</span>)}
+            </span></span>
         </div>)}</div>)}
     <small>Source: licensed TWIC games · statistics and limited game replay.</small>
   </section>;

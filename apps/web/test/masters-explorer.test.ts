@@ -37,11 +37,21 @@ describe('Masters opening explorer', () => {
     expect(html).toContain('class="book-draw" style="width:25%"');
     expect(html).toContain('class="book-black" style="width:10%"');
     expect(html).toContain('Black wins: 10.0%');
+    expect(html).toContain('class="book-outcome-values" aria-hidden="true"><span>65%</span><span>25%</span><span>10%</span>');
     expect(html).toContain('Played %');
     expect(html).toContain('White 65.0%'); expect(html).toContain('Draw 25.0%'); expect(html).toContain('Black 10.0%');
     expect(html).toContain('Explore Nf3 as a local analysis variation');
     expect(html).toContain('licensed TWIC');
     expect(html).not.toMatch(/Lichess|OAuth|download/i);
+  });
+  it('keeps minority and zero outcomes readable outside the proportional result bar', () => {
+    const result = { kind: 'ok' as const, data: { opening: null, moves: [
+      { uci: 'e2e4', san: 'e4', games: 100, white: 99, draws: 1, black: 0 },
+    ] } };
+    const html = renderToStaticMarkup(createElement(ExplorerContent, { result, onExplore: () => {}, onRetry: () => {} }));
+    expect(html).toContain('White 99.0%, Draw 1.0%, Black 0.0%');
+    expect(html).toContain('class="book-outcome-values" aria-hidden="true"><span>99%</span><span>1%</span><span>0%</span>');
+    expect(html).toContain('class="book-draw" style="width:1%"');
   });
   it('builds the saved and local variation paths from the initial FEN', () => {
     const saved = game();

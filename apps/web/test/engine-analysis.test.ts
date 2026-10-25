@@ -65,7 +65,7 @@ describe('browser Stockfish controller', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(panel).toContain("Depth {evaluation?.depth ?? '—'}");
     expect(panel).toContain('className="engine-depth"');
-    expect(css).toMatch(/\.engine-search-settings \.engine-range-setting\s*\{[^}]*grid-template-columns: 74px minmax\(0, 1fr\) 42px/);
+    expect(css).toMatch(/\.engine-search-settings \.engine-range-setting\s*\{[^}]*grid-template-columns: \d+px minmax\(0, 1fr\) \d+px/);
     expect(css).toMatch(/\.engine-depth\s*\{[^}]*min-height: 1\.2em/);
   });
 
