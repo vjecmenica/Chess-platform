@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { AccountGames, AccountState } from '@chess/contracts';
+import type { AccountState } from '@chess/contracts';
 
 const messages: Record<string, string> = {
   invalid_credentials: 'The username or password is incorrect.',
@@ -36,10 +36,9 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
+export function AccountMenu({ csrfToken, showGamesLink = true }: { csrfToken: string | undefined; showGamesLink?: boolean }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
-  const [games, setGames] = useState<AccountGames | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,7 +67,6 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
     try {
       const value = await request<AccountState>('');
       setState(value);
-      setGames(value.account ? await request<AccountGames>('/games') : null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load your account.'); }
   }
   useEffect(() => {
@@ -96,6 +94,7 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   }
 
   return <>
+    {state?.account && showGamesLink && <a className="my-games-link" href="/my-games">My Games</a>}
     <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
       dialog.current?.showModal(); void load();
     }}>{state?.account?.username ?? 'Account'}</button>
@@ -110,14 +109,6 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
             <p>Link this browser’s guest games to keep their seats and private chat when you sign in elsewhere.</p>
             <button disabled={busy} onClick={() => void act('/link-guest')}>Link this browser’s guest games</button>
           </>}
-          <h3>Linked games</h3>
-          {games?.games.length ? <ul className="account-games">{games.games.map(game => <li key={game.id}>
-            <a href={`/challenge/${game.id}`}>{game.side === 'white' ? 'White' : 'Black'} · {game.status} · {new Date(game.createdAt).toLocaleDateString()}</a>
-          </li>)}</ul> : <p>No linked games yet.</p>}
-          {games?.next && <button className="secondary" disabled={busy} onClick={() => {
-            setBusy(true); void request<AccountGames>(`/games?before=${games.next}`).then(setGames)
-              .catch(() => setError('Could not load more games.')).finally(() => setBusy(false));
-          }}>More games</button>}
           <p><button className="secondary" disabled={busy} onClick={() => void act('/logout')}>Log out</button></p>
           <small>No verified email or password recovery is available in this milestone. Keep your password safe.</small>
         </> : <AccountForm mode={mode} busy={busy} onMode={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}

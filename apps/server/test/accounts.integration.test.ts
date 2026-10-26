@@ -47,6 +47,79 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   const post = (app: FastifyInstance, who: Browser, path: string, payload?: object, id?: string) => app.inject({ method: 'POST', url: path,
     headers: headers(who, id), ...(payload ? { payload } : {}) });
 
+  it('keeps the archive private and maps saved results, opponents, and totals for both original seats', async () => {
+    const { app, white, black, outsider, id } = await setup();
+    expect((await read(app, outsider, '/account/games')).statusCode).toBe(401);
+    const whiteName = username(), blackName = username();
+    await auth(app, white, 'register', { username: whiteName, password });
+    expect((await read(app, white, '/account/games')).json()).toMatchObject({ games: [], summary: { wins: 0, draws: 0, losses: 0 } });
+    await auth(app, white, 'link-guest');
+    expect((await read(app, white, '/account/games')).json().games[0]).toMatchObject({ id, opponent: null, side: 'white', timeControl: '5+3' });
+    await auth(app, black, 'register', { username: blackName, password });
+    await auth(app, black, 'link-guest');
+    const outcomes = [
+      { outcome: 'win', winner: 'white', reason: 'checkmate' },
+      { outcome: 'win', winner: 'black', reason: 'resignation' },
+      { outcome: 'draw', reason: 'agreement' },
+      { outcome: 'aborted', reason: 'first_move_deadline' },
+      null,
+    ];
+    for (const result of outcomes) {
+      const status = result?.outcome === 'aborted' ? 'aborted' : result ? 'finished' : 'pending_adjudication';
+      await pool.query('UPDATE chess.games SET status = $2, result = $3 WHERE id = $1', [id, status, result]);
+      for (const [who, side, opponent] of [[white, 'white', blackName], [black, 'black', whiteName]] as const) {
+        const response = await read(app, who, '/account/games'); expect(response.statusCode).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.json().games).toEqual([expect.objectContaining({ id, side, opponent, status, result })]);
+        expect(response.json().summary).toEqual({
+          wins: Number(result?.outcome === 'win' && result.winner === side),
+          losses: Number(result?.outcome === 'win' && result.winner !== side),
+          draws: Number(result?.outcome === 'draw'),
+        });
+      }
+    }
+    await auth(app, outsider, 'register', { username: username(), password });
+    expect((await read(app, outsider, '/account/games')).json().games).toEqual([]);
+    await auth(app, white, 'logout');
+    expect((await read(app, white, '/account/games')).statusCode).toBe(401);
+  });
+
+  it('paginates by timestamp and ID without losing equal-time or microsecond-boundary games', async () => {
+    const { app, white, id } = await setup();
+    await auth(app, white, 'register', { username: username(), password });
+    await auth(app, white, 'link-guest');
+    await pool.query("UPDATE chess.challenges SET created_at = '2020-01-01' WHERE id = $1", [id]);
+    const expected: { id: string; createdAt: string }[] = [];
+    for (let i = 0; i < 24; i++) {
+      const nextId = randomUUID();
+      const createdAt = `2026-01-01T00:00:00.${i < 22 ? '000999' : '000998'}Z`;
+      expected.push({ id: nextId, createdAt });
+      await pool.query(`INSERT INTO chess.challenges (id, creator_guest_id, acceptor_guest_id, create_request_id, created_at, accepted_at, time_control)
+        SELECT $2, creator_guest_id, acceptor_guest_id, $3, $4, $4, '3+2' FROM chess.challenges WHERE id = $1`,
+      [id, nextId, randomUUID(), createdAt]);
+      await pool.query(`INSERT INTO chess.games (id, starting_fen, fen, side_to_move, status, result)
+        SELECT $2, starting_fen, starting_fen, 'white', 'finished', '{"outcome":"draw","reason":"agreement"}'
+        FROM chess.games WHERE id = $1`, [id, nextId]);
+    }
+    expected.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    expected.push({ id, createdAt: '2020-01-01T00:00:00.000000Z' });
+    const first = (await read(app, white, '/account/games')).json();
+    expect(first.games.map((g: { id: string }) => g.id)).toEqual(expected.slice(0, 20).map(g => g.id));
+    expect(first.summary).toEqual({ wins: 0, draws: 24, losses: 0 });
+    expect(first.games[0].timeControl).toBeNull(); // Legacy untimed rows must not invent a clock.
+    // A newly created challenge without a game must not appear, even on a fresh page.
+    await post(app, white, '/challenges');
+    const restarted = server();
+    const second = (await read(restarted, white, `/account/games?before=${first.next}`)).json();
+    expect(second.games.map((g: { id: string }) => g.id)).toEqual(expected.slice(20).map(g => g.id));
+    expect(second.next).toBeNull();
+    expect(second.summary).toEqual(first.summary);
+    expect(new Set([...first.games, ...second.games].map(g => g.id)).size).toBe(25);
+    expect((await read(app, white, `/account/games?before=${first.next}`)).json()).toEqual(second);
+    expect((await read(app, white, '/account/games?before=not-a-cursor')).statusCode).toBe(400);
+    expect((await read(app, white, '/account/games?accountId=someone-else')).statusCode).toBe(400);
+  });
+
   it('validates credentials and CSRF, hashes passwords, and rotates HttpOnly/SameSite/Secure sessions', async () => {
     const app = server(true), who = await browser(app), name = username(); const old = { ...who };
     expect((await app.inject({ method: 'POST', url: '/account/register', headers: { cookie: who.cookie }, payload: { username: name, password } })).statusCode).toBe(403);
@@ -183,7 +256,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect(limited.statusCode).toBe(429); expect(limited.headers['retry-after']).toBe('900');
   });
 
-  it('pages only the account-owned challenges within the fixed limit', async () => {
+  it('omits unaccepted challenges from the game archive', async () => {
     const app = server(), who = await browser(app), name = username();
     const registered = await auth(app, who, 'register', { username: name, password });
     await auth(app, who, 'link-guest');
@@ -191,10 +264,8 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     await pool.query(`INSERT INTO chess.challenges (id, creator_guest_id, create_request_id)
       SELECT gen_random_uuid(), $1, gen_random_uuid() FROM generate_series(1, 21)`, [owner]);
     const first = (await read(app, who, '/account/games')).json();
-    expect(first.games).toHaveLength(20); expect(first.next).toBe(first.games[19].id);
-    const second = (await read(app, who, `/account/games?before=${first.next}`)).json();
-    expect(second.games).toHaveLength(1); expect(second.next).toBeNull();
-    expect(new Set([...first.games, ...second.games].map((game: { id: string }) => game.id)).size).toBe(21);
+    expect(first.games).toEqual([]); expect(first.next).toBeNull();
+    expect(first.summary).toEqual({ wins: 0, draws: 0, losses: 0 });
     expect((await read(app, await browser(app), '/account/games')).statusCode).toBe(401);
   });
 

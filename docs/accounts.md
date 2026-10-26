@@ -20,7 +20,7 @@ another account. An account cannot link opposing seats in the same challenge;
 account locks serialize links and acceptance across browsers and server processes.
 
 A fresh browser first receives its own guest session, then logs in normally.
-Account navigation lists at most 20 linked challenges per page. The server resolves
+The signed-in navigation opens the private **My Games** page at `/my-games`. The server resolves
 linked access back to the original guest seat for challenge reads, game commands,
 SSE, and private participant chat. Receipt IDs and game versions are unchanged.
 Knowing a link, logging in, or supplying another participant's identifiers grants
@@ -97,3 +97,28 @@ the configured disposable `TEST_DATABASE_URL` and tests registration, password
 hashing, cookie rotation, CSRF, explicit linking, another browser/server, receipt
 retries, private chat, logout, expiration, throttling, and concurrent seat-link
 conflicts. Tests use synthetic accounts and games, never real credentials.
+
+## Private game archive
+
+My Games lists accepted site games owned through explicitly linked guest seats,
+not unaccepted challenges, imported PGNs, or someone else's unlinked games. Rows
+show challenge creation time in the browser's local timezone, the opposing seat's
+linked username (otherwise Guest), your color, saved result/status, and the site
+time control. Legacy untimed games display Unavailable rather than a default.
+
+`GET /account/games` requires a current bound account session. It returns at most
+20 games and an opaque `before` cursor. Ordering is descending creation timestamp
+then UUID; the UUID only breaks equal-time ties. Cursors retain PostgreSQL's six
+fractional digits. Load more appends older rows; newly created games appear on
+refresh rather than shifting page boundaries. The response is not cached. Returning
+to the browser tab revalidates the account and reloads the first page.
+
+Wins, draws, and losses cover all completed linked games, independently of the
+current page. They come from saved result JSON relative to the original seat;
+aborts and unfinished/pending games are excluded. These are private result counts,
+not a rating or performance estimate. Page and summary share a database snapshot.
+
+Apply forward migration `019_account_game_order.sql` with `npm run db:migrate`.
+It adds chronological indexes for each original guest seat without changing
+ownership or existing data. Totals still scan the account's linked games; there is
+no global leaderboard, public archive, or new per-message identity lookup.

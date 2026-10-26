@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
+import { accountGames, parseGameCursor } from './account-games.js';
 import { accountCookie, currentAccount, type Account } from './account-session.js';
 import { cookieToken, createGuest, requireGuest, rotateGuest, setSessionCookie, tokenHash } from './guest-session.js';
 
@@ -159,22 +160,16 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
   });
 
   app.get<{ Querystring: { before?: string } }>('/account/games', { schema: { querystring: {
-    type: 'object', additionalProperties: false, properties: { before: { type: 'string', format: 'uuid' } },
+    type: 'object', additionalProperties: false, properties: { before: { type: 'string', minLength: 1, maxLength: 256 } },
   } } }, async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const guest = await requireGuest(pool, request, reply);
     if (!guest) return;
     const account = await currentAccount(pool, request, guest);
     if (!account) return reply.code(401).send({ error: 'account_required' });
-    const { rows } = await pool.query<{ id: string; side: string; created_at: Date; status: string }>(`SELECT c.id,
-      CASE WHEN w.account_id = $1 THEN 'white' ELSE 'black' END AS side, c.created_at,
-      COALESCE(g.status, 'open') AS status FROM chess.challenges c
-      JOIN chess.guest_sessions w ON w.id = c.creator_guest_id
-      LEFT JOIN chess.guest_sessions b ON b.id = c.acceptor_guest_id
-      LEFT JOIN chess.games g ON g.id = c.id
-      WHERE (w.account_id = $1 OR b.account_id = $1) AND ($2::uuid IS NULL OR c.id < $2)
-      ORDER BY c.id DESC LIMIT 21`, [account.id, request.query.before ?? null]);
-    return { games: rows.slice(0, 20).map(row => ({ id: row.id, side: row.side, status: row.status,
-      createdAt: row.created_at.toISOString() })), next: rows.length > 20 ? rows[19]!.id : null };
+    let cursor;
+    try { cursor = parseGameCursor(request.query.before); }
+    catch { return reply.code(400).send({ error: 'invalid_game_cursor' }); }
+    return accountGames(pool, account, cursor);
   });
 }

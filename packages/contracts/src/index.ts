@@ -124,5 +124,7 @@ export interface ExplorerGamePage {
 export interface AccountIdentity { readonly id: string; readonly username: string }
 export interface AccountState { readonly account: AccountIdentity | null; readonly guestLinked: boolean }
 export interface AccountGame { readonly id: string; readonly side: 'white' | 'black';
-  readonly status: string; readonly createdAt: string }
-export interface AccountGames { readonly games: readonly AccountGame[]; readonly next: string | null }
+  readonly status: GameState['status']; readonly createdAt: string;
+  readonly opponent: string | null; readonly result: GameState['result']; readonly timeControl: string | null }
+export interface AccountGames { readonly account: AccountIdentity; readonly games: readonly AccountGame[];
+  readonly next: string | null; readonly summary: { readonly wins: number; readonly draws: number; readonly losses: number } }
