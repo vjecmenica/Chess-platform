@@ -243,8 +243,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-panel { display: grid; gap: 7px; width: min(100%, calc(100dvh - 96px), 720px);
   position: relative; min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid #d2d9cb;
   border-radius: 8px; background: #fbfaf5; font-size: var(--text-body); color: #33473b; }
-.analysis-workspace .game-sidebar { grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  height: max(var(--board-row-height, 600px), 440px); overflow: visible; }
 .analysis-workspace .engine-panel { width: 100%; margin: 0; padding: 8px; }
 .analysis-workspace .engine-result { max-height: min(150px, calc(var(--board-row-height, 600px) * .24));
   overflow-y: auto; }
@@ -566,12 +564,12 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .play-column .player-name-line { display: inline-flex; }
 .game-layout .game-sidebar { margin-top: var(--board-alignment-offset, 90px); height: var(--board-row-height, 480px);
   grid-template-rows: minmax(0, 1fr) auto; }
-.analysis-lower-panels { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start; gap: 12px; min-width: 0; }
-.analysis-lower-panels > * { min-width: 0; }
-.analysis-lower-panels .engine-panel { width: 100%; margin: 0; }
-.analysis-lower-panels .engine-result { max-height: none; overflow: visible; }
-.analysis-lower-panels .engine-line { white-space: normal; overflow-wrap: anywhere; }
+.position-column { display: contents; }
+.analysis-workspace .position-column { display: grid; grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px; min-width: 0; }
+.game-layout.analysis-workspace .position-column > .game-sidebar { margin: 0; height: auto;
+  min-height: 260px; grid-template-rows: minmax(0, 1fr) auto; }
+.opening-book-card { min-width: 0; container-type: inline-size; }
 .computer-analysis-card .review-summary { gap: 8px; }
 .computer-analysis-card .review-player { min-width: 0; }
 .computer-analysis-card .review-player > strong { font-size: var(--text-body); }
@@ -597,7 +595,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   .play-column { align-items: flex-end; }
   .game-layout .game-sidebar { display: flex; flex-direction: column; height: auto; margin: 0; }
   .game-layout .move-panel { height: min(360px, 45dvh); flex: none; }
-  .analysis-lower-panels { grid-template-columns: minmax(0, 1fr); }
+  .analysis-workspace .position-column { grid-column: 1; }
 }
 .book-examples { padding: 6px 8px; font-size: var(--text-compact); }
 .book-examples summary { cursor: pointer; }
@@ -648,11 +646,14 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-method { font-size: var(--text-meta); }
 @media (min-width: 901px) {
   .game-layout.analysis-workspace { width: 100%; max-width: 1544px; column-gap: 16px; row-gap: 12px;
-    grid-template-columns: minmax(0,var(--analysis-board-column,490px)) minmax(400px,1fr); }
+    grid-template-columns: minmax(0, min(max(var(--analysis-board-column,490px), 48%), calc(100% - 416px))) minmax(400px,1fr); }
   .analysis-workspace .play-column { grid-column: 1; padding-top: 22px; align-items: flex-end;
     justify-self: start; width: min(calc(100% - 16px), calc(var(--board-size, var(--default-board-size)) + 34px)); }
-  .analysis-workspace .game-sidebar { grid-column: 2; padding: 8px 12px;
-    margin-top: var(--board-alignment-offset,64px); height: calc(var(--player-workspace-height,480px) + var(--player-alignment-offset,22px) - var(--board-alignment-offset,64px)); }
+  .analysis-workspace .position-column { grid-column: 2; grid-row: 1 / 3;
+    margin-top: var(--board-alignment-offset,64px); align-self: stretch;
+    contain: size; min-height: 540px; }
+  .analysis-workspace .game-sidebar { padding: 8px 12px; }
+  .analysis-workspace .opening-book-card { grid-column: 1; grid-row: 2; }
   .analysis-workspace .analysis-footer-row { width: max(100%, 404px); max-width: calc(100vw - 36px); align-self: center; }
   .analysis-workspace .play-column > .player-material-bottom { margin-bottom: 26px; }
   .analysis-workspace .player-material-row, .analysis-workspace .captured-row { height: 24px; }
@@ -661,12 +662,16 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   .analysis-workspace .analysis-board-controls button { min-height: 30px; padding: 4px 6px; }
   .analysis-workspace .analysis-tool-group, .analysis-workspace .analysis-colors { gap: 2px; }
   .analysis-workspace .analysis-board-controls .color-choice { width: 24px; min-width: 24px; }
-  .analysis-lower-panels { gap: 14px; }
 }
 @media (max-width: 540px) {
   .analysis-workspace .review-summary { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
   .analysis-workspace .review-player + .review-player { padding-left: 8px; }
   .analysis-workspace .review-count { grid-column: 1/-1; flex-direction: row; justify-content: flex-start; gap: 6px; padding: 4px 6px; }
+  .book-columns, .masters-move { grid-template-columns: minmax(3rem, .7fr) minmax(4.75rem, 1fr) minmax(5.5rem, 1fr); }
+  .book-columns > :last-child, .masters-move > .book-outcomes { grid-column: 1 / -1; }
+}
+/* Book statistics follow their column width, including a small resized board. */
+@container (max-width: 490px) {
   .book-columns, .masters-move { grid-template-columns: minmax(3rem, .7fr) minmax(4.75rem, 1fr) minmax(5.5rem, 1fr); }
   .book-columns > :last-child, .masters-move > .book-outcomes { grid-column: 1 / -1; }
 }
@@ -696,7 +701,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .engine-heading,
 .analysis-workspace .masters-heading,
 .analysis-workspace .review-heading { margin: -12px -12px 0; padding: 9px 12px; border-radius: 7px 7px 0 0; min-height: 50px; }
-.analysis-workspace .engine-panel { min-height: 150px; align-content: start; }
+.analysis-workspace .engine-panel { align-content: start; }
 .analysis-workspace .engine-idle { margin: 0; font-size: var(--text-body); color: var(--text-muted); line-height: 1.5; }
 .analysis-workspace .computer-analysis-card { grid-column: 1 / -1; }
 .analysis-workspace .review-results { gap: 6px; }
@@ -811,7 +816,8 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
       minmax(0, min(var(--analysis-board-column, 490px), calc(100% - 792px)))
       minmax(440px, 1fr); }
   .site-game-workspace.analysis-workspace .play-column { grid-column: 2; }
-  .site-game-workspace.analysis-workspace .game-sidebar { grid-column: 3; }
+  .site-game-workspace.analysis-workspace .position-column { grid-column: 3; }
+  .site-game-workspace.analysis-workspace .opening-book-card { grid-column: 1 / 3; }
   .site-game-workspace.analysis-workspace .game-chat { grid-column: 1; grid-row: 1; }
   .game-layout.site-game-workspace:not(.analysis-workspace) {
     grid-template-columns: clamp(280px, 17vw, 320px)

@@ -11,7 +11,7 @@ export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boo
   // its gaps, and the space around the square board inside its column.
   const reserve = stacked ? 34 : chatRail
     ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 18 + 34)
-    : 34 + 320 + 18;
+    : analysis ? 50 + 400 + 16 : 34 + 320 + 18;
   return Math.max(0, workspaceWidth - reserve);
 }
 

@@ -1064,7 +1064,7 @@ export function App() {
         const stacked = window.matchMedia('(max-width: 900px)').matches;
         const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
         const frame = boardFrameRef.current?.getBoundingClientRect();
-        const lower = workspace.querySelector('.analysis-lower-panels')?.getBoundingClientRect();
+        const lower = workspace.querySelector('.opening-book-card')?.getBoundingClientRect();
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY,
@@ -1073,7 +1073,7 @@ export function App() {
     };
     const observer = new ResizeObserver(update);
     observer.observe(workspace);
-    const lower = workspace.querySelector('.analysis-lower-panels');
+    const lower = workspace.querySelector('.opening-book-card');
     if (lower) observer.observe(lower);
     window.addEventListener('resize', update); update();
     return () => { observer.disconnect(); cancelAnimationFrame(frameId); window.removeEventListener('resize', update); };
@@ -1320,6 +1320,16 @@ export function App() {
                 : `${timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)} server clock · Time continues through disconnects and server outages. The server decides deadlines.`}</p>}
 
             </div>
+            <div className="position-column">
+              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+                sessionOnly={imported !== null}
+                fen={displayedFen} reviewHost={reviewHost}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                onEvaluationPendingChange={setEvaluationPendingFen} />}
             <aside className="game-sidebar" aria-label="Game controls and moves">
 
 
@@ -1495,25 +1505,17 @@ export function App() {
               </div>
 
             </aside>
+            </div>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
               playerNames={game.playerNames} />}
-            {analysisOpen && <div className="analysis-lower-panels">
-              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
-                sessionOnly={imported !== null}
-                fen={displayedFen} reviewHost={reviewHost}
-                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
-                onEvaluationPendingChange={setEvaluationPendingFen} />}
+            {analysisOpen && <>
               <div className="opening-book-card">
                 {analysis !== null && <MastersPanel game={game} tree={analysis}
                       onOpenGame={openExplorerGame} onExplore={exploreBookMove} />}
               </div>
               <div className="computer-analysis-card" ref={setReviewHost} />
-            </div>}
+            </>}
           </div>
         </>}
       </section>}
