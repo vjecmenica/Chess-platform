@@ -2,6 +2,17 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import { AccountForm, AccountMenu } from '../src/AccountMenu';
+import { AccountSettings } from '../src/AccountSettings';
+
+it('shows private account details and current-password settings without duplicating the archive', () => {
+  const html = renderToStaticMarkup(createElement(AccountSettings, { busy: false, onAction: () => {},
+    state: { account: { id: 'a', username: 'walnut' }, guestLinked: false, createdAt: '2026-10-28T10:00:00Z' } }));
+  expect(html).toContain('walnut'); expect(html).toContain('dateTime="2026-10-28T10:00:00Z"');
+  expect(html).toContain('Link this browser'); expect(html).toContain('Log out');
+  expect(html.match(/autoComplete="current-password"/g)).toHaveLength(2);
+  expect(html).toContain('Confirm new password'); expect(html).toContain('minLength="15"');
+  expect(html).not.toContain('archive-table');
+});
 
 it('uses password-manager fields and clearly states the recovery limit', () => {
   const render = (mode: 'register' | 'login', busy = false) => renderToStaticMarkup(createElement(AccountForm,

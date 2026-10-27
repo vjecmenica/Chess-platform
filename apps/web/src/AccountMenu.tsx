@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AccountState } from '@chess/contracts';
 
-const messages: Record<string, string> = {
+export const accountMessages: Record<string, string> = {
+  incorrect_current_password: 'The current password is incorrect.',
+  password_confirmation_mismatch: 'The new passwords do not match.',
   invalid_credentials: 'The username or password is incorrect.',
   username_unavailable: 'That username is unavailable.',
   account_rate_limited: 'Too many attempts. Please try again in 15 minutes.',
@@ -36,7 +38,7 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken, showGamesLink = true }: { csrfToken: string | undefined; showGamesLink?: boolean }) {
+export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -49,7 +51,7 @@ export function AccountMenu({ csrfToken, showGamesLink = true }: { csrfToken: st
       ...(body ? { body: JSON.stringify(body) } : {}),
     } : {}) });
     const data = await response.json();
-    if (!response.ok) throw new Error(messages[String(data.error)] ?? (response.status === 400
+    if (!response.ok) throw new Error(accountMessages[String(data.error)] ?? (response.status === 400
       ? 'Check the username and password requirements.' : 'Could not update your account. Please try again.'));
     return data as T;
   }
@@ -69,49 +71,28 @@ export function AccountMenu({ csrfToken, showGamesLink = true }: { csrfToken: st
       setState(value);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load your account.'); }
   }
-  useEffect(() => {
-    if (!csrfToken) return;
-    try {
-      if (sessionStorage.getItem('chess-account-open') === '1') {
-        sessionStorage.removeItem('chess-account-open');
-        dialog.current?.showModal(); void load();
-      }
-    } catch { /* Storage is optional; the Account button remains available. */ }
-  }, [csrfToken]);
 
   async function act(path: string, body: Record<string, string> | null = null) {
     setError(null); setBusy(true);
     try {
       await request(path, body);
-      if (path === '/link-guest') await load();
-      else {
-        try { sessionStorage.setItem('chess-account-open', '1'); } catch { /* Optional display preference. */ }
-        // Reload closes streams and clears seat/CSRF state from the previous identity.
-        window.location.reload();
-      }
+      // Reload clears seat and CSRF state from the previous identity.
+      window.location.reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update your account.'); }
     finally { setBusy(false); }
   }
 
   return <>
-    {state?.account && showGamesLink && <a className="my-games-link" href="/my-games">My Games</a>}
-    <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
-      dialog.current?.showModal(); void load();
-    }}>{state?.account?.username ?? 'Account'}</button>
+    {state?.account ? <a className="account-trigger secondary" href="/account">{state.account.username}</a> :
+      <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
+        dialog.current?.showModal(); void load();
+      }}>Account</button>}
     <dialog ref={dialog} className="account-dialog" aria-labelledby="account-heading">
       <div className="account-dialog-body">
         <div className="account-title"><h2 id="account-heading">{state?.account ? 'Your account' : mode === 'register' ? 'Register' : 'Log in'}</h2>
           <button type="button" className="secondary" onClick={() => dialog.current?.close()}>Close</button></div>
         {error && <p role="alert" className="error">{error} <button className="secondary" onClick={() => void load()}>Retry</button></p>}
-        {!state ? <p>Loading account…</p> : state.account ? <>
-          <p>Signed in as <strong>{state.account.username}</strong></p>
-          {state.guestLinked ? <p>This browser’s guest games are linked.</p> : <>
-            <p>Link this browser’s guest games to keep their seats and private chat when you sign in elsewhere.</p>
-            <button disabled={busy} onClick={() => void act('/link-guest')}>Link this browser’s guest games</button>
-          </>}
-          <p><button className="secondary" disabled={busy} onClick={() => void act('/logout')}>Log out</button></p>
-          <small>No verified email or password recovery is available in this milestone. Keep your password safe.</small>
-        </> : <AccountForm mode={mode} busy={busy} onMode={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
+        {!state ? <p>Loading account…</p> : state.account ? <p><a href="/account">Open your account</a></p> : <AccountForm mode={mode} busy={busy} onMode={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
           onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget);
             void act(`/${mode}`, { username: String(data.get('username')), password: String(data.get('password')) }); }} />}
       </div>

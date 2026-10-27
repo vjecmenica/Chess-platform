@@ -20,7 +20,7 @@ another account. An account cannot link opposing seats in the same challenge;
 account locks serialize links and acceptance across browsers and server processes.
 
 A fresh browser first receives its own guest session, then logs in normally.
-The signed-in navigation opens the private **My Games** page at `/my-games`. The server resolves
+The signed-in navigation opens the private **Account** page at `/account`. The server resolves
 linked access back to the original guest seat for challenge reads, game commands,
 SSE, and private participant chat. Receipt IDs and game versions are unchanged.
 Knowing a link, logging in, or supplying another participant's identifiers grants
@@ -100,7 +100,7 @@ conflicts. Tests use synthetic accounts and games, never real credentials.
 
 ## Private game archive
 
-My Games lists accepted site games owned through explicitly linked guest seats,
+The Account page lists accepted site games owned through explicitly linked guest seats,
 not unaccepted challenges, imported PGNs, or someone else's unlinked games. Rows
 show challenge creation time in the browser's local timezone, the opposing seat's
 linked username (otherwise Guest), your color, saved result/status, and the site
@@ -122,3 +122,26 @@ Apply forward migration `019_account_game_order.sql` with `npm run db:migrate`.
 It adds chronological indexes for each original guest seat without changing
 ownership or existing data. Totals still scan the account's linked games; there is
 no global leaderboard, public archive, or new per-message identity lookup.
+
+## Account settings
+
+The private /account page combines username, creation date, this browser's explicit
+guest-link status, linking/logout controls, settings, result totals, and the existing
+chronological archive. Old /my-games bookmarks redirect to /account. Signed-out
+visitors use the header Account button to open the login/register dialog.
+
+POST /account/username requires the current password and the existing username
+validation/uniqueness policy. It rotates the current guest/CSRF and account bearer.
+Linked seats resolve the updated username on reads; transactional game-update
+notifications refresh connected participants without rewriting moves or messages.
+
+POST /account/password requires the current password, a 15–128 character new
+password, and matching confirmation. Argon2id settings match registration. The
+transaction revokes all account sessions, invalidates other associated guest
+bearers (including linked original seats), then rotates the current guest and
+issues a fresh bound account session. Ownership records remain intact. Other
+browsers must log in again; forgotten passwords remain unrecoverable. Login
+rechecks the verified hash under the account lock to prevent a concurrent old
+password login from surviving a password change. Both settings routes use CSRF
+and durable per-account/per-IP 15-minute limits (10/30 attempts). Credentials
+and hashes are never returned. No schema migration is required.

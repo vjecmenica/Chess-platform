@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AccountGame, AccountGames, GuestSessionResponse } from '@chess/contracts';
-import { AccountMenu } from './AccountMenu';
+import type { AccountGame, AccountGames, AccountState, GuestSessionResponse } from '@chess/contracts';
+import { AccountSettings } from './AccountSettings';
+import { accountMessages, AccountMenu } from './AccountMenu';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -29,7 +30,7 @@ export function GameArchive({ page }: { page: AccountGames }) {
       </div>)}</dl>
       <p>Game results only, not a rating or performance estimate. Aborted games are excluded.</p>
     </section>
-    {page.games.length === 0 ? <p>No linked games yet. Use your account menu to link this browser’s guest games.</p>
+    {page.games.length === 0 ? <p>No linked games yet. Use the account details above to link this browser’s guest games.</p>
       : <table className="archive-table">
         <caption className="visually-hidden">Your linked games, newest first</caption>
         <thead><tr>{['Date', 'Opponent', 'Your color', 'Result / status', 'Time control'].map(label =>
@@ -47,7 +48,10 @@ export function GameArchive({ page }: { page: AccountGames }) {
   </>;
 }
 
-export function MyGames() {
+export function AccountPage() {
+  const [details, setDetails] = useState<AccountState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [csrf, setCsrf] = useState<string>();
   const [page, setPage] = useState<AccountGames | null>(null);
   const [signedOut, setSignedOut] = useState(false);
@@ -60,13 +64,19 @@ export function MyGames() {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     setLoading(true); setError(null);
-    if (!before) { setPage(null); setSignedOut(false); }
+    if (!before) { setPage(null); setDetails(null); setSignedOut(false); }
     try {
       const sessionResponse = await fetch('/api/guest-session', { cache: 'no-store', signal: controller.signal });
       if (!sessionResponse.ok) throw new Error();
       const session = await sessionResponse.json() as GuestSessionResponse;
       if (controller.signal.aborted) return;
       setCsrf(session.csrfToken);
+      const accountResponse = await fetch('/api/account', { cache: 'no-store', signal: controller.signal });
+      if (!accountResponse.ok) throw new Error();
+      const state = await accountResponse.json() as AccountState;
+      if (controller.signal.aborted) return;
+      setDetails(state);
+      if (!state.account) { setPage(null); setSignedOut(true); return; }
       const response = await fetch(`/api/account/games${before ? `?before=${encodeURIComponent(before)}` : ''}`,
         { cache: 'no-store', signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -81,10 +91,26 @@ export function MyGames() {
     }
   }
 
+  async function action(path: string, body?: Record<string, string>) {
+    if (busy) return;
+    setBusy(true); setError(null); setNotice(null);
+    request.current?.abort(); request.current = null;
+    try {
+      const response = await fetch('/api/account' + path, { method: 'POST', cache: 'no-store',
+        headers: { 'X-CSRF-Token': csrf ?? '', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(accountMessages[String(data.error)] ?? 'Could not update your account. Check the form and try again.');
+      if (path === '/link-guest') { await load(); setNotice('Guest games linked.'); }
+      else window.location.reload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update your account.'); }
+    finally { setBusy(false); }
+  }
+
   useEffect(() => {
     void load();
     // Revalidate identity and discard the previous account's archive after returning to this tab.
-    const refresh = () => { void load(); };
+    const refresh = () => { if (!document.querySelector('.account-details:focus-within')) void load(); };
     window.addEventListener('focus', refresh);
     return () => { request.current?.abort(); window.removeEventListener('focus', refresh); };
   }, []);
@@ -92,16 +118,19 @@ export function MyGames() {
   return <>
     <header className="analysis-navigation"><div className="analysis-navigation-inner">
       <a className="analysis-brand" href="/" aria-label="Chess Platform home">♞</a>
-      <nav aria-label="Main navigation"><a href="/">Play</a><span aria-current="page">My Games</span></nav>
-      <div className="archive-account"><AccountMenu csrfToken={csrf} showGamesLink={false} /></div>
+      <nav aria-label="Main navigation"><a href="/">Play</a><span aria-current="page">Account</span></nav>
+      <div className="archive-account"><AccountMenu csrfToken={csrf} /></div>
     </div></header>
     <main className="my-games-page">
-      <h1>My Games</h1><p>Your private linked games, newest first.</p>
-      {signedOut && <p>Log in using the Account button to see your games. This archive is private.</p>}
-      {page && <GameArchive page={page} />}
-      {loading && <p role="status">{page ? 'Loading more games…' : 'Loading your games…'}</p>}
+      <h1>Account</h1>
+      {signedOut && <p>Use the Account button above to log in or register. Account details and linked games are private.</p>}
       {error && <p role="alert" className="error">{error} <button className="secondary"
-        onClick={() => void load(page?.next ?? undefined)}>Retry</button></p>}
+        onClick={() => void load(page?.next ?? undefined)}>Retry loading</button></p>}
+      {notice && <p role="status">{notice}</p>}
+      {details?.account && <AccountSettings state={details} busy={busy} onAction={(path, body) => void action(path, body)} />}
+      {page && <h2>Linked games</h2>}
+      {page && <GameArchive page={page} />}
+      {loading && <p role="status">{page ? 'Loading more games…' : 'Loading account and games…'}</p>}
       {page?.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}
     </main>
   </>;

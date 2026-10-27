@@ -789,6 +789,16 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .archive-account { display: flex; gap: 16px; align-items: center; margin-left: auto; }
 .my-games-page { width: min(1080px, calc(100% - 32px)); margin: 28px auto; padding: 0; }
 .my-games-page h1 { font-family: inherit; font-size: 32px; line-height: 1.2; margin: 0 0 12px; }
+.account-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;
+  border: 1px solid #dedbd2; background: #fffdf8; border-radius: 8px; padding: 20px; margin: 24px 0; }
+.account-details h2 { font-size: var(--text-heading); margin: 0 0 12px; overflow-wrap: anywhere; }
+.account-details form { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.account-details input { box-sizing: border-box; width: 100%; min-width: 0; }
+.account-details label, .account-details input { margin: 0; }
+.account-details small { font-size: var(--text-compact); color: var(--text-muted); }
+.account-details button { align-self: start; margin-top: 6px; }
+.account-trigger[href] { text-decoration: none; padding: 8px 12px; border: 1px solid #99836a; border-radius: 5px; }
+@media (max-width: 850px) { .account-details { grid-template-columns: minmax(0, 1fr); } }
 .archive-summary { background: #fffdf8; border: 1px solid #dedbd2; border-radius: 8px; padding: 16px 20px; margin: 24px 0; }
 .archive-summary h2 { font-size: var(--text-heading); margin: 0 0 12px; }
 .archive-summary dl { display: flex; gap: 40px; margin: 0; }

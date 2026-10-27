@@ -47,6 +47,71 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   const post = (app: FastifyInstance, who: Browser, path: string, payload?: object, id?: string) => app.inject({ method: 'POST', url: path,
     headers: headers(who, id), ...(payload ? { payload } : {}) });
 
+  it('requires current credentials for renames and updates linked display names without changing archive ownership', async () => {
+    const { app, white, black, outsider, id } = await setup();
+    const original = username(), taken = username(), renamed = username();
+    await auth(app, white, 'register', { username: original, password }); await auth(app, white, 'link-guest');
+    await auth(app, outsider, 'register', { username: taken, password });
+    const message = (await post(app, black, `/games/${id}/chat`, { text: 'History stays unchanged.' })).json();
+    const hashBefore = (await pool.query('SELECT password_hash FROM chess.accounts WHERE username=$1', [original])).rows[0].password_hash;
+    const details = (await read(app, white, '/account')).json();
+    expect(details.guestLinked).toBe(true); expect(Date.parse(details.createdAt)).toBeGreaterThan(0);
+    expect(JSON.stringify(details)).not.toContain('password_hash');
+    expect((await auth(app, black, 'username', { username: renamed, currentPassword: password })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/account/username', headers: { cookie: white.cookie },
+      payload: { username: renamed, currentPassword: password } })).statusCode).toBe(403);
+    expect((await auth(app, white, 'username', { username: renamed, currentPassword: 'wrong' })).json().error).toBe('incorrect_current_password');
+    expect((await auth(app, white, 'username', { username: taken, currentPassword: password })).statusCode).toBe(409);
+    expect((await auth(app, white, 'username', { username: 'x', currentPassword: password })).statusCode).toBe(400);
+    const before = { ...white };
+    expect((await auth(app, white, 'username', { username: renamed.toUpperCase(), currentPassword: password })).statusCode).toBe(200);
+    expect((await read(app, before, '/account')).statusCode).toBe(401);
+    expect((await read(app, white, '/account')).json().account.username).toBe(renamed);
+    expect((await read(app, black, `/games/${id}`)).json().playerNames.white).toBe(renamed);
+    expect((await read(app, white, `/games/${id}/chat`)).json().messages).toEqual([message]);
+    expect((await read(app, white, '/account/games')).json().games[0].id).toBe(id);
+    expect((await pool.query('SELECT password_hash FROM chess.accounts WHERE username=$1', [renamed])).rows[0].password_hash).toBe(hashBefore);
+  });
+
+  it('rate limits current-password attempts durably across server instances', async () => {
+    const app = server(), who = await browser(app);
+    await auth(app, who, 'register', { username: username(), password });
+    for (let attempt = 0; attempt < 10; attempt++) expect((await auth(app, who, 'password', {
+      currentPassword: 'wrong', newPassword: password, confirmPassword: password,
+    })).statusCode).toBe(401);
+    const limited = await auth(server(), who, 'username', { username: username(), currentPassword: password });
+    expect(limited.statusCode).toBe(429); expect(limited.headers['retry-after']).toBe('900');
+  });
+
+  it('confirms and hashes new passwords, rotates the current session, and revokes other guest/account bearers', async () => {
+    const { app, white, id } = await setup(); const name = username();
+    await auth(app, white, 'register', { username: name, password }); await auth(app, white, 'link-guest');
+    const elsewhere = await browser(app), third = await browser(app);
+    for (const who of [elsewhere, third]) {
+      await auth(app, who, 'login', { username: name, password }); await auth(app, who, 'link-guest');
+    }
+    const replacement = 'Another long synthetic passphrase';
+    const body = { currentPassword: password, newPassword: replacement, confirmPassword: replacement };
+    expect((await auth(app, white, 'password', { ...body, currentPassword: 'wrong' })).json().error).toBe('incorrect_current_password');
+    expect((await auth(app, white, 'password', { ...body, confirmPassword: password })).json().error).toBe('password_confirmation_mismatch');
+    expect((await auth(app, white, 'password', { ...body, newPassword: 'short', confirmPassword: 'short' })).statusCode).toBe(400);
+    const before = { ...white };
+    const changed = await auth(app, white, 'password', body); expect(changed.statusCode).toBe(200);
+    expect(changed.body).not.toContain(replacement);
+    const stored = (await pool.query('SELECT password_hash FROM chess.accounts WHERE username=$1', [name])).rows[0].password_hash;
+    expect(stored).toMatch(/^\$argon2id\$/); expect(stored).not.toContain(replacement);
+    for (const who of [before, elsewhere, third]) {
+      expect((await read(app, who, '/account')).statusCode).toBe(401);
+      expect((await read(app, who, `/games/${id}/chat`)).statusCode).toBe(401);
+    }
+    expect((await read(app, white, `/games/${id}`)).statusCode).toBe(200);
+    const fresh = await browser(app);
+    expect((await auth(app, fresh, 'login', { username: name, password })).statusCode).toBe(401);
+    expect((await auth(app, fresh, 'login', { username: name, password: replacement })).statusCode).toBe(200);
+    expect((await read(app, fresh, '/account/games')).json().games[0].id).toBe(id);
+    expect((await read(app, fresh, `/games/${id}/chat`)).statusCode).toBe(200);
+  });
+
   it('keeps the archive private and maps saved results, opponents, and totals for both original seats', async () => {
     const { app, white, black, outsider, id } = await setup();
     expect((await read(app, outsider, '/account/games')).statusCode).toBe(401);

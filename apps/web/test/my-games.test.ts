@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import type { AccountGame, AccountGames } from '@chess/contracts';
-import { appendGamePage, archiveResult, GameArchive, MyGames } from '../src/MyGames';
+import { appendGamePage, archiveResult, GameArchive, AccountPage } from '../src/MyGames';
 
 const game: AccountGame = { id: 'game-1', side: 'white', status: 'active', result: null,
   createdAt: '2026-10-26T10:00:00.000001Z', opponent: null, timeControl: '5+3' };
@@ -46,8 +46,8 @@ it('renders private results, linked names, guest and unknown-time fallbacks, and
 
 it('offers a clear empty archive and exposes loading without any private rows', () => {
   expect(renderToStaticMarkup(createElement(GameArchive, { page: { ...page, games: [] } }))).toContain('No linked games yet');
-  const loading = renderToStaticMarkup(createElement(MyGames));
+  const loading = renderToStaticMarkup(createElement(AccountPage));
   expect(loading).toContain('role="status"');
-  expect(loading).toContain('Loading your games');
+  expect(loading).toContain('Loading account and games');
   expect(loading).not.toContain('archive-table');
 });

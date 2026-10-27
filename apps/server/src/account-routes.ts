@@ -32,7 +32,9 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
     const account = await currentAccount(pool, request, guest);
     const owner = (await pool.query<{ account_id: string | null }>(
       'SELECT account_id FROM chess.guest_sessions WHERE id = $1', [guest.id])).rows[0]!;
-    return { account, guestLinked: account !== null && owner.account_id === account.id };
+    const created = account ? (await pool.query<{ created_at: Date }>(
+      'SELECT created_at FROM chess.accounts WHERE id = $1', [account.id])).rows[0]!.created_at : null;
+    return { account, guestLinked: account !== null && owner.account_id === account.id, createdAt: created?.toISOString() ?? null };
   });
 
   for (const mode of ['register', 'login'] as const) {
@@ -60,10 +62,17 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
           const valid = await verify(row?.password_hash ?? await dummyHash, request.body.password);
           if (!row || !valid) return reply.code(401).send({ error: 'invalid_credentials' });
           account = { id: row.id, username: row.username };
+          passwordHash = row.password_hash;
         }
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
+          if (mode === 'login') {
+            const latest = (await client.query<{ password_hash: string; username: string }>(
+              'SELECT password_hash, username FROM chess.accounts WHERE id = $1 FOR UPDATE', [account!.id])).rows[0]!;
+            if (latest.password_hash !== passwordHash || latest.username !== username)
+              return reply.code(401).send({ error: 'invalid_credentials' });
+          }
           // Serialize logins/linking on this bearer session and reject an already rotated request.
           const locked = (await client.query<{ account_id: string | null; csrf_token: string }>(
             'SELECT account_id, csrf_token FROM chess.guest_sessions WHERE id = $1 FOR UPDATE', [guest.id])).rows[0]!;
@@ -93,6 +102,74 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
         } finally {
           try { await client.query('ROLLBACK'); } finally { client.release(); }
         }
+      });
+  }
+
+  for (const setting of ['username', 'password'] as const) {
+    app.post<{ Body: { currentPassword: string; username?: string; newPassword?: string; confirmPassword?: string } }>(
+      `/account/${setting}`, { bodyLimit: 4096, schema: { body: {
+        type: 'object', additionalProperties: false,
+        required: setting === 'username' ? ['currentPassword', 'username'] : ['currentPassword', 'newPassword', 'confirmPassword'],
+        properties: { currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+          ...(setting === 'username' ? { username: credentials.properties.username } : {
+            newPassword: credentials.properties.password, confirmPassword: credentials.properties.password }) },
+      } } }, async (request, reply) => {
+        reply.header('Cache-Control', 'no-store');
+        const guest = await requireGuest(pool, request, reply, true);
+        if (!guest) return;
+        const identity = await currentAccount(pool, request, guest);
+        if (!identity) return reply.code(401).send({ error: 'account_required' });
+        const ipAllowed = await rateAllowed(pool, `settings-ip:${request.ip}`, 30);
+        const accountAllowed = await rateAllowed(pool, `settings:${identity.id}`, 10);
+        if (!ipAllowed || !accountAllowed) {
+          reply.header('Retry-After', '900');
+          return reply.code(429).send({ error: 'account_rate_limited' });
+        }
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const row = (await client.query<{ password_hash: string }>(
+            'SELECT password_hash FROM chess.accounts WHERE id = $1 FOR UPDATE', [identity.id])).rows[0]!;
+          const owner = (await client.query<{ csrf_token: string }>(
+            'SELECT csrf_token FROM chess.guest_sessions WHERE id = $1 FOR UPDATE', [guest.id])).rows[0]!;
+          if (owner.csrf_token !== guest.csrfToken) return reply.code(409).send({ error: 'session_changed' });
+          if (!await currentAccount(client, request, guest)) return reply.code(401).send({ error: 'account_required' });
+          if (!await verify(row.password_hash, request.body.currentPassword))
+            return reply.code(401).send({ error: 'incorrect_current_password' });
+          if (setting === 'password' && request.body.newPassword !== request.body.confirmPassword)
+            return reply.code(400).send({ error: 'password_confirmation_mismatch' });
+          if (setting === 'username') {
+            await client.query('UPDATE chess.accounts SET username = $2 WHERE id = $1', [identity.id, request.body.username!.toLowerCase()]);
+            await client.query(`SELECT pg_notify('chess_game_updates', json_build_object('id', g.id, 'version', g.version)::text)
+              FROM chess.games g JOIN chess.challenges c ON c.id = g.id
+              JOIN chess.guest_sessions s ON s.id IN (c.creator_guest_id, c.acceptor_guest_id)
+              WHERE s.account_id = $1`, [identity.id]);
+          } else {
+            await client.query('UPDATE chess.accounts SET password_hash = $2 WHERE id = $1',
+              [identity.id, await hash(request.body.newPassword!, passwordOptions)]);
+            // Revoke other account bearers and their guest access, including linked original seats.
+            const revoked = await client.query<{ id: string }>(`SELECT id FROM chess.guest_sessions
+              WHERE id <> $2 AND (account_id = $1 OR id IN
+                (SELECT guest_id FROM chess.account_sessions WHERE account_id = $1)) ORDER BY id FOR UPDATE`, [identity.id, guest.id]);
+            for (const other of revoked.rows) await client.query(
+              'UPDATE chess.guest_sessions SET token_hash = $2, csrf_token = $3 WHERE id = $1',
+              [other.id, tokenHash(randomBytes(32).toString('hex')), randomBytes(32).toString('hex')]);
+            await client.query('DELETE FROM chess.account_sessions WHERE account_id = $1', [identity.id]);
+          }
+          const previous = cookieToken(request.headers.cookie, accountCookie)!;
+          await client.query('DELETE FROM chess.account_sessions WHERE token_hash = $1', [tokenHash(previous)]);
+          const nextGuest = await rotateGuest(client, reply, secure, guest);
+          const token = randomBytes(32).toString('hex');
+          await client.query(`INSERT INTO chess.account_sessions (token_hash, account_id, guest_id, expires_at)
+            VALUES ($1, $2, $3, now() + interval '30 days')`, [tokenHash(token), identity.id, guest.id]);
+          await client.query('COMMIT');
+          setSessionCookie(reply, accountCookie, token, secure);
+          return { csrfToken: nextGuest.csrfToken };
+        } catch (cause) {
+          if (setting === 'username' && (cause as { code?: string }).code === '23505')
+            return reply.code(409).send({ error: 'username_unavailable' });
+          throw cause;
+        } finally { try { await client.query('ROLLBACK'); } finally { client.release(); } }
       });
   }
 
