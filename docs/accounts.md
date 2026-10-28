@@ -1,7 +1,7 @@
 # Accounts and guest game access
 
 This milestone adds username/password registration, login, logout, and explicit
-guest-to-account linking. It does not add ratings, public game access, profiles,
+guest-to-account linking. It does not add ratings, public game access, public profiles,
 email collection, email verification, or password recovery.
 
 ## Ownership
@@ -129,6 +129,17 @@ The private /account page combines username, creation date, this browser's expli
 guest-link status, linking/logout controls, settings, result totals, and the existing
 chronological archive. Old /my-games bookmarks redirect to /account. Signed-out
 visitors use the header Account button to open the login/register dialog.
+
+The profile-style header shows only the stored username and joined date, with a
+generated initials placeholder. Overview previews the five most recent linked
+games and the existing result totals; Games keeps the full paginated archive.
+Stats uses those same all-game totals, never extrapolating from a loaded page.
+Settings contains explicit guest linking, logout, and the existing secure username
+and password forms. Edit profile opens Settings; no personal details or uploads
+are offered. Ordinary links to `#overview`, `#games`, `#stats`, and `#settings`
+preserve the selected section on refresh and browser Back/Forward. Switching
+sections does not refetch or discard loaded archive pages. This is an owner-only
+frontend presentation, with no new endpoint, stored data, or migration.
 
 POST /account/username requires the current password and the existing username
 validation/uniqueness policy. It rotates the current guest/CSRF and account bearer.

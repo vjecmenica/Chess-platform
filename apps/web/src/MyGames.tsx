@@ -21,16 +21,28 @@ export function archiveResult(game: AccountGame): string {
     : game.status === 'waiting' ? 'Waiting to start' : 'In progress';
 }
 
-export function GameArchive({ page }: { page: AccountGames }) {
-  return <>
+export const accountSections = ['overview', 'games', 'stats', 'settings'] as const;
+export type AccountSection = typeof accountSections[number];
+
+export function accountSection(hash: string): AccountSection {
+  return accountSections.find(section => hash === `#${section}`) ?? 'overview';
+}
+
+export function CompletedGamesSummary({ summary }: { summary: AccountGames['summary'] }) {
+  return (
     <section className="archive-summary" aria-label="Completed linked games">
-      <h2>Completed linked games</h2>
+      <h3>Completed linked games</h3>
       <dl>{(['wins', 'draws', 'losses'] as const).map(key => <div key={key}>
-        <dt>{key[0]!.toUpperCase() + key.slice(1)}</dt><dd>{page.summary[key]}</dd>
+        <dt>{key[0]!.toUpperCase() + key.slice(1)}</dt><dd>{summary[key]}</dd>
       </div>)}</dl>
       <p>Game results only, not a rating or performance estimate. Aborted games are excluded.</p>
     </section>
-    {page.games.length === 0 ? <p>No linked games yet. Use the account details above to link this browser’s guest games.</p>
+  );
+}
+
+export function GameArchive({ page }: { page: AccountGames }) {
+  return <>
+    {page.games.length === 0 ? <p>No linked games yet. <a href="#settings">Link this browser’s guest games in Settings</a> to add them here.</p>
       : <table className="archive-table">
         <caption className="visually-hidden">Your linked games, newest first</caption>
         <thead><tr>{['Date', 'Opponent', 'Your color', 'Result / status', 'Time control'].map(label =>
@@ -48,7 +60,43 @@ export function GameArchive({ page }: { page: AccountGames }) {
   </>;
 }
 
+export function AccountProfileHeader({ state, section }: { state: AccountState; section: AccountSection }) {
+  return <div className="account-profile-header">
+    <div className="account-profile-identity">
+      <span className="account-avatar" aria-hidden="true">{state.account!.username.slice(0, 2).toUpperCase()}</span>
+      <div className="account-profile-name"><p>Private account</p><h1>{state.account!.username}</h1>
+        <p>Joined {state.createdAt ? <time dateTime={state.createdAt}>{new Date(state.createdAt).toLocaleDateString(undefined,
+          { dateStyle: 'long' })}</time> : 'Unavailable'}</p></div>
+      <a className="account-edit" href="#settings">Edit profile</a>
+    </div>
+    <nav className="account-section-nav" aria-label="Account sections">
+      {accountSections.map(item => <a key={item} href={`#${item}`} aria-current={section === item ? 'location' : undefined}>
+        {item[0]!.toUpperCase() + item.slice(1)}</a>)}
+    </nav>
+  </div>;
+}
+
+export function AccountOverview({ page }: { page: AccountGames }) {
+  return <>
+    <div className="account-overview-summary"><CompletedGamesSummary summary={page.summary} />
+      <aside className="account-ratings"><h3>Ratings</h3><p>Ratings are not available yet.</p></aside></div>
+    <div className="section-heading"><h3>Recent linked games</h3><a href="#games">View all games</a></div>
+    <GameArchive page={{ ...page, games: page.games.slice(0, 5) }} />
+  </>;
+}
+
+export function AccountStats({ summary }: { summary: AccountGames['summary'] }) {
+  const total = summary.wins + summary.draws + summary.losses;
+  return <>
+    <p><strong>{total}</strong> completed linked {total === 1 ? 'game' : 'games'}.</p>
+    <CompletedGamesSummary summary={summary} />
+    {total === 0 && <p>Your results will appear here after a linked game finishes.</p>}
+  </>;
+}
+
 export function AccountPage() {
+  const [section, setSection] = useState<AccountSection>(() => accountSection(typeof window === 'undefined' ? '' : window.location.hash));
+  const sectionHeading = useRef<HTMLHeadingElement>(null);
   const [details, setDetails] = useState<AccountState | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -80,7 +128,7 @@ export function AccountPage() {
       const response = await fetch(`/api/account/games${before ? `?before=${encodeURIComponent(before)}` : ''}`,
         { cache: 'no-store', signal: controller.signal });
       if (controller.signal.aborted) return;
-      if (response.status === 401) { setPage(null); setSignedOut(true); return; }
+      if (response.status === 401) { setPage(null); setDetails(null); setSignedOut(true); return; }
       if (!response.ok) throw new Error();
       const next = await response.json() as AccountGames;
       if (!controller.signal.aborted) setPage(previous => before ? appendGamePage(previous, next) : next);
@@ -115,6 +163,16 @@ export function AccountPage() {
     return () => { request.current?.abort(); window.removeEventListener('focus', refresh); };
   }, []);
 
+  useEffect(() => {
+    const navigate = () => {
+      setSection(accountSection(window.location.hash));
+    };
+    window.addEventListener('hashchange', navigate);
+    return () => window.removeEventListener('hashchange', navigate);
+  }, []);
+
+  useEffect(() => { sectionHeading.current?.focus({ preventScroll: true }); }, [section]);
+
   return <>
     <header className="analysis-navigation"><div className="analysis-navigation-inner">
       <a className="analysis-brand" href="/" aria-label="Chess Platform home">♞</a>
@@ -122,16 +180,20 @@ export function AccountPage() {
       <div className="archive-account"><AccountMenu csrfToken={csrf} /></div>
     </div></header>
     <main className="my-games-page">
-      <h1>Account</h1>
+      {details?.account && !signedOut ? <AccountProfileHeader state={details} section={section} /> : <h1>Account</h1>}
       {signedOut && <p>Use the Account button above to log in or register. Account details and linked games are private.</p>}
       {error && <p role="alert" className="error">{error} <button className="secondary"
         onClick={() => void load(page?.next ?? undefined)}>Retry loading</button></p>}
       {notice && <p role="status">{notice}</p>}
-      {details?.account && <AccountSettings state={details} busy={busy} onAction={(path, body) => void action(path, body)} />}
-      {page && <h2>Linked games</h2>}
-      {page && <GameArchive page={page} />}
+      {details?.account && !signedOut && <section className="account-section" aria-labelledby="account-section-heading">
+        <h2 id="account-section-heading" tabIndex={-1} ref={sectionHeading}>{section[0]!.toUpperCase() + section.slice(1)}</h2>
+        {section === 'overview' && page && <AccountOverview page={page} />}
+        {section === 'games' && page && <><GameArchive page={page} />
+          {page.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
+        {section === 'stats' && page && <AccountStats summary={page.summary} />}
+        {section === 'settings' && <AccountSettings state={details} busy={busy} onAction={(path, body) => void action(path, body)} />}
+      </section>}
       {loading && <p role="status">{page ? 'Loading more games…' : 'Loading account and games…'}</p>}
-      {page?.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}
     </main>
   </>;
 }
