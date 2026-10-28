@@ -32,6 +32,10 @@ than the viewer's current account. Unlinked players appear as Guest, with their
 side retained where needed. Linking sends a metadata refresh through the existing
 game stream without incrementing the move version. Names are not stored in move
 receipts or duplicated on chat messages. Imported PGN identities are unchanged.
+When a signed-in participant is using an unlinked guest seat, the game header
+offers **Playing as Guest · Link games**. This opens Account Settings in a new
+tab and explains the explicit linking action; it never links on login or click
+alone. Account information refreshes on window focus after actions in another tab.
 The account dialog closes with its Close button or Escape, never a backdrop click.
 
 Unlinked guest games remain available through the existing guest flow. Only link
@@ -102,9 +106,13 @@ conflicts. Tests use synthetic accounts and games, never real credentials.
 
 The Account page lists accepted site games owned through explicitly linked guest seats,
 not unaccepted challenges, imported PGNs, or someone else's unlinked games. Rows
-show challenge creation time in the browser's local timezone, the opposing seat's
-linked username (otherwise Guest), your color, saved result/status, and the site
-time control. Legacy untimed games display Unavailable rather than a default.
+show White above Black, using the current account username and the opposing seat's
+linked username (otherwise Guest). Em dashes indicate unavailable site ratings;
+they are not imported or FIDE ratings. Rows show challenge creation time in the
+browser's local timezone, the saved site time control, and White-perspective final
+scores or explicit unfinished/aborted statuses. Legacy untimed games display
+Unavailable rather than a default. Each complete row is a native link opening the
+private game in a new tab, in both the Overview preview and Games archive.
 
 `GET /account/games` requires a current bound account session. It returns at most
 20 games and an opaque `before` cursor. Ordering is descending creation timestamp

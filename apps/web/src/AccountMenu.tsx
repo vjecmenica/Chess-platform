@@ -38,7 +38,14 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
+export function GuestSeatLink({ state, guestSeat }: { state: AccountState | null; guestSeat: boolean }) {
+  if (!guestSeat || !state?.account || state.guestLinked) return null;
+  return <a className="guest-seat-link" href="/account#settings" target="_blank" rel="noopener"
+    title="Signing in does not link this guest seat. Link this browser’s guest games in Account Settings to show your username. Opens in a new tab.">
+    Playing as Guest · Link games<span className="visually-hidden"> in Account Settings (opens in a new tab)</span></a>;
+}
+
+export function AccountMenu({ csrfToken, guestSeat = false }: { csrfToken: string | undefined; guestSeat?: boolean }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -59,9 +66,11 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   useEffect(() => {
     if (!csrfToken) return;
     let active = true;
-    void request<AccountState>('').then(value => { if (active) setState(value); })
-      .catch(() => { /* The dialog offers a visible retry without disrupting guest play. */ });
-    return () => { active = false; };
+    const refresh = () => { void request<AccountState>('').then(value => { if (active) setState(value); })
+      .catch(() => { if (active) setState(null); }); };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.removeEventListener('focus', refresh); };
   }, [csrfToken]);
 
   async function load() {
@@ -83,6 +92,7 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   }
 
   return <>
+    <GuestSeatLink state={state} guestSeat={guestSeat} />
     {state?.account ? <a className="account-trigger secondary" href="/account">{state.account.username}</a> :
       <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
         dialog.current?.showModal(); void load();

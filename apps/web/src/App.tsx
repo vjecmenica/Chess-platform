@@ -1095,13 +1095,15 @@ export function App() {
 
   return (
     <>
-    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
+    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken}
+      guestSeat={imported === null && game !== null && game.playerNames?.[game.yourSeat] === null} />} />}
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       {!analysisOpen && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
-        <AccountMenu csrfToken={session?.csrfToken} />
+        <AccountMenu csrfToken={session?.csrfToken}
+          guestSeat={imported === null && game !== null && game.playerNames?.[game.yourSeat] === null} />
       </header>}
       {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>

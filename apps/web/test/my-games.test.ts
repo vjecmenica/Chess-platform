@@ -10,16 +10,17 @@ const game: AccountGame = { id: 'game-1', side: 'white', status: 'active', resul
 const page: AccountGames = { account: { id: 'account-1', username: 'player' }, games: [game], next: 'cursor',
   summary: { wins: 3, draws: 2, losses: 1 } };
 
-it('maps saved results relative to the original seat, including aborts and unfinished games', () => {
+it('formats final results from White’s perspective and never assigns a score to unfinished or aborted games', () => {
   expect(archiveResult(game)).toBe('In progress');
   expect(archiveResult({ ...game, status: 'waiting' })).toBe('Waiting to start');
   expect(archiveResult({ ...game, status: 'pending_adjudication' })).toBe('Awaiting decision');
   expect(archiveResult({ ...game, status: 'aborted', result: { outcome: 'aborted', reason: 'first_move' } })).toBe('Aborted');
   for (const side of ['white', 'black'] as const) {
-    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'win', winner: side, reason: 'checkmate' } })).toBe('Win');
-    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'win', winner: side === 'white' ? 'black' : 'white', reason: 'timeout' } })).toBe('Loss');
-    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'draw', reason: 'agreement' } })).toBe('Draw');
+    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'win', winner: 'white', reason: 'checkmate' } })).toBe('1-0');
+    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'win', winner: 'black', reason: 'timeout' } })).toBe('0-1');
+    expect(archiveResult({ ...game, side, status: 'finished', result: { outcome: 'draw', reason: 'agreement' } })).toBe('½–½');
   }
+  expect(archiveResult({ ...game, status: 'pending_adjudication', result: { outcome: 'win', winner: 'black', reason: 'timeout' } })).toBe('Awaiting decision');
 });
 
 it('appends pages without losing earlier games or duplicating retries and replaces data for another account', () => {
@@ -36,11 +37,26 @@ it('renders private results, linked names, guest and unknown-time fallbacks, and
   const html = renderToStaticMarkup(createElement(GameArchive, { page: { ...page,
     games: [game, { ...game, id: 'game-2', side: 'black', opponent: 'linked_player', timeControl: null }] } }));
   expect(html).toContain('href="/challenge/game-1"');
-  expect(html).toContain('Guest</a>');
-  expect(html).toContain('linked_player</a>');
+  expect(html).toContain('<strong>Guest</strong>');
+  expect(html).toContain('<strong>linked_player</strong>');
   expect(html).toContain('Unavailable');
   expect(html).toContain('5+3');
-  expect(html).toContain('scope="col"');
+  expect(html).toContain('aria-label="Your linked games, newest first"');
+});
+
+it('puts White above Black and makes each entire row a native new-tab link with honest rating placeholders', () => {
+  for (const side of ['white', 'black'] as const) {
+    const html = renderToStaticMarkup(createElement(GameArchive, { page: { ...page,
+      games: [{ ...game, side, opponent: 'opponent' }] } }));
+    const white = side === 'white' ? 'player' : 'opponent';
+    const black = side === 'black' ? 'player' : 'opponent';
+    expect(html.indexOf(`<strong>${white}</strong>`)).toBeLessThan(html.indexOf(`<strong>${black}</strong>`));
+    expect(html).toContain(`aria-label="White: ${white}. Black: ${black}. In progress. Opens in a new tab."`);
+    expect(html).toContain('<li><a class="archive-game" href="/challenge/game-1" target="_blank" rel="noopener"');
+    expect(html).toContain('</time></a></li>');
+    expect(html.match(/aria-label="Site rating unavailable">—/g)).toHaveLength(2);
+    expect(html).not.toMatch(/<tr|<button|onclick/i);
+  }
 });
 
 it('uses refreshable section links with one accessible current section and an Edit profile destination', () => {
@@ -89,5 +105,5 @@ it('offers a clear empty archive and exposes loading without any private rows', 
   const loading = renderToStaticMarkup(createElement(AccountPage));
   expect(loading).toContain('role="status"');
   expect(loading).toContain('Loading account and games');
-  expect(loading).not.toContain('archive-table');
+  expect(loading).not.toContain('archive-game');
 });

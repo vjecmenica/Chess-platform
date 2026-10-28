@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AccountGame, AccountGames, AccountState, GuestSessionResponse } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
+import { resultDisplay } from './result-display';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -12,9 +13,8 @@ export function appendGamePage(previous: AccountGames | null, page: AccountGames
 export function archiveResult(game: AccountGame): string {
   if (game.status === 'aborted') return 'Aborted';
   if (game.status === 'finished') {
-    if (game.result?.outcome === 'draw') return 'Draw';
-    if (game.result?.outcome === 'win' && game.result.winner)
-      return game.result.winner === game.side ? 'Win' : 'Loss';
+    if (game.result?.outcome === 'draw' || game.result?.outcome === 'win' && game.result.winner)
+      return resultDisplay(game.result)!.score;
     return 'Finished';
   }
   return game.status === 'pending_adjudication' ? 'Awaiting decision'
@@ -43,20 +43,26 @@ export function CompletedGamesSummary({ summary }: { summary: AccountGames['summ
 export function GameArchive({ page }: { page: AccountGames }) {
   return <>
     {page.games.length === 0 ? <p>No linked games yet. <a href="#settings">Link this browser’s guest games in Settings</a> to add them here.</p>
-      : <table className="archive-table">
-        <caption className="visually-hidden">Your linked games, newest first</caption>
-        <thead><tr>{['Date', 'Opponent', 'Your color', 'Result / status', 'Time control'].map(label =>
-          <th key={label} scope="col">{label}</th>)}</tr></thead>
-        <tbody>{page.games.map(game => <tr key={game.id}>
-          <td data-label="Date"><time dateTime={game.createdAt}>{new Date(game.createdAt).toLocaleString(undefined,
-            { dateStyle: 'medium', timeStyle: 'short' })}</time></td>
-          <td data-label="Opponent"><a href={`/challenge/${game.id}`} aria-label={`Open game against ${game.opponent ?? 'Guest'}, playing ${game.side}`}>
-            {game.opponent ?? 'Guest'}</a></td>
-          <td data-label="Your color">{game.side === 'white' ? 'White' : 'Black'}</td>
-          <td data-label="Result / status" title={game.result?.reason.replaceAll('_', ' ')}>{archiveResult(game)}</td>
-          <td data-label="Time control">{game.timeControl ?? 'Unavailable'}</td>
-        </tr>)}</tbody>
-      </table>}
+      : <div className="archive-games">
+        <div className="archive-columns" aria-hidden="true"><span>Players · rating unavailable</span><span>Time control</span>
+          <span>Result / status</span><span>Date</span></div>
+        <ul aria-label="Your linked games, newest first">{page.games.map(game => {
+          const white = game.side === 'white' ? page.account.username : game.opponent ?? 'Guest';
+          const black = game.side === 'black' ? page.account.username : game.opponent ?? 'Guest';
+          const result = archiveResult(game);
+          return <li key={game.id}><a className="archive-game" href={`/challenge/${game.id}`} target="_blank" rel="noopener"
+            aria-label={`White: ${white}. Black: ${black}. ${result}. Opens in a new tab.`}>
+            <span className="archive-players">{[['White', white], ['Black', black]].map(([side, name]) =>
+              <span className="archive-player" key={side}><span className={`archive-side archive-side-${side!.toLowerCase()}`} aria-hidden="true" />
+                <span className="visually-hidden">{side}: </span><strong>{name}</strong>
+                <span className="archive-rating" title="Site rating unavailable" aria-label="Site rating unavailable">—</span></span>)}</span>
+            <span className="archive-control"><span className="visually-hidden">Time control: </span>{game.timeControl ?? 'Unavailable'}</span>
+            <span className="archive-result" title={game.result?.reason.replaceAll('_', ' ')}>{result}</span>
+            <time dateTime={game.createdAt}>{new Date(game.createdAt).toLocaleString(undefined,
+              { dateStyle: 'medium', timeStyle: 'short' })}</time>
+          </a></li>;
+        })}</ul>
+      </div>}
   </>;
 }
 

@@ -338,6 +338,8 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     const { app, white, black, outsider, id } = await setup(); const whiteName = username(), blackName = username();
     await auth(app, white, 'register', { username: whiteName, password });
     await auth(app, black, 'register', { username: blackName, password });
+    const originalMessage = (await post(app, white, `/games/${id}/chat`, { text: 'Sent before linking.' })).json();
+    expect((await read(app, white, '/account')).json()).toMatchObject({ account: { username: whiteName }, guestLinked: false });
     expect((await read(app, white, `/games/${id}`)).json().playerNames).toEqual({ white: null, black: null });
     await auth(app, white, 'link-guest');
     expect((await read(app, black, `/games/${id}`)).json().playerNames).toEqual({ white: whiteName, black: null });
@@ -353,7 +355,10 @@ describe('accounts and original guest seats against PostgreSQL', () => {
       await stream.cancel();
     } finally { clearTimeout(timeout); abort.abort(); }
     const playerNames = { white: whiteName, black: blackName };
-    for (const who of [white, black]) expect((await read(app, who, `/games/${id}`)).json()).toMatchObject({ version: 0, status: 'active', playerNames });
+    for (const who of [white, black]) {
+      expect((await read(app, who, `/games/${id}`)).json()).toMatchObject({ version: 0, status: 'active', playerNames });
+      expect((await read(app, who, `/games/${id}/chat`)).json().messages).toEqual([originalMessage]);
+    }
     const denied = await read(app, outsider, `/games/${id}`);
     expect(denied.statusCode).toBe(403); expect(denied.body).not.toContain(whiteName); expect(denied.body).not.toContain(blackName);
     expect((await post(app, white, `/games/${id}/resign`, { expectedVersion: 0 })).statusCode).toBe(200);

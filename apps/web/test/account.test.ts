@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
-import { AccountForm, AccountMenu } from '../src/AccountMenu';
+import { AccountForm, AccountMenu, GuestSeatLink } from '../src/AccountMenu';
 import { AccountSettings } from '../src/AccountSettings';
 
 it('shows private account details and current-password settings without duplicating the archive', () => {
@@ -37,4 +37,16 @@ it('offers an accessible account dialog without blocking guest play', () => {
   expect(html).toContain('aria-labelledby="account-heading"');
   expect(html).toContain('class="account-dialog"');
   expect(html).toContain('Close');
+});
+
+it('offers explicit linking only for an authenticated, unlinked guest seat', () => {
+  const state = { account: { id: 'a', username: 'walnut' }, guestLinked: false, createdAt: null };
+  const render = (value: typeof state | null, guestSeat: boolean) => renderToStaticMarkup(
+    createElement(GuestSeatLink, { state: value, guestSeat }));
+  expect(render(state, true)).toContain('href="/account#settings" target="_blank"');
+  expect(render(state, true)).toContain('Signing in does not link this guest seat');
+  expect(render(state, true)).toContain('Playing as Guest');
+  expect(render(state, false)).toBe('');
+  expect(render({ ...state, guestLinked: true }, true)).toBe('');
+  expect(render(null, true)).toBe('');
 });
