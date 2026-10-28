@@ -15,7 +15,8 @@ export function parseGameCursor(value: string | undefined): Cursor | null {
 }
 
 export async function accountGames(pool: pg.Pool, account: AccountIdentity, cursor: Cursor | null): Promise<AccountGames> {
-  // Both the page and summary use one statement/snapshot. Only explicitly linked seats qualify.
+  // One ownership join covers new account play seats and explicitly linked historical guest seats.
+  // Both the page and summary use one statement/snapshot.
   const { rows } = await pool.query<{ games: AccountGame[]; summary: AccountGames['summary'] }>(`
     WITH seats AS (
       SELECT c.*, 'white'::text AS side, c.acceptor_guest_id AS opponent_id

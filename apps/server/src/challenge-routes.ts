@@ -5,7 +5,7 @@ import type { ChallengeSummary, GuestSessionResponse } from '@chess/contracts';
 import { defaultTimeControl, isTimeControlId, timeControlPresets, type TimeControlId } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { createGuest, currentGuest, requireGuest } from './guest-session.js';
-import { currentAccount, participantGuestId } from './account-session.js';
+import { newChallengeSeat, participantGuestId } from './account-session.js';
 
 const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const idParams = { type: 'object', required: ['id'], additionalProperties: false,
@@ -71,19 +71,29 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
     if (!isTimeControlId(timeControl)) return reply.code(400).send({ error: 'invalid_time_control' });
     const requestId = request.headers['idempotency-key'];
     if (typeof requestId !== 'string') return reply.code(400).send({ error: 'invalid_idempotency_key' });
-    const { rows } = await pool.query<ChallengeRow>(
-      `INSERT INTO chess.challenges (id, creator_guest_id, create_request_id, time_control)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (creator_guest_id, create_request_id)
-        DO UPDATE SET create_request_id = EXCLUDED.create_request_id
-        RETURNING id, creator_guest_id, acceptor_guest_id, created_at, time_control`,
-      [randomUUID(), guest.id, requestId, timeControl],
-    );
-    if (rows[0]!.time_control !== timeControl)
-      return reply.code(409).send({ error: 'request_id_conflict' });
-    const row = await findChallenge(pool, rows[0]!.id);
-    if (row === null) throw new Error('The created challenge could not be read.');
-    return reply.code(200).send(summary(row, guest.id));
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const newSeatId = await newChallengeSeat(client, request, guest);
+      // A retry of a pre-login guest creation remains that guest's challenge, never an implicit link.
+      const earlier = (await client.query<{ id: string }>(`SELECT id FROM chess.challenges
+        WHERE creator_guest_id = $1 AND create_request_id = $2`, [guest.id, requestId])).rows[0];
+      const creatorId = earlier ? guest.id : newSeatId;
+      const { rows } = await client.query<ChallengeRow>(
+        `INSERT INTO chess.challenges (id, creator_guest_id, create_request_id, time_control)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (creator_guest_id, create_request_id)
+          DO UPDATE SET create_request_id = EXCLUDED.create_request_id
+          RETURNING id, creator_guest_id, acceptor_guest_id, created_at, time_control`,
+        [randomUUID(), creatorId, requestId, timeControl],
+      );
+      if (rows[0]!.time_control !== timeControl)
+        return reply.code(409).send({ error: 'request_id_conflict' });
+      const row = await findChallenge(client, rows[0]!.id);
+      if (row === null) throw new Error('The created challenge could not be read.');
+      await client.query('COMMIT');
+      return reply.code(200).send(summary(row, creatorId));
+    } finally { try { await client.query('ROLLBACK'); } finally { client.release(); } }
   });
 
   app.get<{ Params: { id: string } }>('/challenges/:id', { schema: { params: idParams } },
@@ -111,8 +121,7 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
       let row: ChallengeRow | null;
       try {
         await client.query('BEGIN');
-        const account = await currentAccount(client, request, guest);
-        if (account) await client.query('SELECT id FROM chess.accounts WHERE id = $1 FOR UPDATE', [account.id]);
+        const newSeatId = await newChallengeSeat(client, request, guest);
         const seatId = await participantGuestId(client, request, guest, request.params.id);
         const existing = await findChallenge(client, request.params.id);
         if (existing?.creator_guest_id === seatId) {
@@ -122,7 +131,7 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
         const changed = await client.query<{ id: string; time_control: TimeControlId }>(
           `UPDATE chess.challenges SET acceptor_guest_id = $2, accepted_at = now()
             WHERE id = $1 AND acceptor_guest_id IS NULL AND creator_guest_id <> $2
-            RETURNING id, time_control`, [request.params.id, guest.id],
+            RETURNING id, time_control`, [request.params.id, newSeatId],
         );
         if (changed.rowCount === 1) {
           const acceptedAtMs = trustedNowMs();
@@ -154,7 +163,7 @@ export function registerChallengeRoutes(app: FastifyInstance, pool: pg.Pool,
 
 export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
-    await pool.query('SELECT id FROM chess.guest_sessions LIMIT 0');
+    await pool.query('SELECT id, account_play_seat FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT token_hash FROM chess.account_sessions LIMIT 0');
     await pool.query('SELECT id, time_control FROM chess.challenges LIMIT 0');
     await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,

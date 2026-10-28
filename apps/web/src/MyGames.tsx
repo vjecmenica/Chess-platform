@@ -42,7 +42,7 @@ export function CompletedGamesSummary({ summary }: { summary: AccountGames['summ
 
 export function GameArchive({ page }: { page: AccountGames }) {
   return <>
-    {page.games.length === 0 ? <p>No linked games yet. <a href="#settings">Link this browser’s guest games in Settings</a> to add them here.</p>
+    {page.games.length === 0 ? <p>No linked games yet. Create or accept a game while signed in, or <a href="#settings">link this browser’s earlier guest games in Settings</a>.</p>
       : <div className="archive-games">
         <div className="archive-columns" aria-hidden="true"><span>Players · rating unavailable</span><span>Time control</span>
           <span>Result / status</span><span>Date</span></div>

@@ -11,13 +11,40 @@ original guest IDs. Migration `018_accounts.sql` adds accounts, expiring account
 sessions, a nullable account owner on guest records, and durable authentication
 rate counters. Earlier migrations and game records are unchanged.
 
-Registration and login **do not link guest games automatically**. The signed-in
+Registration and login **do not link earlier guest games automatically**. The signed-in
 player chooses **Link this browser's guest games**, proving possession of the
 current unexpired guest cookie and CSRF token. The request accepts no guest ID,
 game ID, or seat. Linking attaches that guest identity and its existing/future
 games to the account; it does not transfer seats. A guest cannot be relinked to
 another account. An account cannot link opposing seats in the same challenge;
 account locks serialize links and acceptance across browsers and server processes.
+
+### New authenticated games
+
+Migration `020_account_play_seats.sql` adds a boolean marker and a partial unique
+index for one internal play-seat identity per account. Creating or accepting a
+new challenge while authenticated uses that identity as the original guest seat.
+It has the same `account_id` relationship as explicitly linked browser guests, so
+participant authorization, player names, chat, and chronological archive queries
+share the existing ownership join. No historical challenges or receipts are rewritten.
+The archive still lists games only after challenge acceptance creates a game.
+
+The internal identity is allocated lazily under the account lock. Its random bearer
+values are never issued as cookies, and guest authentication excludes these rows.
+An authenticated account session, bound to a real browser guest session, is required
+to use it. Login, logout and account switching do not change a browser's unlinked
+guest games; those remain accessible only through that guest or explicit linking.
+An expired account session cannot access the account play seat. Never delete internal
+play-seat identities as expired browser sessions: like explicitly linked guest rows,
+they are durable game/receipt identities, not expiring ownership records.
+
+Challenge creation retries are scoped to the account's play seat (and therefore work
+across its browsers). Retrying an earlier creation with the same browser guest and
+request ID returns the original guest challenge without linking it. Retrying acceptance
+of an already occupied guest seat also leaves it unchanged. Account locks serialize
+new seat allocation, acceptance, and explicit links; a single account cannot own both
+seats, including via a later guest link. Session/CSRF state is rechecked after acquiring
+locks so an already rotated request cannot occupy a new seat.
 
 A fresh browser first receives its own guest session, then logs in normally.
 The signed-in navigation opens the private **Account** page at `/account`. The server resolves
@@ -26,7 +53,7 @@ SSE, and private participant chat. Receipt IDs and game versions are unchanged.
 Knowing a link, logging in, or supplying another participant's identifiers grants
 no access. There are no public account/game/chat endpoints.
 
-Authorized game reads include each seat's explicitly linked username, or null for
+Authorized game reads include each seat's account username, or null for
 an unlinked seat. Player strips and private chat use this shared seat data rather
 than the viewer's current account. Unlinked players appear as Guest, with their
 side retained where needed. Linking sends a metadata refresh through the existing
@@ -104,7 +131,7 @@ conflicts. Tests use synthetic accounts and games, never real credentials.
 
 ## Private game archive
 
-The Account page lists accepted site games owned through explicitly linked guest seats,
+The Account page lists accepted site games owned through account play seats or explicitly linked guest seats,
 not unaccepted challenges, imported PGNs, or someone else's unlinked games. Rows
 show White above Black, using the current account username and the opposing seat's
 linked username (otherwise Guest). Em dashes indicate unavailable site ratings;

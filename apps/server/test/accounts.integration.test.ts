@@ -47,6 +47,116 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   const post = (app: FastifyInstance, who: Browser, path: string, payload?: object, id?: string) => app.inject({ method: 'POST', url: path,
     headers: headers(who, id), ...(payload ? { payload } : {}) });
 
+  it('owns new authenticated seats immediately and restores names, archives, chat and move retries in another browser', async () => {
+    const app = server(), white = await browser(app), black = await browser(app), outsider = await browser(app);
+    const restarted = server();
+    const whiteName = username(), blackName = username();
+    const whiteAccount = (await auth(app, white, 'register', { username: whiteName, password })).json().account;
+    await auth(app, black, 'register', { username: blackName, password });
+    const second = await browser(app); await auth(app, second, 'login', { username: whiteName, password });
+    const key = randomUUID();
+    const creations = await Promise.all([post(app, white, '/challenges', undefined, key), post(restarted, second, '/challenges', undefined, key)]);
+    expect(creations.map(r => r.statusCode)).toEqual([200, 200]);
+    expect(creations[0]!.json()).toEqual(creations[1]!.json());
+    const id = creations[0]!.json().id;
+    expect((await post(app, second, `/challenges/${id}/accept`)).json().error).toBe('cannot_accept_own_challenge');
+    expect((await post(app, black, `/challenges/${id}/accept`)).statusCode).toBe(200);
+    expect((await post(app, black, `/challenges/${id}/accept`)).statusCode).toBe(200);
+    for (const [who, side, opponent] of [[white, 'white', blackName], [black, 'black', whiteName], [second, 'white', blackName]] as const) {
+      expect((await read(app, who, '/account')).json().guestLinked).toBe(false);
+      expect((await read(app, who, `/games/${id}`)).json()).toMatchObject({ yourSeat: side, playerNames: { white: whiteName, black: blackName } });
+      expect((await read(app, who, '/account/games')).json().games).toEqual([expect.objectContaining({ id, side, opponent })]);
+    }
+    const stored = (await pool.query(`SELECT c.creator_guest_id, s.account_id, s.account_play_seat FROM chess.challenges c
+      JOIN chess.guest_sessions s ON s.id = c.creator_guest_id WHERE c.id=$1`, [id])).rows[0];
+    expect(stored).toMatchObject({ account_id: whiteAccount.id, account_play_seat: true });
+    expect((await pool.query('SELECT guest_id FROM chess.account_sessions WHERE account_id=$1', [whiteAccount.id])).rows
+      .every(s => s.guest_id !== stored.creator_guest_id)).toBe(true);
+    const messageKey = randomUUID(), moveKey = randomUUID();
+    const message = await post(app, white, `/games/${id}/chat`, { text: 'Account-owned seat' }, messageKey);
+    expect(message.statusCode).toBe(201);
+    expect((await post(restarted, second, `/games/${id}/chat`, { text: 'Account-owned seat' }, messageKey)).json()).toEqual(message.json());
+    const move = await post(app, white, `/games/${id}/moves`, { expectedVersion: 0, from: 'e2', to: 'e4' }, moveKey);
+    expect(move.statusCode).toBe(200);
+    expect((await post(restarted, second, `/games/${id}/moves`, { expectedVersion: 0, from: 'e2', to: 'e4' }, moveKey)).json()).toEqual(move.json());
+    await auth(app, outsider, 'register', { username: username(), password });
+    for (const path of [`/challenges/${id}`, `/games/${id}`, `/games/${id}/chat`, `/games/${id}/events`])
+      expect((await read(app, outsider, path)).statusCode).toBe(403);
+    expect((await post(app, outsider, `/games/${id}/chat`, { text: 'Not mine' })).statusCode).toBe(403);
+    expect((await post(app, outsider, `/games/${id}/moves`, { expectedVersion: 1, from: 'e7', to: 'e5' })).statusCode).toBe(403);
+    expect((await post(app, black, `/games/${id}/resign`, { expectedVersion: 1 })).statusCode).toBe(200);
+    expect((await read(restarted, second, '/account/games')).json().summary).toEqual({ wins: 1, draws: 0, losses: 0 });
+    expect((await read(app, black, `/games/${id}`)).json()).toMatchObject({ status: 'finished', playerNames: { white: whiteName, black: blackName } });
+  });
+
+  it('keeps earlier guest creations and acceptances unlinked on login and on retries, while new games use the account', async () => {
+    const { app, white, black, id: oldGame } = await setup();
+    const key = randomUUID(), priorChallenge = (await post(app, white, '/challenges', undefined, key)).json();
+    const oldSeats = (await pool.query('SELECT creator_guest_id, acceptor_guest_id FROM chess.challenges WHERE id=$1', [oldGame])).rows[0];
+    const name = username(); await auth(app, white, 'register', { username: name, password });
+    await auth(app, black, 'register', { username: username(), password });
+    expect((await post(app, white, '/challenges', undefined, key)).json()).toEqual(priorChallenge);
+    expect((await post(app, black, `/challenges/${oldGame}/accept`)).statusCode).toBe(200);
+    expect((await read(app, white, `/games/${oldGame}`)).json().playerNames).toEqual({ white: null, black: null });
+    const newGame = (await post(app, white, '/challenges')).json().id;
+    const guest = await browser(app);
+    expect((await post(app, guest, `/challenges/${newGame}/accept`)).statusCode).toBe(200);
+    expect((await read(app, guest, `/games/${newGame}`)).json().playerNames).toEqual({ white: name, black: null });
+    expect((await read(app, white, '/account/games')).json().games.map((g: { id: string }) => g.id)).toEqual([newGame]);
+    const otherBrowser = await browser(app); await auth(app, otherBrowser, 'login', { username: name, password });
+    expect((await read(app, otherBrowser, `/games/${oldGame}`)).statusCode).toBe(403);
+    expect((await auth(app, white, 'link-guest')).statusCode).toBe(200);
+    expect((await read(app, otherBrowser, `/games/${oldGame}`)).statusCode).toBe(200);
+    const games = (await read(app, white, '/account/games')).json().games;
+    expect(games.map((g: { id: string }) => g.id)).toEqual([newGame, oldGame]);
+    expect((await pool.query('SELECT creator_guest_id, acceptor_guest_id FROM chess.challenges WHERE id=$1', [oldGame])).rows[0]).toEqual(oldSeats);
+  });
+
+  it('denies automatic seat access after account switching, logout or account expiry without losing guest-owned games', async () => {
+    const { app, white, id: guestGame } = await setup(); const name = username();
+    const account = (await auth(app, white, 'register', { username: name, password })).json().account;
+    const game = (await post(app, white, '/challenges')).json().id;
+    const opponent = await browser(app); await post(app, opponent, `/challenges/${game}/accept`);
+    const second = await browser(app); await auth(app, second, 'login', { username: name, password });
+    await auth(app, white, 'register', { username: username(), password });
+    expect((await read(app, white, `/games/${game}`)).statusCode).toBe(403);
+    expect((await read(app, white, `/games/${game}/chat`)).statusCode).toBe(403);
+    expect((await post(app, white, `/games/${game}/resign`, { expectedVersion: 0 })).statusCode).toBe(403);
+    expect((await read(app, white, '/account/games')).json().games).toEqual([]);
+    await auth(app, white, 'logout');
+    expect((await read(app, white, `/games/${game}`)).statusCode).toBe(403);
+    expect((await read(app, white, `/games/${guestGame}`)).statusCode).toBe(200);
+    await pool.query("UPDATE chess.account_sessions SET expires_at=now()-interval '1 second' WHERE account_id=$1", [account.id]);
+    expect((await read(app, second, `/games/${game}`)).statusCode).toBe(403);
+    expect((await post(app, second, `/games/${game}/chat`, { text: 'Expired' })).statusCode).toBe(403);
+    await auth(app, second, 'login', { username: name, password });
+    expect((await read(app, second, `/games/${game}`)).statusCode).toBe(200);
+    await auth(app, second, 'logout');
+    expect((await read(app, second, `/games/${game}`)).statusCode).toBe(403);
+  });
+
+  it('serializes concurrent acceptance across browsers and accounts without occupying both sides or duplicating a game', async () => {
+    const app = server(), creator = await browser(app), first = await browser(app), second = await browser(app), competitor = await browser(app);
+    const otherServer = server();
+    const name = username(); await auth(app, first, 'register', { username: name, password });
+    await auth(app, second, 'login', { username: name, password });
+    await auth(app, competitor, 'register', { username: username(), password });
+    const id = (await post(app, creator, '/challenges')).json().id;
+    const responses = await Promise.all([post(app, first, `/challenges/${id}/accept`), post(otherServer, second, `/challenges/${id}/accept`)]);
+    expect(responses.map(r => r.statusCode)).toEqual([200, 200]);
+    expect(responses[0]!.json()).toEqual(responses[1]!.json());
+    const contested = (await post(app, creator, '/challenges')).json().id;
+    const race = await Promise.all([post(app, first, `/challenges/${contested}/accept`), post(otherServer, competitor, `/challenges/${contested}/accept`)]);
+    expect(race.map(r => r.statusCode).sort()).toEqual([200, 409]);
+    const own = (await post(app, first, '/challenges')).json().id;
+    const ownRace = await Promise.all([post(app, first, `/challenges/${own}/accept`), post(otherServer, second, `/challenges/${own}/accept`)]);
+    expect(ownRace.map(r => r.statusCode)).toEqual([403, 403]);
+    expect((await pool.query('SELECT count(*)::int AS n FROM chess.games WHERE id IN ($1,$2,$3)', [id, contested, own])).rows[0].n).toBe(2);
+    // Explicit linking still cannot attach the other guest seat to the same account.
+    await auth(app, creator, 'login', { username: name, password });
+    expect((await auth(app, creator, 'link-guest')).json().error).toBe('opposite_seat_linked');
+  });
+
   it('requires current credentials for renames and updates linked display names without changing archive ownership', async () => {
     const { app, white, black, outsider, id } = await setup();
     const original = username(), taken = username(), renamed = username();

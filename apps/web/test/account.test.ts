@@ -8,6 +8,8 @@ it('shows private account details and current-password settings without duplicat
   const html = renderToStaticMarkup(createElement(AccountSettings, { busy: false, onAction: () => {},
     state: { account: { id: 'a', username: 'walnut' }, guestLinked: false, createdAt: '2026-10-28T10:00:00Z' } }));
   expect(html).toContain('Guest game access');
+  expect(html).toContain('New games created or accepted while signed in belong to your account automatically.');
+  expect(html).toContain('Earlier guest games stay separate.');
   expect(html).toContain('Link this browser'); expect(html).toContain('Log out');
   expect(html.match(/autoComplete="current-password"/g)).toHaveLength(2);
   expect(html).toContain('Confirm new password'); expect(html).toContain('minLength="15"');
@@ -46,6 +48,7 @@ it('offers explicit linking only for an authenticated, unlinked guest seat', () 
   expect(render(state, true)).toContain('href="/account#settings" target="_blank"');
   expect(render(state, true)).toContain('Signing in does not link this guest seat');
   expect(render(state, true)).toContain('Playing as Guest');
+  // An account-owned seat needs no linking hint even when this browser's older guest games are unlinked.
   expect(render(state, false)).toBe('');
   expect(render({ ...state, guestLinked: true }, true)).toBe('');
   expect(render(null, true)).toBe('');

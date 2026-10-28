@@ -26,7 +26,7 @@ export async function currentGuest(pool: pg.Pool, request: FastifyRequest): Prom
   const token = cookieToken(request.headers.cookie);
   if (token === null) return null;
   const { rows } = await pool.query<{ id: string; csrf_token: string }>(
-    'SELECT id, csrf_token FROM chess.guest_sessions WHERE token_hash = $1 AND expires_at > now()',
+    'SELECT id, csrf_token FROM chess.guest_sessions WHERE token_hash = $1 AND expires_at > now() AND NOT account_play_seat',
     [tokenHash(token)],
   );
   const guest = rows[0];

@@ -11,7 +11,8 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
   return <section className="account-details" aria-label="Account details and settings">
     <div><h3>Guest game access</h3>
       <p>{state.guestLinked ? 'This browser’s guest games are linked.' : 'This browser’s guest games are not linked.'}</p>
-      {!state.guestLinked && <p>Signing in does not link games. Link this browser’s guest games to show your username on those seats and in their private chat.</p>}
+      <p>New games created or accepted while signed in belong to your account automatically.</p>
+      {!state.guestLinked && <p>Earlier guest games stay separate. Link this browser’s guest games to keep them in your account and show your username on those seats and in their private chat.</p>}
       {!state.guestLinked && <button disabled={busy} onClick={() => onAction('/link-guest')}>Link this browser’s guest games</button>}
       <p><button className="secondary" disabled={busy} onClick={() => onAction('/logout')}>Log out</button></p>
       <small>Password recovery is not available. Keep your password safe.</small>
