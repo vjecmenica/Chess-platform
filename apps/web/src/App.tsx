@@ -35,6 +35,7 @@ import { canExportGame, downloadGamePgn } from './pgn-export';
 import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
+import { createResizePreview } from './board-resize';
 import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
@@ -178,6 +179,8 @@ export function App() {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const boardFrameRef = useRef<HTMLDivElement | null>(null);
   const gameLayoutRef = useRef<HTMLDivElement | null>(null);
+  const resizeMoveScroll = useRef<number | null>(null);
+  const resizePreview = useRef<ReturnType<typeof createResizePreview> | null>(null);
   const resizeGesture = useRef<{ id: number; x: number; y: number; size: number } | null>(null);
   const analysisOpenRef = useRef(false);
   analysisOpenRef.current = analysisOpen;
@@ -976,8 +979,8 @@ export function App() {
     ...(arrowPreview === null ? [] : [arrowPreview])];
   const marks = new Map(boardNotes?.marks.map(mark => [mark.square, mark.color]) ?? []);
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
-  const captured = game === null ? null : capturedPieces(game, displayedPly,
-    analysisOpen ? analysis : null);
+  const captured = useMemo(() => game === null ? null : capturedPieces(game, displayedPly,
+    analysisOpen ? analysis : null), [game, displayedPly, analysisOpen, analysis]);
   const coordinates = game === null ? null : boardCoordinates(orientation);
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
@@ -1036,14 +1039,18 @@ export function App() {
     const frame = boardFrameRef.current;
     if (frame === null) return;
     const update = () => {
+      if (resizeGesture.current) return;
       setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
       const layout = gameLayoutRef.current;
       const top = layout?.querySelector('.play-column > .player-material-top')?.getBoundingClientRect();
       const bottom = layout?.querySelector('.play-column > .player-material-bottom')?.getBoundingClientRect();
-      if (layout && top && bottom) setPlayerWorkspace({
-        top: Math.round(top.top - layout.getBoundingClientRect().top),
-        height: Math.round(bottom.bottom - top.top),
-      });
+      if (layout && top && bottom) {
+        layout.style.setProperty('--analysis-sidebar-height', `${Math.max(0, window.innerHeight - top.top - 20)}px`);
+        setPlayerWorkspace({
+          top: Math.round(top.top - layout.getBoundingClientRect().top),
+          height: Math.round(bottom.bottom - top.top),
+        });
+      }
       setBoardAlignmentOffset(Math.round(frame.getBoundingClientRect().top
         - (gameLayoutRef.current?.getBoundingClientRect().top ?? 0)));
     };
@@ -1051,7 +1058,8 @@ export function App() {
     const observer = new ResizeObserver(update);
     observer.observe(frame);
     if (frame.parentElement?.parentElement) observer.observe(frame.parentElement.parentElement);
-    return () => observer.disconnect();
+    window.addEventListener('resize', update);
+    return () => { observer.disconnect(); window.removeEventListener('resize', update); };
   }, [analysisOpen, game?.id, orientation]);
 
   useEffect(() => {
@@ -1061,6 +1069,7 @@ export function App() {
     const update = () => {
       cancelAnimationFrame(frameId);
       frameId = requestAnimationFrame(() => {
+        if (resizeGesture.current) return;
         const stacked = window.matchMedia('(max-width: 900px)').matches;
         const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
         const frame = boardFrameRef.current?.getBoundingClientRect();
@@ -1079,6 +1088,13 @@ export function App() {
     return () => { observer.disconnect(); cancelAnimationFrame(frameId); window.removeEventListener('resize', update); };
   }, [analysisOpen, game?.id]);
 
+  useEffect(() => () => { resizePreview.current?.cancel(); }, []);
+  useLayoutEffect(() => {
+    const moves = gameLayoutRef.current?.querySelector('.moves');
+    if (moves && resizeMoveScroll.current !== null) moves.scrollTop = resizeMoveScroll.current;
+    resizeMoveScroll.current = null;
+  }, [boardSize]);
+
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
     return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches,
@@ -1087,6 +1103,9 @@ export function App() {
 
   function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
     if (resizeGesture.current?.id !== event.pointerId) return;
+    resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
+    resizePreview.current?.finish();
+    resizePreview.current = null;
     resizeGesture.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1274,24 +1293,35 @@ export function App() {
                     event.preventDefault(); event.stopPropagation();
                     resizeGesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY,
                       size: (boardRef.current?.clientWidth ?? 0) + 14 };
+                    const limit = resizeLimit();
+                    resizePreview.current = createResizePreview(size => {
+                      const layout = gameLayoutRef.current;
+                      if (!layout) return;
+                      layout.style.setProperty('--board-size', `${size}px`);
+                      layout.style.setProperty('--board-column-size', `${size + 34}px`);
+                      layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
+                      layout.style.setProperty('--board-row-height', `${size}px`);
+                    }, size => { setBoardSize(size); setBoardRowHeight(size); }, limit);
                     event.currentTarget.setPointerCapture(event.pointerId);
                   }}
                   onPointerMove={event => {
                     const active = resizeGesture.current;
                     if (active?.id !== event.pointerId) return;
-                    setBoardSize(resizedBoardSize(active.size, event.clientX - active.x,
-                      event.clientY - active.y, resizeLimit()));
+                    resizePreview.current?.update(active.size, event.clientX - active.x, event.clientY - active.y);
                     event.stopPropagation();
                   }}
                   onPointerUp={finishResize} onPointerCancel={finishResize}
                   onLostPointerCapture={event => {
-                    if (resizeGesture.current?.id === event.pointerId) resizeGesture.current = null;
+                    if (resizeGesture.current?.id === event.pointerId) {
+                      resizePreview.current?.finish(); resizePreview.current = null; resizeGesture.current = null;
+                    }
                   }}
                   onKeyDown={event => {
                     const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 20
                       : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -20 : null;
                     if (delta === null) return;
                     event.preventDefault(); event.stopPropagation();
+                    resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
                     setBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
                       delta, delta, resizeLimit()));
                   }} onClick={event => event.stopPropagation()} />
