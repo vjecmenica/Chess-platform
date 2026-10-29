@@ -1,23 +1,21 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
-import { AccountForm, AccountMenu, GuestSeatLink } from '../src/AccountMenu';
+import { AccountForm, AccountMenu } from '../src/AccountMenu';
 import { AccountSettings } from '../src/AccountSettings';
 
 it('shows private account details and current-password settings without duplicating the archive', () => {
   const html = renderToStaticMarkup(createElement(AccountSettings, { busy: false, onAction: () => {},
     state: { account: { id: 'a', username: 'walnut' }, guestLinked: false, createdAt: '2026-10-28T10:00:00Z' } }));
-  expect(html).toContain('Guest game access');
-  expect(html).toContain('New games created or accepted while signed in belong to your account automatically.');
-  expect(html).toContain('Earlier guest games stay separate.');
-  expect(html).toContain('Link this browser'); expect(html).toContain('Log out');
+  expect(html).toContain('Account session');
+  expect(html).not.toContain('Link this browser'); expect(html).toContain('Log out');
   expect(html.match(/autoComplete="current-password"/g)).toHaveLength(3);
   expect(html).toContain('Confirm new password'); expect(html).toContain('minLength="15"');
   expect(html).not.toContain('archive-table');
   expect(html).toContain('No verified email.');
   const linked = renderToStaticMarkup(createElement(AccountSettings, { busy: true, onAction: () => {},
     state: { account: { id: 'a', username: 'walnut' }, guestLinked: true, createdAt: null } }));
-  expect(linked).toContain('guest games are linked');
+  expect(linked).not.toContain('guest games are linked');
   expect(linked).not.toContain('>Link this browser');
   expect(linked).toContain('disabled=""');
 });
@@ -41,15 +39,10 @@ it('offers an accessible account dialog without blocking guest play', () => {
   expect(html).toContain('Close');
 });
 
-it('offers explicit linking only for an authenticated, unlinked guest seat', () => {
-  const state = { account: { id: 'a', username: 'walnut' }, guestLinked: false, createdAt: null };
-  const render = (value: typeof state | null, guestSeat: boolean) => renderToStaticMarkup(
-    createElement(GuestSeatLink, { state: value, guestSeat }));
-  expect(render(state, true)).toContain('href="/account#settings" target="_blank"');
-  expect(render(state, true)).toContain('Signing in does not link this guest seat');
-  expect(render(state, true)).toContain('Playing as Guest');
-  // An account-owned seat needs no linking hint even when this browser's older guest games are unlinked.
-  expect(render(state, false)).toBe('');
-  expect(render({ ...state, guestLinked: true }, true)).toBe('');
-  expect(render(null, true)).toBe('');
+it('keeps authentication primary and account navigation secondary', () => {
+  const form = renderToStaticMarkup(createElement(AccountForm, { mode: 'login', busy: false, onSubmit: () => {}, onMode: () => {} }));
+  expect(form).toContain('class="primary">Log in</button>');
+  expect(form).toContain('class="secondary">Create an account</button>');
+  const menu = renderToStaticMarkup(createElement(AccountMenu, { csrfToken: 'test' }));
+  expect(menu).not.toContain('Link games'); expect(menu).not.toContain('Playing as Guest');
 });

@@ -140,7 +140,7 @@ Add the next numbered file, such as `019_description.sql`, for each schema chang
 - [Roadmap](docs/roadmap.md): the development setup and later feature order.
 - [Architecture](docs/architecture.md): chosen foundation and proposed game/analysis design.
 - [Participant game chat](docs/game-chat.md): migration 017, private guest-seat access, delivery, retries, and limits.
-- [Accounts](docs/accounts.md): registration, account-owned seats, explicit guest linking, and verified-email recovery (migration 021 and email setup).
+- [Accounts](docs/accounts.md): registration, account-owned seats, historical guest access, and verified-email recovery (migration 021 and email setup).
 - [UI typography](docs/typography.md): shared text roles, sizes, and dense-content guidance.
 
 `apps/web` owns the interface; `apps/server` owns HTTP and database access. `packages/contracts` shares health, challenge, clock, and game response types. `packages/domain` wraps chess.js for move validation, replay history, game results, and the in-memory clock, with no browser, server, or database dependency. Its [API guide](packages/domain/README.md) documents position and game APIs, snapshots, and rejection results. Runtime packages build to their own `dist` directories. Migrations stay alongside the server source and must accompany a server deployment.

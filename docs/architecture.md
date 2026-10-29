@@ -5,10 +5,10 @@ The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, 
 ## Start with one game server
 
 Accounts use PostgreSQL-backed opaque sessions alongside existing guest sessions.
-Explicit [guest linking](accounts.md) grants an account access to the original
-guest-owned seats without rewriting game, command-receipt, or chat ownership.
-New authenticated seats belong to their account automatically; earlier guest games
-still need explicit linking. Optional verified-email recovery now preserves those
+Historical [guest links](accounts.md) preserve access to original guest-owned seats
+without rewriting game, command-receipt, or chat ownership. New authenticated seats
+belong to their account automatically; earlier guest games can no longer be claimed.
+Optional verified-email recovery now preserves those
 seats while revoking compromised sessions. Real email delivery and domain setup
 must be validated before public launch; see [account operations](accounts.md).
 

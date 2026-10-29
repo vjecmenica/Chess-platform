@@ -101,7 +101,7 @@ it('derives Stats from all completed result counts rather than the loaded page a
 });
 
 it('offers a clear empty archive and exposes loading without any private rows', () => {
-  expect(renderToStaticMarkup(createElement(GameArchive, { page: { ...page, games: [] } }))).toContain('No linked games yet');
+  expect(renderToStaticMarkup(createElement(GameArchive, { page: { ...page, games: [] } }))).toContain('No account games yet');
   const loading = renderToStaticMarkup(createElement(AccountPage));
   expect(loading).toContain('role="status"');
   expect(loading).toContain('Loading account and games');

@@ -1095,15 +1095,13 @@ export function App() {
 
   return (
     <>
-    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken}
-      guestSeat={imported === null && game !== null && game.playerNames?.[game.yourSeat] === null} />} />}
+    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       {!analysisOpen && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
-        <AccountMenu csrfToken={session?.csrfToken}
-          guestSeat={imported === null && game !== null && game.playerNames?.[game.yourSeat] === null} />
+        <AccountMenu csrfToken={session?.csrfToken} />
       </header>}
       {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
@@ -1124,7 +1122,7 @@ export function App() {
             setSelectedTimeControl(value);
             createRequestId.current = null;
           }} />
-          <button type="button" disabled={busy} onClick={() => void createChallenge()}>
+          <button type="button" className="primary" disabled={busy} onClick={() => void createChallenge()}>
             {busy ? 'Creating…' : 'Create challenge'}
           </button>
           </>
@@ -1142,7 +1140,7 @@ export function App() {
           {challenge.status === 'open' && challenge.yourSeat === 'white' &&
             <p>Open the link in another browser or private window to use a different guest session.</p>}
           {challenge.status === 'open' && challenge.yourSeat === null &&
-            <button type="button" disabled={busy} onClick={() => void acceptChallenge()}>
+            <button type="button" className="primary" disabled={busy} onClick={() => void acceptChallenge()}>
               {busy ? 'Joining…' : 'Accept challenge as Black'}
             </button>}
         </details>}
@@ -1162,7 +1160,7 @@ export function App() {
         <label htmlFor="pgn-text">Or paste PGN</label>
         <textarea id="pgn-text" value={pgnText} onChange={event => setPgnText(event.target.value)}
           rows={5} placeholder={'[Event "Casual game"]\n\n1. e4 e5 2. Nf3 Nc6 *'} />
-        <button type="button" onClick={() => openPgn(pgnText)}>Open in Analysis</button>
+        <button type="button" className="primary" onClick={() => openPgn(pgnText)}>Open in Analysis</button>
         <button type="button" className="secondary" onClick={() => {
           showImportedGame(importPgn('[White "White"]\n[Black "Black"]\n[Result "*"]\n\n*', `blank-${crypto.randomUUID()}`));
         }}>Open blank analysis</button>
@@ -1432,7 +1430,7 @@ export function App() {
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
                     : 'Press Ready when you are prepared to start. White’s clock begins when both guests are ready.'}</p>
-                  {!game.clocks.ready[game.yourSeat] && <button type="button" disabled={readyBusy || submitting}
+                  {!game.clocks.ready[game.yourSeat] && <button type="button" className="primary" disabled={readyBusy || submitting}
                     onClick={() => void markReady()}>{readyBusy ? 'Confirming…' : 'Ready to start'}</button>}
                 </div>}
                 <div className="game-actions">
@@ -1469,7 +1467,7 @@ export function App() {
                           requestAnimationFrame(() => resignFocus.current?.focus());
                         }}>Cancel</button>
                       </div>
-                      : <button type="button" className="secondary" ref={resignFocus}
+                      : <button type="button" className="danger" ref={resignFocus}
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
                   </>}
@@ -1497,11 +1495,11 @@ export function App() {
                 </div>}
                 {pending !== null && !submitting && <div className="retry">
                   <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>
-                  <button type="button" onClick={() => void submitMove(pending, true)}>Retry move</button>
+                  <button type="button" className="primary" onClick={() => void submitMove(pending, true)}>Retry move</button>
                 </div>}
                 {pendingAction !== null && !submitting && <div className="retry">
                   <p>The action has not been confirmed. Retry the same request to learn whether it was saved.</p>
-                  <button type="button" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
+                  <button type="button" className="primary" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div>

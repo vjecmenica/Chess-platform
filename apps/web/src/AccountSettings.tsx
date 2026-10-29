@@ -9,12 +9,8 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
     onAction(path, body);
   }
   return <section className="account-details" aria-label="Account details and settings">
-    <div><h3>Guest game access</h3>
-      <p>{state.guestLinked ? 'This browser’s guest games are linked.' : 'This browser’s guest games are not linked.'}</p>
-      <p>New games created or accepted while signed in belong to your account automatically.</p>
-      {!state.guestLinked && <p>Earlier guest games stay separate. Link this browser’s guest games to keep them in your account and show your username on those seats and in their private chat.</p>}
-      {!state.guestLinked && <button disabled={busy} onClick={() => onAction('/link-guest')}>Link this browser’s guest games</button>}
-      <p><button className="secondary" disabled={busy} onClick={() => onAction('/logout')}>Log out</button></p>
+    <div><h3>Account session</h3>
+      <button className="secondary" disabled={busy} onClick={() => onAction('/logout')}>Log out</button>
     </div>
     <form onSubmit={event => submit(event, '/email')} className="account-email"><h3>Recovery email</h3>
       {state.email?.verified ? <p>Verified: <strong>{state.email.verified}</strong>. Password recovery is available{state.email.deliveryEnabled ? '.' : ' once email delivery is restored.'}</p>
@@ -28,7 +24,7 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
       <label htmlFor="email-password">Current password</label>
       <input id="email-password" name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} disabled={busy || !state.email?.deliveryEnabled} />
       <small>Changing the address pauses recovery until the new address is verified.</small>
-      <button disabled={busy || !state.email?.deliveryEnabled}>Send verification</button>
+      <button className="primary" disabled={busy || !state.email?.deliveryEnabled}>Send verification</button>
     </form>
     <form onSubmit={event => submit(event, '/username')}><h3>Change username</h3>
       <label htmlFor="new-username">New username</label>
@@ -37,7 +33,7 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
       <small>3–24 letters, numbers, or underscores. Case does not matter.</small>
       <label htmlFor="username-password">Current password</label>
       <input id="username-password" name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} disabled={busy} />
-      <button disabled={busy}>Save username</button>
+      <button className="primary" disabled={busy}>Save username</button>
     </form>
     <form onSubmit={event => submit(event, '/password')}><h3>Change password</h3>
       <label htmlFor="current-password">Current password</label>
@@ -47,7 +43,7 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
       <label htmlFor="confirm-password">Confirm new password</label>
       <input id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" required minLength={15} maxLength={128} disabled={busy} />
       <small>15–128 characters. Other sessions will be signed out.</small>
-      <button disabled={busy}>Save password</button>
+      <button className="primary" disabled={busy}>Save password</button>
     </form>
   </section>;
 }

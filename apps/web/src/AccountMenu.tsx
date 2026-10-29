@@ -16,8 +16,6 @@ export const accountMessages: Record<string, string> = {
   session_changed: 'Your session changed. Refresh the page and try again.',
   guest_session_required: 'Your session expired. Refresh the page and try again.',
   account_required: 'Please log in again.',
-  guest_already_linked: 'This guest session is already linked to another account.',
-  opposite_seat_linked: 'This account already owns the other seat in one of these games.',
 };
 
 export function AccountForm({ mode, busy, onSubmit, onMode }: {
@@ -36,7 +34,7 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
       aria-describedby="password-help" disabled={busy} />
     <small id="password-help">15–128 characters. Recovery requires a verified email in Account Settings.</small>
     <div className="account-actions">
-      <button disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Register' : 'Log in'}</button>
+      <button className="primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Register' : 'Log in'}</button>
       <button type="button" className="secondary" onClick={onMode} disabled={busy}>
         {mode === 'register' ? 'Use an existing account' : 'Create an account'}</button>
     </div>
@@ -44,14 +42,7 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function GuestSeatLink({ state, guestSeat }: { state: AccountState | null; guestSeat: boolean }) {
-  if (!guestSeat || !state?.account || state.guestLinked) return null;
-  return <a className="guest-seat-link" href="/account#settings" target="_blank" rel="noopener"
-    title="Signing in does not link this guest seat. Link this browser’s guest games in Account Settings to show your username. Opens in a new tab.">
-    Playing as Guest · Link games<span className="visually-hidden"> in Account Settings (opens in a new tab)</span></a>;
-}
-
-export function AccountMenu({ csrfToken, guestSeat = false }: { csrfToken: string | undefined; guestSeat?: boolean }) {
+export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -98,7 +89,6 @@ export function AccountMenu({ csrfToken, guestSeat = false }: { csrfToken: strin
   }
 
   return <>
-    <GuestSeatLink state={state} guestSeat={guestSeat} />
     {state?.account ? <a className="account-trigger secondary" href="/account">{state.account.username}</a> :
       <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
         dialog.current?.showModal(); void load();

@@ -53,17 +53,38 @@ input:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid
 .pgn-details dl div { display: flex; gap: 8px; }
 .pgn-details dt { font-weight: 700; }
 .pgn-details dd { margin: 0; overflow-wrap: anywhere; }
-button { border: 1px solid #143d30; background: #143d30; color: white; border-radius: 6px; padding: 9px 13px; font: inherit; font-size: var(--text-compact); line-height: 1.35; cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .6; }
-button:focus-visible { outline: 3px solid #a47a37; outline-offset: 3px; }
-.secondary { background: transparent; color: #143d30; }
+/* Quiet by default; primary emphasis is an explicit component decision. */
+button { border: 1px solid #ad9b84; background: #faf7ef; color: #3b2c22; border-radius: 8px;
+  padding: 9px 13px; font: inherit; font-size: var(--text-compact); font-weight: 600; line-height: 1.35; cursor: pointer; }
+:where(button:hover:not(:disabled)) { border-color: #77583d; background: #efe6d5; }
+:where(button:active:not(:disabled)) { background: #e2d4be; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible { outline: 3px solid #a66422; outline-offset: 3px; }
+button.secondary { background: #faf7ef; color: #3b2c22; }
+button.secondary:hover:not(:disabled) { border-color: #77583d; background: #efe6d5; }
+button.secondary:active:not(:disabled) { background: #e2d4be; }
+button.primary { background: linear-gradient(#087abf, #0867a5); border-color: #075986; color: #fff;
+  box-shadow: inset 0 1px 0 #80c7e766, inset 0 -1px 0 #044d82, 0 4px 0 #084d7a, 0 7px 12px #073e6552;
+  text-shadow: 0 1px 1px #053954; margin-bottom: 4px;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out; }
+button.primary:hover:not(:disabled) { background: linear-gradient(#087bbf, #086eaa); transform: translateY(-1px); }
+button.primary:active:not(:disabled) { background: linear-gradient(#0867a5, #0872b3); transform: translateY(3px);
+  box-shadow: inset 0 2px 3px #044d8266, 0 1px 0 #084d7a; }
+button.primary:focus-visible { outline: 3px solid #76c9ff; outline-offset: 4px; }
+button.primary:disabled { background: #d8e3e9; border-color: #acbbc4; color: #53636d;
+  box-shadow: none; text-shadow: none; transform: none; opacity: 1; }
+button.danger { border-color: #a23e32; background: #a23e32; color: #fff; }
+button.danger:hover:not(:disabled), button.danger:active:not(:disabled) { background: #842d24; border-color: #842d24; }
+button.danger:focus-visible { outline-color: #d97666; }
+@media (prefers-reduced-motion: reduce) {
+  button.primary { transition: none; }
+  button.primary:hover:not(:disabled), button.primary:active:not(:disabled) { transform: none; }
+}
 footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta); }
 
 .account-trigger { flex: 0 0 auto; max-width: min(12rem, 35vw); margin-left: auto;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: normal; }
-.analysis-navigation .account-trigger { margin-left: 0; color: #fbf8f1; border-color: #99836a; }
-.guest-seat-link { color: #604326; font-size: var(--text-compact); font-weight: 500; letter-spacing: normal; }
-.analysis-navigation .guest-seat-link { color: #f4e2c6; }
+.analysis-navigation .account-trigger { margin-left: 0; background: transparent; color: #fbf8f1; border-color: #99836a; }
 .account-dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 32px);
   overflow: auto; padding: 0; border: 1px solid #9a856b; border-radius: 8px;
   background: #fffdf8; color: #1d352c; font: inherit; font-size: var(--text-body);
@@ -390,7 +411,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   border: 1px solid #9bad98; border-radius: 8px; box-shadow: 0 8px 25px #142b2540; }
 .analysis-menu > button, .analysis-menu .menu-actions button, .nag-options button { min-height: 32px;
   display: flex; align-items: center; padding: 6px 8px; line-height: 1.35;
-  border: 1px solid #cbd9c8; border-radius: 4px; background: #f4f6ef; color: #143d30; text-align: left; }
+  text-align: left; }
 .analysis-menu button:focus-visible { outline: 3px solid #d48628; }
 .comment-editor { display: grid; gap: 5px; }
 .comment-editor textarea { min-height: 70px; resize: vertical; font: inherit; color: inherit; }
@@ -438,55 +459,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .resign-confirmation { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 6px;
   align-items: center; padding: 8px; border: 1px solid #b66354; border-radius: 6px; background: #fff3ef; }
 .resign-confirmation p { flex-basis: 100%; margin: 0; color: #6e3027; font-size: var(--text-body); }
-.danger { border-color: #a23e32; background: #a23e32; color: #fff; font-weight: 600; }
-.danger:hover:not(:disabled) { background: #842d24; }
-/* Workspace actions share a compact, tactile hierarchy; board squares keep their own states. */
-.game-layout :is(.replay-controls, .game-actions, .finished-result-actions) button,
-.game-layout .analysis-flip,
-.analysis-workspace :is(.engine-heading, .review-heading, .engine-settings-heading) button {
-  min-height: 34px; border: 1px solid #ad9b84; border-radius: 6px;
-  background: #faf7ef; color: #3b2c22; font-weight: 600;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.game-layout :is(.replay-controls, .game-actions, .finished-result-actions) button:hover:not(:disabled),
-.game-layout .analysis-flip:hover:not(:disabled),
-.analysis-workspace :is(.engine-heading, .review-heading, .engine-settings-heading) button:hover:not(:disabled) {
-  border-color: #77583d; background: #efe6d5;
-}
-.game-layout :is(.replay-controls, .game-actions, .finished-result-actions) button:active:not(:disabled),
-.game-layout .analysis-flip:active:not(:disabled),
-.analysis-workspace :is(.engine-heading, .review-heading, .engine-settings-heading) button:active:not(:disabled) {
-  background: #e2d4be;
-}
-.game-layout :is(.replay-controls, .game-actions, .finished-result-actions) button:focus-visible,
-.game-layout .analysis-flip:focus-visible,
-.analysis-workspace :is(.engine-heading, .review-heading, .engine-settings-heading) button:focus-visible {
-  outline: 3px solid #a66422; outline-offset: 2px;
-}
-.game-layout :is(.replay-controls, .game-actions, .finished-result-actions) button:disabled,
-.analysis-workspace :is(.engine-heading, .review-heading, .engine-settings-heading) button:disabled {
-  color: #857b6f; background: #f0ece4; border-color: #d1c9bc; opacity: 1;
-}
-.game-layout .game-actions button:not(.secondary):not(.danger),
-.game-layout .finished-result-actions button {
-  border-color: #493729; background: #493729; color: #fff9ee;
-}
-.game-layout .game-actions button:not(.secondary):not(.danger):hover:not(:disabled),
-.game-layout .finished-result-actions button:hover:not(:disabled) {
-  border-color: #624830; background: #624830;
-}
-.game-layout .game-actions button:not(.secondary):not(.danger):active:not(:disabled),
-.game-layout .finished-result-actions button:active:not(:disabled) {
-  border-color: #35271d; background: #35271d;
-}
-.game-layout .game-actions button.danger { border-color: #a23e32; background: #a23e32; color: #fff; }
-.game-layout .game-actions button.danger:hover:not(:disabled),
-.game-layout .game-actions button.danger:active:not(:disabled) { border-color: #842d24; background: #842d24; }
-.game-layout .game-actions button:not(.secondary):not(.danger):disabled,
-.game-layout .finished-result-actions button:disabled,
-.game-layout .game-actions button.danger:disabled {
-  border-color: #d1c9bc; background: #f0ece4; color: #857b6f;
-}
 .draw-offer { flex-basis: 100%; margin: 0; padding: 8px 10px; border-radius: 6px;
   background: #f4efe2; color: #463928; }
 .draw-offer p { margin: 0 0 6px; }

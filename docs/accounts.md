@@ -1,7 +1,6 @@
 # Accounts and guest game access
 
-This milestone adds username/password registration, login, logout, and explicit
-guest-to-account linking, optional verified email, and password recovery. It does not
+This milestone adds username/password registration, login, logout, optional verified email, and password recovery. It does not
 add ratings, public game access, or public profiles.
 
 ## Ownership
@@ -11,13 +10,17 @@ original guest IDs. Migration `018_accounts.sql` adds accounts, expiring account
 sessions, a nullable account owner on guest records, and durable authentication
 rate counters. Earlier migrations and game records are unchanged.
 
-Registration and login **do not link earlier guest games automatically**. The signed-in
-player chooses **Link this browser's guest games**, proving possession of the
-current unexpired guest cookie and CSRF token. The request accepts no guest ID,
-game ID, or seat. Linking attaches that guest identity and its existing/future
-games to the account; it does not transfer seats. A guest cannot be relinked to
-another account. An account cannot link opposing seats in the same challenge;
-account locks serialize links and acceptance across browsers and server processes.
+Registration and login never claim guest games. The retroactive guest-linking action
+and `POST /account/link-guest` have been removed. Games begun as a guest remain guest
+owned even if that browser signs in mid-game; they do not enter its account archive.
+The original browser guest cookie still permits guest play.
+
+Historical guest-to-account relationships created before this change are preserved.
+They continue to grant private game/chat access and archive visibility through the
+existing ownership join. No historical records are rewritten. The `account_play_seat`
+marker distinguishes authenticated play seats from these older linked browser seats;
+a future rating system must establish eligibility from that distinction, not merely
+from a non-null account owner. No ratings are implemented here.
 
 ### New authenticated games
 
@@ -33,7 +36,7 @@ The internal identity is allocated lazily under the account lock. Its random bea
 values are never issued as cookies, and guest authentication excludes these rows.
 An authenticated account session, bound to a real browser guest session, is required
 to use it. Login, logout and account switching do not change a browser's unlinked
-guest games; those remain accessible only through that guest or explicit linking.
+guest games; those remain accessible only through that guest or historical linking.
 An expired account session cannot access the account play seat. Never delete internal
 play-seat identities as expired browser sessions: like explicitly linked guest rows,
 they are durable game/receipt identities, not expiring ownership records.
@@ -42,8 +45,8 @@ Challenge creation retries are scoped to the account's play seat (and therefore 
 across its browsers). Retrying an earlier creation with the same browser guest and
 request ID returns the original guest challenge without linking it. Retrying acceptance
 of an already occupied guest seat also leaves it unchanged. Account locks serialize
-new seat allocation, acceptance, and explicit links; a single account cannot own both
-seats, including via a later guest link. Session/CSRF state is rechecked after acquiring
+new seat allocation and acceptance; a single account cannot own both
+seats, including historically linked seats. Session/CSRF state is rechecked after acquiring
 locks so an already rotated request cannot occupy a new seat.
 
 A fresh browser first receives its own guest session, then logs in normally.
@@ -56,17 +59,12 @@ no access. There are no public account/game/chat endpoints.
 Authorized game reads include each seat's account username, or null for
 an unlinked seat. Player strips and private chat use this shared seat data rather
 than the viewer's current account. Unlinked players appear as Guest, with their
-side retained where needed. Linking sends a metadata refresh through the existing
+side retained where needed. Username changes send a metadata refresh through the existing
 game stream without incrementing the move version. Names are not stored in move
 receipts or duplicated on chat messages. Imported PGN identities are unchanged.
-When a signed-in participant is using an unlinked guest seat, the game header
-offers **Playing as Guest · Link games**. This opens Account Settings in a new
-tab and explains the explicit linking action; it never links on login or click
-alone. Account information refreshes on window focus after actions in another tab.
 The account dialog closes with its Close button or Escape, never a backdrop click.
 
-Unlinked guest games remain available through the existing guest flow. Only link
-a guest session on a browser you control. Losing an unlinked guest cookie still
+Unlinked guest games remain available through the existing guest flow. Losing an unlinked guest cookie still
 loses access; an expired guest session cannot be claimed later merely from a URL.
 Linked guest records remain durable even after their bearer expires.
 
@@ -85,7 +83,7 @@ Linked guest records remain durable even after their bearer expires.
   production/non-loopback deployments use Secure cookies and must serve HTTPS.
   Login/registration rotate the guest token and CSRF token and replace the current
   account session. Account creation and session issuance commit atomically.
-- All mutations, including login, registration, linking and logout, require the
+- All mutations, including login, registration and logout, require the
   existing synchronizer CSRF header. No cross-origin credentialed access is enabled.
   Switching to another account creates a separate guest bearer rather than carrying
   a previously linked identity into it.
@@ -130,7 +128,7 @@ existing Argon2id/password policy, requires matching confirmation, invalidates a
 reset links and account sessions, and rotates associated guest bearer credentials.
 Original seat IDs, linked ownership, games and chat remain intact. Normal login is
 required afterward. As with a normal password change, browser-only games that were
-never explicitly linked are not recoverable through an account; link them first.
+never historically linked are not recoverable through an account.
 
 Links use only configured PUBLIC_ORIGIN and a URL fragment, never a Host header or
 query parameter. The browser removes the fragment from history before rendering and
@@ -187,8 +185,8 @@ email corpus or token is retained beyond the small local test-mail folder.
 
 `npm run check` covers UI rendering/type checks/builds. `npm run test:db` uses only
 the configured disposable `TEST_DATABASE_URL` and tests registration, password
-hashing, cookie rotation, CSRF, explicit linking, another browser/server, receipt
-retries, private chat, logout, expiration, throttling, and concurrent seat-link
+hashing, cookie rotation, CSRF, historical link compatibility, another browser/server, receipt
+retries, private chat, logout, expiration, throttling, and concurrent seat-ownership
 conflicts. Recovery tests inject a fake transport and cover verification, expiry,
 reuse, replacement, CSRF, throttling, reset/session revocation and restored game access.
 Tests use synthetic accounts and games, never real credentials.
@@ -225,7 +223,7 @@ no global leaderboard, public archive, or new per-message identity lookup.
 ## Account settings
 
 The private /account page combines username, creation date, this browser's explicit
-guest-link status, linking/logout controls, settings, result totals, and the existing
+account session/logout controls, settings, result totals, and the existing
 chronological archive. Old /my-games bookmarks redirect to /account. Signed-out
 visitors use the header Account button to open the login/register dialog.
 
@@ -233,7 +231,7 @@ The profile-style header shows only the stored username and joined date, with a
 generated initials placeholder. Overview previews the five most recent linked
 games and the existing result totals; Games keeps the full paginated archive.
 Stats uses those same all-game totals, never extrapolating from a loaded page.
-Settings contains explicit guest linking, logout, and the existing secure username
+Settings contains logout and the existing secure username
 and password forms. Edit profile opens Settings; no personal details or uploads
 are offered. Ordinary links to `#overview`, `#games`, `#stats`, and `#settings`
 preserve the selected section on refresh and browser Back/Forward. Switching

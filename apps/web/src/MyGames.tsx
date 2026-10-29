@@ -42,7 +42,7 @@ export function CompletedGamesSummary({ summary }: { summary: AccountGames['summ
 
 export function GameArchive({ page }: { page: AccountGames }) {
   return <>
-    {page.games.length === 0 ? <p>No linked games yet. Create or accept a game while signed in, or <a href="#settings">link this browser’s earlier guest games in Settings</a>.</p>
+    {page.games.length === 0 ? <p>No account games yet. Create or accept a game while signed in.</p>
       : <div className="archive-games">
         <div className="archive-columns" aria-hidden="true"><span>Players · rating unavailable</span><span>Time control</span>
           <span>Result / status</span><span>Date</span></div>
@@ -155,8 +155,7 @@ export function AccountPage() {
         ...(body ? { body: JSON.stringify(body) } : {}) });
       const data = await response.json();
       if (!response.ok) throw new Error(accountMessages[String(data.error)] ?? 'Could not update your account. Check the form and try again.');
-      if (path === '/link-guest') { await load(); setNotice('Guest games linked.'); }
-      else if (path.startsWith('/email')) { await load(); setNotice(data.message); }
+      if (path.startsWith('/email')) { await load(); setNotice(data.message); }
       else window.location.reload();
     } catch (cause) {
       if (path.startsWith('/email')) await load();

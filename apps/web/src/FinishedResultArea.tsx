@@ -33,7 +33,7 @@ export function FinishedResultArea({ score, explanation, analysisOpen, sessionOn
       <strong>{score}</strong><span>{explanation}</span>
     </div>
     <div className="finished-result-actions">
-      <button type="button" aria-pressed={analysisOpen}
+      <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
         title={sessionOnly ? 'Analysis notes last until this page is reloaded.'
           : 'Analysis notes stay in this browser and do not affect the game.'}
         onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>

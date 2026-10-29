@@ -6,6 +6,7 @@ import { databaseUrl, loadEnvironment } from '../src/config.js';
 import { createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
 import { buildApp } from '../src/app.js';
+import { seedHistoricalGuestLink } from './legacy-account-fixture.js';
 
 interface Browser { cookie: string; csrf: string; ip: string }
 const password = 'A long synthetic test passphrase';
@@ -105,10 +106,16 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await read(app, white, '/account/games')).json().games.map((g: { id: string }) => g.id)).toEqual([newGame]);
     const otherBrowser = await browser(app); await auth(app, otherBrowser, 'login', { username: name, password });
     expect((await read(app, otherBrowser, `/games/${oldGame}`)).statusCode).toBe(403);
-    expect((await auth(app, white, 'link-guest')).statusCode).toBe(200);
-    expect((await read(app, otherBrowser, `/games/${oldGame}`)).statusCode).toBe(200);
-    const games = (await read(app, white, '/account/games')).json().games;
-    expect(games.map((g: { id: string }) => g.id)).toEqual([newGame, oldGame]);
+    for (const payload of [undefined, { guestId: oldSeats.creator_guest_id }])
+      expect((await auth(app, white, 'link-guest', payload)).statusCode).toBe(404);
+    expect((await read(app, otherBrowser, `/games/${oldGame}`)).statusCode).toBe(403);
+    expect((await read(app, otherBrowser, `/games/${oldGame}/chat`)).statusCode).toBe(403);
+    expect((await post(app, otherBrowser, `/games/${oldGame}/moves`, { expectedVersion: 0, from: 'e2', to: 'e4' })).statusCode).toBe(403);
+    // Logging in mid-game does not change its seat, name, chat ownership, or archive eligibility.
+    expect((await post(app, white, `/games/${oldGame}/moves`, { expectedVersion: 0, from: 'e2', to: 'e4' })).statusCode).toBe(200);
+    expect((await post(app, white, `/games/${oldGame}/chat`, { text: 'Still a guest game' })).statusCode).toBe(201);
+    expect((await read(app, white, `/games/${oldGame}`)).json().playerNames).toEqual({ white: null, black: null });
+    expect((await read(app, white, '/account/games')).json().games.map((g: { id: string }) => g.id)).toEqual([newGame]);
     expect((await pool.query('SELECT creator_guest_id, acceptor_guest_id FROM chess.challenges WHERE id=$1', [oldGame])).rows[0]).toEqual(oldSeats);
   });
 
@@ -152,15 +159,15 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     const ownRace = await Promise.all([post(app, first, `/challenges/${own}/accept`), post(otherServer, second, `/challenges/${own}/accept`)]);
     expect(ownRace.map(r => r.statusCode)).toEqual([403, 403]);
     expect((await pool.query('SELECT count(*)::int AS n FROM chess.games WHERE id IN ($1,$2,$3)', [id, contested, own])).rows[0].n).toBe(2);
-    // Explicit linking still cannot attach the other guest seat to the same account.
+    // The retired endpoint cannot attach the other guest seat to the same account.
     await auth(app, creator, 'login', { username: name, password });
-    expect((await auth(app, creator, 'link-guest')).json().error).toBe('opposite_seat_linked');
+    expect((await auth(app, creator, 'link-guest')).statusCode).toBe(404);
   });
 
   it('requires current credentials for renames and updates linked display names without changing archive ownership', async () => {
     const { app, white, black, outsider, id } = await setup();
     const original = username(), taken = username(), renamed = username();
-    await auth(app, white, 'register', { username: original, password }); await auth(app, white, 'link-guest');
+    await auth(app, white, 'register', { username: original, password }); await seedHistoricalGuestLink(pool, white.cookie);
     await auth(app, outsider, 'register', { username: taken, password });
     const message = (await post(app, black, `/games/${id}/chat`, { text: 'History stays unchanged.' })).json();
     const hashBefore = (await pool.query('SELECT password_hash FROM chess.accounts WHERE username=$1', [original])).rows[0].password_hash;
@@ -195,10 +202,10 @@ describe('accounts and original guest seats against PostgreSQL', () => {
 
   it('confirms and hashes new passwords, rotates the current session, and revokes other guest/account bearers', async () => {
     const { app, white, id } = await setup(); const name = username();
-    await auth(app, white, 'register', { username: name, password }); await auth(app, white, 'link-guest');
+    await auth(app, white, 'register', { username: name, password }); await seedHistoricalGuestLink(pool, white.cookie);
     const elsewhere = await browser(app), third = await browser(app);
     for (const who of [elsewhere, third]) {
-      await auth(app, who, 'login', { username: name, password }); await auth(app, who, 'link-guest');
+      await auth(app, who, 'login', { username: name, password }); await seedHistoricalGuestLink(pool, who.cookie);
     }
     const replacement = 'Another long synthetic passphrase';
     const body = { currentPassword: password, newPassword: replacement, confirmPassword: replacement };
@@ -228,10 +235,10 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     const whiteName = username(), blackName = username();
     await auth(app, white, 'register', { username: whiteName, password });
     expect((await read(app, white, '/account/games')).json()).toMatchObject({ games: [], summary: { wins: 0, draws: 0, losses: 0 } });
-    await auth(app, white, 'link-guest');
+    await seedHistoricalGuestLink(pool, white.cookie);
     expect((await read(app, white, '/account/games')).json().games[0]).toMatchObject({ id, opponent: null, side: 'white', timeControl: '5+3' });
     await auth(app, black, 'register', { username: blackName, password });
-    await auth(app, black, 'link-guest');
+    await seedHistoricalGuestLink(pool, black.cookie);
     const outcomes = [
       { outcome: 'win', winner: 'white', reason: 'checkmate' },
       { outcome: 'win', winner: 'black', reason: 'resignation' },
@@ -262,7 +269,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   it('paginates by timestamp and ID without losing equal-time or microsecond-boundary games', async () => {
     const { app, white, id } = await setup();
     await auth(app, white, 'register', { username: username(), password });
-    await auth(app, white, 'link-guest');
+    await seedHistoricalGuestLink(pool, white.cookie);
     await pool.query("UPDATE chess.challenges SET created_at = '2020-01-01' WHERE id = $1", [id]);
     const expected: { id: string; createdAt: string }[] = [];
     for (let i = 0; i < 24; i++) {
@@ -314,15 +321,13 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await auth(app, await browser(app), 'login', { username: username(), password })).json()).toEqual({ error: 'invalid_credentials' });
   });
 
-  it('links only the current guest, restores game/chat/receipts in another browser and after restart', async () => {
+  it('preserves historically linked game/chat/receipt access in another browser and after restart', async () => {
     const { app, white, black, outsider, id } = await setup(); const name = username();
     const sent = await post(app, black, `/games/${id}/chat`, { text: 'Private conversation' }); expect(sent.statusCode).toBe(201);
     expect((await auth(app, white, 'register', { username: name, password })).statusCode).toBe(200);
     const second = await browser(app); expect((await auth(app, second, 'login', { username: name, password })).statusCode).toBe(200);
     expect((await read(app, second, `/games/${id}`)).statusCode).toBe(403);
-    expect((await auth(app, white, 'link-guest', { guestId: randomUUID() })).statusCode).toBe(400);
-    expect((await auth(app, white, 'link-guest')).statusCode).toBe(200);
-    expect((await auth(app, white, 'link-guest')).statusCode).toBe(200);
+    await seedHistoricalGuestLink(pool, white.cookie);
     const restarted = server();
     expect((await read(restarted, second, `/challenges/${id}`)).json().yourSeat).toBe('white');
     expect((await read(restarted, second, `/games/${id}`)).json().yourSeat).toBe('white');
@@ -362,21 +367,21 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await auth(app, white, 'register', { username: name, password })).statusCode).toBe(200);
     const elsewhere = await browser(app); await auth(app, elsewhere, 'login', { username: name, password });
     expect((await read(app, elsewhere, `/games/${id}`)).statusCode).toBe(403);
-    await auth(app, white, 'link-guest');
+    await seedHistoricalGuestLink(pool, white.cookie);
     // Black may log in to this account, but that does not link Black's guest-owned seat.
     await auth(app, black, 'login', { username: name, password });
-    expect((await auth(app, black, 'link-guest')).json()).toEqual({ error: 'opposite_seat_linked' });
+    expect((await auth(app, black, 'link-guest')).statusCode).toBe(404);
     const beforeSwitch = { ...white };
     const other = username(); expect((await auth(app, white, 'register', { username: other, password })).statusCode).toBe(200);
     expect((await read(app, white, `/games/${id}`)).statusCode).toBe(403);
-    await auth(app, white, 'link-guest');
+    expect((await auth(app, white, 'link-guest')).statusCode).toBe(404);
     expect((await read(app, white, `/games/${id}/chat`)).statusCode).toBe(403);
     expect((await read(app, beforeSwitch, '/account')).statusCode).toBe(401);
   });
 
   it('logs out durably, revokes old bearers, preserves another login and unlinked guest play', async () => {
     const { app, white, id } = await setup(); const name = username();
-    await auth(app, white, 'register', { username: name, password }); await auth(app, white, 'link-guest');
+    await auth(app, white, 'register', { username: name, password }); await seedHistoricalGuestLink(pool, white.cookie);
     const second = await browser(app); await auth(app, second, 'login', { username: name, password });
     const old = { ...white }; expect((await auth(app, white, 'logout')).statusCode).toBe(200);
     expect((await read(app, white, `/games/${id}`)).statusCode).toBe(403);
@@ -391,7 +396,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
 
   it('keeps links after guest/session expiry but requires a fresh login', async () => {
     const { app, white, id } = await setup(); const name = username();
-    const registered = await auth(app, white, 'register', { username: name, password }); await auth(app, white, 'link-guest');
+    const registered = await auth(app, white, 'register', { username: name, password }); await seedHistoricalGuestLink(pool, white.cookie);
     await pool.query("UPDATE chess.account_sessions SET expires_at = now() - interval '1 second' WHERE account_id = $1", [registered.json().account.id]);
     const another = await browser(app); await auth(app, another, 'login', { username: name, password });
     expect((await read(app, another, `/games/${id}`)).statusCode).toBe(200);
@@ -406,25 +411,27 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   it('prevents an account accepting its own linked challenge from a second browser', async () => {
     const app = server(), first = await browser(app), second = await browser(app), name = username();
     const challenge = await post(app, first, '/challenges'); const id = challenge.json().id as string;
-    await auth(app, first, 'register', { username: name, password }); await auth(app, first, 'link-guest');
+    await auth(app, first, 'register', { username: name, password }); await seedHistoricalGuestLink(pool, first.cookie);
     await auth(app, second, 'login', { username: name, password });
     expect((await post(app, second, `/challenges/${id}/accept`)).json()).toEqual({ error: 'cannot_accept_own_challenge' });
     const other = await browser(app); expect((await post(app, other, `/challenges/${id}/accept`)).statusCode).toBe(200);
     expect((await read(app, second, `/games/${id}`)).json().yourSeat).toBe('white');
   });
 
-  it('orders concurrent opposite-seat links so exactly one succeeds', async () => {
-    const { app, white, black } = await setup(), name = username();
-    await auth(app, white, 'register', { username: name, password }); await auth(app, black, 'login', { username: name, password });
+  it('rejects concurrent retroactive claiming without changing either guest seat', async () => {
+    const { app, white, black, id } = await setup(), name = username();
+    await auth(app, white, 'register', { username: name, password });
+    await auth(app, black, 'login', { username: name, password });
     const responses = await Promise.all([auth(app, white, 'link-guest'), auth(server(), black, 'link-guest')]);
-    expect(responses.map(r => r.statusCode).sort()).toEqual([200, 409]);
-    expect(responses.find(r => r.statusCode === 409)!.json()).toEqual({ error: 'opposite_seat_linked' });
+    expect(responses.map(r => r.statusCode)).toEqual([404, 404]);
+    expect((await read(app, white, `/games/${id}`)).json().playerNames).toEqual({ white: null, black: null });
+    expect((await read(app, white, '/account/games')).json().games).toEqual([]);
   });
 
   it('enforces durable login throttles, bounded game queries, and CSRF on account mutations', async () => {
     const app = server(), who = await browser(app), name = username();
     await auth(app, who, 'register', { username: name, password });
-    for (const path of ['logout', 'link-guest']) expect((await app.inject({ method: 'POST', url: `/account/${path}`, headers: { cookie: who.cookie } })).statusCode).toBe(403);
+    for (const path of ['logout']) expect((await app.inject({ method: 'POST', url: `/account/${path}`, headers: { cookie: who.cookie } })).statusCode).toBe(403);
     expect((await read(app, who, '/account/games?limit=10000')).statusCode).toBe(400);
     for (let n = 0; n < 9; n++) expect((await auth(app, who, 'login', { username: name, password: 'An incorrect long password' })).statusCode).toBe(401);
     const limited = await auth(server(), who, 'login', { username: name, password });
@@ -434,7 +441,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
   it('omits unaccepted challenges from the game archive', async () => {
     const app = server(), who = await browser(app), name = username();
     const registered = await auth(app, who, 'register', { username: name, password });
-    await auth(app, who, 'link-guest');
+    await seedHistoricalGuestLink(pool, who.cookie);
     const owner = (await pool.query('SELECT id FROM chess.guest_sessions WHERE account_id = $1', [registered.json().account.id])).rows[0].id;
     await pool.query(`INSERT INTO chess.challenges (id, creator_guest_id, create_request_id)
       SELECT gen_random_uuid(), $1, gen_random_uuid() FROM generate_series(1, 21)`, [owner]);
@@ -444,27 +451,29 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await read(app, await browser(app), '/account/games')).statusCode).toBe(401);
   });
 
-  it('returns both explicit seat names to participants in live and finished reads and pushes a link refresh', async () => {
+  it('preserves historical seat names in live and finished reads and pushes a rename refresh', async () => {
     const { app, white, black, outsider, id } = await setup(); const whiteName = username(), blackName = username();
     await auth(app, white, 'register', { username: whiteName, password });
     await auth(app, black, 'register', { username: blackName, password });
     const originalMessage = (await post(app, white, `/games/${id}/chat`, { text: 'Sent before linking.' })).json();
     expect((await read(app, white, '/account')).json()).toMatchObject({ account: { username: whiteName }, guestLinked: false });
     expect((await read(app, white, `/games/${id}`)).json().playerNames).toEqual({ white: null, black: null });
-    await auth(app, white, 'link-guest');
+    await seedHistoricalGuestLink(pool, white.cookie);
     expect((await read(app, black, `/games/${id}`)).json().playerNames).toEqual({ white: whiteName, black: null });
+    await seedHistoricalGuestLink(pool, black.cookie);
+    const renamedBlack = username();
     const origin = await app.listen({ host: '127.0.0.1', port: 0 });
     const abort = new AbortController(); const timeout = setTimeout(() => abort.abort(), 3000);
     try {
       const response = await fetch(`${origin}/games/${id}/events`, { headers: { cookie: white.cookie }, signal: abort.signal });
       const stream = response.body!.getReader(); await stream.read();
-      expect((await auth(app, black, 'link-guest')).statusCode).toBe(200);
+      expect((await auth(app, black, 'username', { currentPassword: password, username: renamedBlack })).statusCode).toBe(200);
       let event = '';
       while (!event.includes('event: game')) event += new TextDecoder().decode((await stream.read()).value);
       expect(event).toContain('"version":0');
       await stream.cancel();
     } finally { clearTimeout(timeout); abort.abort(); }
-    const playerNames = { white: whiteName, black: blackName };
+    const playerNames = { white: whiteName, black: renamedBlack };
     for (const who of [white, black]) {
       expect((await read(app, who, `/games/${id}`)).json()).toMatchObject({ version: 0, status: 'active', playerNames });
       expect((await read(app, who, `/games/${id}/chat`)).json().messages).toEqual([originalMessage]);
@@ -483,7 +492,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
 
   it('keeps an unlinked seat unnamed after account switching and logout', async () => {
     const { app, white, black, id } = await setup(); const whiteName = username();
-    await auth(app, white, 'register', { username: whiteName, password }); await auth(app, white, 'link-guest');
+    await auth(app, white, 'register', { username: whiteName, password }); await seedHistoricalGuestLink(pool, white.cookie);
     const firstName = username(), secondName = username();
     await auth(app, black, 'register', { username: firstName, password });
     await auth(app, black, 'register', { username: secondName, password });

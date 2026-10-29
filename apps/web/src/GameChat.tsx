@@ -28,7 +28,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
     <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Message your opponent</label>
     <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
       placeholder="Message your opponent" disabled={sending || state !== 'allowed'} onChange={event => onText(event.target.value)} />
-    <button type="submit" disabled={sending || state !== 'allowed' || !text.trim()}>{sending ? 'Sending…' : retrying ? 'Retry send' : 'Send'}</button>
+    <button className="primary" type="submit" disabled={sending || state !== 'allowed' || !text.trim()}>{sending ? 'Sending…' : retrying ? 'Retry send' : 'Send'}</button>
   </form>;
 }
 

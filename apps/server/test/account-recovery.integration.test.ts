@@ -8,6 +8,7 @@ import type { AccountMail } from '../src/account-email.js';
 import { loadEnvironment, databaseUrl } from '../src/config.js';
 import { createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
+import { seedHistoricalGuestLink } from './legacy-account-fixture.js';
 import { tokenHash } from '../src/guest-session.js';
 
 const password = 'Original synthetic long passphrase';
@@ -104,9 +105,8 @@ describe('verified recovery email against PostgreSQL', () => {
     const legacyGame=(await post(s.app,legacyOwner,'/challenges')).json().id;
     await post(s.app,s.stranger,`/challenges/${legacyGame}/accept`);
     await post(s.app,legacyOwner,'/account/login',{username:s.username,password});
-    expect((await post(s.app,legacyOwner,'/account/link-guest')).statusCode).toBe(200);
+    await seedHistoricalGuestLink(pool, legacyOwner.cookie);
     const other=await browser(s.app); await post(s.app,other,'/account/login',{username:s.username,password});
-    await post(s.app,s.owner,'/account/link-guest');
     const game=(await post(s.app,s.owner,'/challenges')).json().id;
     await post(s.app,s.stranger,`/challenges/${game}/accept`);
     await post(s.app,s.owner,`/games/${game}/chat`,{text:'Keep this private history'});

@@ -63,7 +63,7 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
             if (latest.password_hash !== passwordHash || latest.username !== username)
               return reply.code(401).send({ error: 'invalid_credentials' });
           }
-          // Serialize logins/linking on this bearer session and reject an already rotated request.
+          // Serialize logins on this bearer session and reject an already rotated request.
           const locked = (await client.query<{ account_id: string | null; csrf_token: string }>(
             'SELECT account_id, csrf_token FROM chess.guest_sessions WHERE id = $1 FOR UPDATE', [guest.id])).rows[0]!;
           if (locked.csrf_token !== guest.csrfToken) return reply.code(409).send({ error: 'session_changed' });
@@ -156,42 +156,6 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
         } finally { try { await client.query('ROLLBACK'); } finally { client.release(); } }
       });
   }
-
-  app.post('/account/link-guest', async (request, reply) => {
-    reply.header('Cache-Control', 'no-store');
-    const guest = await requireGuest(pool, request, reply, true);
-    if (!guest) return;
-    if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const account = await currentAccount(client, request, guest);
-      if (!account) return reply.code(401).send({ error: 'account_required' });
-      // A single account lock orders links from different browsers, including opposite seats.
-      await client.query('SELECT id FROM chess.accounts WHERE id = $1 FOR UPDATE', [account.id]);
-      const owner = (await client.query<{ account_id: string | null; csrf_token: string }>(
-        'SELECT account_id, csrf_token FROM chess.guest_sessions WHERE id = $1 FOR UPDATE', [guest.id])).rows[0]!;
-      if (owner.csrf_token !== guest.csrfToken) return reply.code(409).send({ error: 'session_changed' });
-      if (owner.account_id !== null && owner.account_id !== account.id)
-        return reply.code(409).send({ error: 'guest_already_linked' });
-      const conflict = await client.query(`SELECT c.id FROM chess.challenges c
-        JOIN chess.guest_sessions other ON other.id = CASE WHEN c.creator_guest_id = $1
-          THEN c.acceptor_guest_id ELSE c.creator_guest_id END
-        WHERE (c.creator_guest_id = $1 OR c.acceptor_guest_id = $1)
-          AND other.account_id = $2 LIMIT 1`, [guest.id, account.id]);
-      if (conflict.rowCount) return reply.code(409).send({ error: 'opposite_seat_linked' });
-      await client.query('UPDATE chess.guest_sessions SET account_id = $2 WHERE id = $1', [guest.id, account.id]);
-      // Seat display metadata changed; refresh connected participants without changing move versions.
-      if (owner.account_id === null) await client.query(`SELECT pg_notify('chess_game_updates',
-        json_build_object('id', g.id, 'version', g.version)::text)
-        FROM chess.games g JOIN chess.challenges c ON c.id = g.id
-        WHERE c.creator_guest_id = $1 OR c.acceptor_guest_id = $1`, [guest.id]);
-      await client.query('COMMIT');
-      return { account, guestLinked: true };
-    } finally {
-      try { await client.query('ROLLBACK'); } finally { client.release(); }
-    }
-  });
 
   app.post('/account/logout', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');

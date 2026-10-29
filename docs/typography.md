@@ -29,3 +29,16 @@ have independent sizes. Their geometric or numeric scales are not typography
 tokens; do not enlarge them as a side effect of changing card text. Large home-page
 hero text also retains its separate display treatment. Keep detailed tables and
 engine output scrollable only where their content actually needs it.
+
+## Button hierarchy
+
+Buttons default to a quiet cream surface with a wood-neutral border. Use the explicit
+`primary` class for the main action within a form or task (create/accept challenge,
+authentication, save settings, send, start engine, request analysis). It uses a blue
+surface, white text, a short lower edge, hover/pressed feedback, and a light-blue
+keyboard focus ring. Use `secondary` for cancel, stop, close, retry navigation and
+supporting actions. Use `danger` for resignation and deletion. Move links, tabs,
+board controls and charts keep their own interaction styling and never receive
+`primary`. Disabled primary actions lose their shadow and saturation. Reduced-motion
+preferences disable button translation and transition. Component rules should set
+layout and spacing without overriding semantic button colors.

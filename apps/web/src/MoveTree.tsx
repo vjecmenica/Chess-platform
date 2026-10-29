@@ -197,7 +197,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         <label htmlFor="analysis-comment">Comment</label>
         <textarea id="analysis-comment" value={comment} maxLength={2000}
           onChange={event => setComment(event.target.value)} />
-        <div className="menu-actions"><button type="button" onClick={() => {
+        <div className="menu-actions"><button type="button" className="primary" onClick={() => {
           onNote?.(menu.move.cursor, { comment: comment.trim() || undefined }); closeMenu();
         }}>Save comment</button><button type="button" onClick={() => setEditing(false)}>Back</button></div>
       </div> : <>
@@ -208,11 +208,11 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
             onPromote?.(menu.move.cursor.id); closeMenu(); }}>
             Promote variation to main line</button>
           {confirmDelete ? <div className="menu-actions"><span>Delete this continuation?</span>
-            <button type="button" onClick={() => {
+            <button type="button" className="danger" onClick={() => {
               if (menu.move.cursor.kind === 'branch') onDelete(menu.move.cursor.id);
               closeMenu();
             }}>Confirm delete</button><button type="button" onClick={() => setConfirmDelete(false)}>Cancel</button></div>
-            : <button type="button" onClick={() => setConfirmDelete(true)}>Delete continuation</button>}
+            : <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>Delete continuation</button>}
         </>}
         <div className="nag-options"><strong>Annotation</strong>
           <button type="button" onClick={() => {

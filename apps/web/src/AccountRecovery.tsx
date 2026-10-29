@@ -14,7 +14,7 @@ export function RecoveryForm({ mode, busy, onSubmit }: { mode: RecoveryMode; bus
         minLength={15} maxLength={128} autoComplete="new-password" disabled={busy} />
       <small>15–128 characters. All account sessions will be signed out. Log in afterward with the new password.</small>
     </> : <p>Confirm that this email address may be used to recover your Chess Platform account.</p>}
-    <button disabled={busy}>{busy ? 'Please wait…' : mode === 'recover' ? 'Send reset link' : mode === 'verify-email' ? 'Verify email' : 'Reset password'}</button>
+    <button className="primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'recover' ? 'Send reset link' : mode === 'verify-email' ? 'Verify email' : 'Reset password'}</button>
   </form>;
 }
 

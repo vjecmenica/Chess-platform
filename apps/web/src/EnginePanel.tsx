@@ -276,7 +276,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         <button type="button" className="secondary" ref={settingsButtonRef}
           aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
           onClick={() => setSettingsOpen(value => !value)}>Settings</button>
-        <button type="button" className="secondary" aria-pressed={enabled}
+        <button type="button" className={enabled && state.kind !== 'error' ? 'secondary' : 'primary'} aria-pressed={enabled}
           disabled={review.kind === 'running'}
           onClick={() => {
             if (enabled && state.kind === 'error') controller.current?.start(fen);
@@ -359,7 +359,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {reviewHost && createPortal(<div className="review-content">
     <div className="review-heading"><strong>Computer Analysis</strong>
     {reviewTab === 'computer' && <div className="review-control">
-      <button type="button" className="secondary" disabled={game.history.length === 0} onClick={() => {
+      <button type="button" className={review.kind === 'running' ? 'secondary' : 'primary'} disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
           runner.current?.cancel(); setReview({ kind: 'cancelled' }); onReviewChange(null);
         } else startReview();

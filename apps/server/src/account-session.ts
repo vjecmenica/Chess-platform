@@ -6,7 +6,7 @@ import { cookieToken, tokenHash, type GuestSession } from './guest-session.js';
 export const accountCookie = 'chess_account';
 export interface Account { id: string; username: string }
 
-/** Called inside the challenge transaction; lock order matches login and explicit linking. */
+/** Called inside the challenge transaction; lock order matches login. */
 export async function newChallengeSeat(client: pg.PoolClient, request: FastifyRequest,
   guest: GuestSession): Promise<string> {
   const account = await currentAccount(client, request, guest);
