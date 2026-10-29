@@ -1365,7 +1365,7 @@ export function App() {
 
               <div className="move-panel">
                 {replaying && <div className="replay" aria-label="Saved game replay">
-                  <p className="replay-position" aria-live="polite">{analysisOpen && activeBranchId !== null
+                  <p className={analysisOpen ? 'replay-position visually-hidden' : 'replay-position'} aria-live="polite">{analysisOpen && activeBranchId !== null
                     ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
                     : displayedPly === 0 ? 'Starting position'
                       : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>

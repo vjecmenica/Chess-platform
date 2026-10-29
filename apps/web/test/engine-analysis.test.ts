@@ -56,7 +56,7 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toContain('Unlimited depth');
     expect(html).not.toContain('Unlimited search time');
     expect(html).not.toContain('Search limit mode');
-    expect(html).toContain('Start engine');
+    expect(html).toContain('Stop engine');
     expect(html).not.toContain('More lines share the 1.2-second search budget');
   });
 

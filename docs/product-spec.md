@@ -43,7 +43,7 @@ The current browser-local analysis board lets a player branch from any saved or 
 
 On the analysis board, players can turn the engine on, see position evaluations, and explore multiple candidate lines. Engine lines must be legal from the selected position, and the evaluation must make its perspective clear. Running analysis must not delay clocks in active games.
 
-Interactive search defaults to one line with depth 14 and 1.2-second limits; whichever limit arrives first ends the search. Players can set either limit to Unlimited independently. Setting both to Unlimited runs until they stop the engine or leave the position. Longer searches can use significant CPU and battery on mobile devices. These controls do not change the fixed full-game review method.
+Interactive search starts automatically on entering Analysis, with one line and depth-25/15-second limits; whichever limit arrives first ends the search. Players can set either limit to Unlimited independently. Setting both to Unlimited runs until they stop the engine or leave the position. Longer searches can use significant CPU and battery on mobile devices. These controls do not change the fixed full-game review method.
 
 The selected position's score and each available candidate line update as Stockfish reports them. A line with no reported result stays pending; changing position or stopping the engine must not leave an old line attached to the new position.
 
@@ -129,3 +129,14 @@ Acceptance criteria:
 **Custom challenges.** Choose allowed time limits and increments, pool assignment, and rated eligibility. Custom controls remain limited to direct challenges.
 
 Record approved choices with their date, rationale, and consequences, then update the [roadmap](roadmap.md) and architecture where needed. Detailed rules can wait until their feature is due; the initial game cannot wait for clear clock and recovery behavior.
+
+### Interactive analysis startup
+
+Entering site-game, imported-PGN, or blank analysis automatically starts the current-position
+engine with depth 25 and a 15-second limit; the first limit reached ends the search.
+The default remains one candidate line, with the existing 1–5 control. Stop/restart and
+settings stay available during full-game Computer Analysis, which uses its own worker
+and retains the depth-14/1.2-second single-line budget. Interactive settings have separate
+cache profiles, so those longer searches do not replace the review methodology or cache.
+Both workers run locally; concurrent searches can increase CPU use, heat and battery drain,
+especially on mobile. Users can stop either task independently. No account preference is stored.

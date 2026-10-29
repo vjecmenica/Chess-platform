@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
-  defaultSearchLimits, evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
+  evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
   type EngineLine, type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
+import { interactiveSearchLimits, scheduleInteractiveEngine } from './interactive-engine';
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
 
@@ -159,12 +160,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
 }) {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
-  const [depth, setDepth] = useState(defaultSearchLimits.mode === 'bounded'
-    ? defaultSearchLimits.depth ?? 14 : 14);
-  const [timeMs, setTimeMs] = useState(defaultSearchLimits.mode === 'bounded'
-    ? defaultSearchLimits.timeMs ?? 1200 : 1200);
+  const [depth, setDepth] = useState<number>(interactiveSearchLimits.depth);
+  const [timeMs, setTimeMs] = useState<number>(interactiveSearchLimits.timeMs);
   const [unlimitedDepth, setUnlimitedDepth] = useState(false);
   const [unlimitedTime, setUnlimitedTime] = useState(false);
   const [state, setState] = useState<EngineState>({ kind: 'off' });
@@ -209,9 +208,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     cache.current = new EngineCache(storage);
     controller.current = new EngineController(
       () => new Worker(engineWorkerUrl) as EngineWorker, setState, cache.current);
+    const stopInteractive = scheduleInteractiveEngine(controller.current, fen);
     return () => {
       runner.current?.cancel(); runner.current = null;
-      controller.current?.dispose(); controller.current = null;
+      stopInteractive(); controller.current = null;
       cache.current = null;
     };
   }, []);
@@ -231,10 +231,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   function startReview() {
     if (cache.current === null || review.kind === 'running') return;
-    controller.current?.stop();
-    setEnabled(false);
     runner.current?.cancel();
-    onReviewChange(null);
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
@@ -257,16 +254,16 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const evaluation = (state.kind === 'done' || state.kind === 'searching')
     && state.evaluation?.fen === fen
     ? state.evaluation : null;
-  const lines = state.kind === 'searching' && state.fen === fen && state.lines
+  // Reuse SAN conversion when review progress or parent callbacks render this panel.
+  const lines = useMemo(() => state.kind === 'searching' && state.fen === fen && state.lines
     ? state.lines.map(line => candidateLine(fen, line))
-    : evaluation === null ? [] : candidateLines(evaluation);
+    : evaluation === null ? [] : candidateLines(evaluation), [state, fen, evaluation]);
 
   useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
     [evaluation, onEvaluationChange]);
   useEffect(() => {
-    onEvaluationPendingChange?.(evaluation === null && (review.kind === 'running'
-      || enabled && state.kind !== 'error') ? fen : null);
-  }, [fen, enabled, state.kind, review.kind, evaluation, onEvaluationPendingChange]);
+    onEvaluationPendingChange?.(evaluation === null && enabled && state.kind !== 'error' ? fen : null);
+  }, [fen, enabled, state.kind, evaluation, onEvaluationPendingChange]);
   useEffect(() => () => onEvaluationPendingChange?.(null), [onEvaluationPendingChange]);
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
@@ -277,7 +274,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
           onClick={() => setSettingsOpen(value => !value)}>Settings</button>
         <button type="button" className={enabled && state.kind !== 'error' ? 'secondary' : 'primary'} aria-pressed={enabled}
-          disabled={review.kind === 'running'}
           onClick={() => {
             if (enabled && state.kind === 'error') controller.current?.start(fen);
             else if (enabled) { controller.current?.stop(); setEnabled(false); }
@@ -292,7 +288,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           setSettingsOpen(false); settingsButtonRef.current?.focus();
         }}>Close</button></div>
       <label className="engine-line-setting">Lines
-          <select value={lineCount} disabled={review.kind === 'running'}
+          <select value={lineCount}
             aria-label="Candidate lines" onChange={event => {
               const count = Number(event.target.value) as MultiPvCount;
               setLineCount(count);
@@ -306,25 +302,25 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       <div className="engine-limit-setting">
         <label className="engine-range-setting">Depth
           <input type="range" min="1" max="40" value={depth}
-            disabled={unlimitedDepth || review.kind === 'running'}
+            disabled={unlimitedDepth}
             onChange={event => updateLimits(Number(event.target.value), timeMs,
               unlimitedDepth, unlimitedTime)} />
           <output>{unlimitedDepth ? '—' : depth}</output>
         </label>
         <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited depth"
-          checked={unlimitedDepth} disabled={review.kind === 'running'}
+          checked={unlimitedDepth}
           onChange={event => updateLimits(depth, timeMs, event.target.checked, unlimitedTime)} />Unlimited</label>
       </div>
       <div className="engine-limit-setting">
         <label className="engine-range-setting">Search time
           <input type="range" min="200" max="30000" step="100" value={timeMs}
-            disabled={unlimitedTime || review.kind === 'running'}
+            disabled={unlimitedTime}
             onChange={event => updateLimits(depth, Number(event.target.value),
               unlimitedDepth, unlimitedTime)} />
           <output>{unlimitedTime ? '—' : `${(timeMs / 1000).toFixed(1)}s`}</output>
         </label>
         <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited search time"
-          checked={unlimitedTime} disabled={review.kind === 'running'}
+          checked={unlimitedTime}
           onChange={event => updateLimits(depth, timeMs, unlimitedDepth, event.target.checked)} />Unlimited</label>
       </div>
     </div>
@@ -361,7 +357,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {reviewTab === 'computer' && <div className="review-control">
       <button type="button" className={review.kind === 'running' ? 'secondary' : 'primary'} disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
-          runner.current?.cancel(); setReview({ kind: 'cancelled' }); onReviewChange(null);
+          runner.current?.cancel(); setReview({ kind: 'cancelled' });
         } else startReview();
       }}>{review.kind === 'running' ? 'Cancel analysis'
           : review.kind === 'complete' ? 'Analyze again' : 'Analyze game'}</button>
