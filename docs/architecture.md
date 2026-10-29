@@ -7,8 +7,10 @@ The initial stack was chosen on September 28, 2026: TypeScript, npm workspaces, 
 Accounts use PostgreSQL-backed opaque sessions alongside existing guest sessions.
 Explicit [guest linking](accounts.md) grants an account access to the original
 guest-owned seats without rewriting game, command-receipt, or chat ownership.
-Username/password accounts have no email verification or recovery in this milestone;
-both are required before public launch.
+New authenticated seats belong to their account automatically; earlier guest games
+still need explicit linking. Optional verified-email recovery now preserves those
+seats while revoking compromised sessions. Real email delivery and domain setup
+must be validated before public launch; see [account operations](accounts.md).
 
 The proposed starting deployment is a modular monolith: one long-running API process, a web client, and PostgreSQL. The move receipt and watermark scheme now makes admitted move/flag ordering independent of which server process obtains the game row first. A public multi-process deployment still needs clock synchronization, lease and crash operations, and measured capacity. Keep clear module boundaries so expensive analysis can run separately and other services can be extracted when measurements justify it.
 

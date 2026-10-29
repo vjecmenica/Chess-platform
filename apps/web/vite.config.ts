@@ -15,7 +15,10 @@ export default defineConfig(({ mode }) => {
   };
   return {
     plugins: [react()],
-    server: { port: 5173, strictPort: true, proxy },
+    server: { port: 5173, strictPort: true, proxy,
+      // Keep Vite's sensitive-file defaults and block private development mail and fixtures.
+      fs: { deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.local/**'] },
+    },
     preview: { port: 4173, strictPort: true, proxy },
   };
 });

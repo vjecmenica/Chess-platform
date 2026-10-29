@@ -156,8 +156,12 @@ export function AccountPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(accountMessages[String(data.error)] ?? 'Could not update your account. Check the form and try again.');
       if (path === '/link-guest') { await load(); setNotice('Guest games linked.'); }
+      else if (path.startsWith('/email')) { await load(); setNotice(data.message); }
       else window.location.reload();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update your account.'); }
+    } catch (cause) {
+      if (path.startsWith('/email')) await load();
+      setError(cause instanceof Error ? cause.message : 'Could not update your account.');
+    }
     finally { setBusy(false); }
   }
 

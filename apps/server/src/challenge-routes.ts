@@ -165,6 +165,8 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
   try {
     await pool.query('SELECT id, account_play_seat FROM chess.guest_sessions LIMIT 0');
     await pool.query('SELECT token_hash FROM chess.account_sessions LIMIT 0');
+    await pool.query('SELECT verified_email, pending_email FROM chess.accounts LIMIT 0');
+    await pool.query('SELECT token_hash FROM chess.account_email_tokens LIMIT 0');
     await pool.query('SELECT id, time_control FROM chess.challenges LIMIT 0');
     await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,
       white_first_move_deadline_at, black_first_move_deadline_at FROM chess.games LIMIT 0`);

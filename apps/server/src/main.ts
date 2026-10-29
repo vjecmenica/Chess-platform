@@ -1,3 +1,4 @@
+import { accountEmailFromEnvironment } from './account-email.js';
 import { buildApp } from './app.js';
 import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
@@ -11,7 +12,7 @@ async function main() {
   const gameService = createGameService(pool);
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
-  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService });
+  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService, accountEmail: accountEmailFromEnvironment() });
   let timer: ReturnType<typeof setInterval> | null = null;
   app.addHook('onClose', async () => {
     if (timer !== null) clearInterval(timer);

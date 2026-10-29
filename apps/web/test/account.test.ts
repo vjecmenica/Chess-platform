@@ -11,10 +11,10 @@ it('shows private account details and current-password settings without duplicat
   expect(html).toContain('New games created or accepted while signed in belong to your account automatically.');
   expect(html).toContain('Earlier guest games stay separate.');
   expect(html).toContain('Link this browser'); expect(html).toContain('Log out');
-  expect(html.match(/autoComplete="current-password"/g)).toHaveLength(2);
+  expect(html.match(/autoComplete="current-password"/g)).toHaveLength(3);
   expect(html).toContain('Confirm new password'); expect(html).toContain('minLength="15"');
   expect(html).not.toContain('archive-table');
-  expect(html).toContain('Password recovery is not available');
+  expect(html).toContain('No verified email.');
   const linked = renderToStaticMarkup(createElement(AccountSettings, { busy: true, onAction: () => {},
     state: { account: { id: 'a', username: 'walnut' }, guestLinked: true, createdAt: null } }));
   expect(linked).toContain('guest games are linked');
@@ -29,7 +29,7 @@ it('uses password-manager fields and clearly states the recovery limit', () => {
   expect(render('login')).toContain('autoComplete="current-password"');
   expect(render('login')).toContain('type="password"');
   expect(render('register')).toContain('minLength="15" maxLength="128"');
-  expect(render('register')).toContain('Password recovery is not available yet.');
+  expect(render('register')).toContain('Recovery requires a verified email in Account Settings.');
   expect(render('register')).not.toContain('type="email"');
   expect(render('login', true)).toContain('Please wait…');
 });

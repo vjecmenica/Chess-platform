@@ -2,6 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AccountState } from '@chess/contracts';
 
 export const accountMessages: Record<string, string> = {
+  invalid_email_link: 'This link is invalid, expired, or already used. Request a new email.',
+  email_unavailable: 'This address cannot be verified for this account. Use another address.',
+  no_pending_email: 'There is no address waiting for verification.',
+  email_not_configured: 'Email delivery is not configured on this server yet.',
+  email_delivery_failed: 'The address is saved but email delivery failed. Please try Resend verification later.',
   incorrect_current_password: 'The current password is incorrect.',
   password_confirmation_mismatch: 'The new passwords do not match.',
   invalid_credentials: 'The username or password is incorrect.',
@@ -29,12 +34,13 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
     <input id="account-password" name="password" type="password" required minLength={15} maxLength={128}
       autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
       aria-describedby="password-help" disabled={busy} />
-    <small id="password-help">15–128 characters. Password recovery is not available yet.</small>
+    <small id="password-help">15–128 characters. Recovery requires a verified email in Account Settings.</small>
     <div className="account-actions">
       <button disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Register' : 'Log in'}</button>
       <button type="button" className="secondary" onClick={onMode} disabled={busy}>
         {mode === 'register' ? 'Use an existing account' : 'Create an account'}</button>
     </div>
+    {mode === 'login' && <a href="/account/recover">Forgot password?</a>}
   </form>;
 }
 

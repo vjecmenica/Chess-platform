@@ -1,8 +1,8 @@
 # Accounts and guest game access
 
 This milestone adds username/password registration, login, logout, and explicit
-guest-to-account linking. It does not add ratings, public game access, public profiles,
-email collection, email verification, or password recovery.
+guest-to-account linking, optional verified email, and password recovery. It does not
+add ratings, public game access, or public profiles.
 
 ## Ownership
 
@@ -107,19 +107,81 @@ include the new session table. Periodically delete expired `account_sessions` an
 identities, which are referenced by challenges and receipt history. Monitor rate
 limits and hash latency on the deployment hardware before raising traffic limits.
 
-## Email and recovery: required before public launch
+## Verified email and password recovery
 
-Accounts in this milestone have **no recovery method**. A forgotten password cannot
-be reset, and a username does not prove identity. The UI says so. Do not deploy this
-as a recoverable public-account service or promise manual password resets.
+Apply forward migration `021_account_email_recovery.sql` with `npm run db:migrate`.
+Existing accounts start with no email and continue working. Registration remains
+username/password only. Account Settings lets an authenticated user add or change
+an address with their current password. Addresses are ASCII, normalized to lowercase
+without provider-specific dot/alias transformations. One verified address can belong
+to one account; pending addresses do not reserve ownership.
 
-Before public launch, implement a verified-email recovery channel using a selected
-transactional email provider and HTTPS public origin, one-use expiring verification
-and reset tokens stored as digests, generic/rate-limited responses, and session
-revocation after password reset. Verify ownership before enabling recovery; never
-accept an unverified email address or a game link as proof. Provider configuration,
-delivery monitoring and abuse controls are launch prerequisites. No provider or
-email credentials are needed to test this limited milestone locally.
+Recovery is enabled only after explicit confirmation of the emailed verification
+link. Changing an address immediately removes the old verified address, invalidates
+outstanding links, and pauses recovery until the replacement is verified. Resend
+replaces the earlier verification token. The signed-out Forgot password link accepts
+an email, not a username. Pending/absent addresses receive no reset email.
+
+Tokens have 256 random bits; PostgreSQL stores only SHA-256 digests and the intended
+address/purpose. Verification expires after 24 hours; reset expires after 30 minutes.
+Consumption, password hashing, session revocation and token deletion commit atomically
+under the account lock. Concurrent consumers cannot reuse a token. A reset uses the
+existing Argon2id/password policy, requires matching confirmation, invalidates all
+reset links and account sessions, and rotates associated guest bearer credentials.
+Original seat IDs, linked ownership, games and chat remain intact. Normal login is
+required afterward. As with a normal password change, browser-only games that were
+never explicitly linked are not recoverable through an account; link them first.
+
+Links use only configured PUBLIC_ORIGIN and a URL fragment, never a Host header or
+query parameter. The browser removes the fragment from history before rendering and
+sends the token only in a CSRF-protected POST. The page uses no-referrer metadata;
+API responses are no-store. Serve the recovery HTML with Cache-Control: no-store and
+Referrer-Policy: no-referrer in production too. Do not install analytics, third-party
+scripts or request-body logging on recovery pages. Request URLs/bodies and credential
+headers are redacted; mail failures log only their purpose, never transport exceptions,
+recipients, passwords, tokens or links. Never enable SQL parameter logging.
+
+All reset-request responses are identical for valid-form requests, including unknown,
+pending, throttled and unconfigured addresses. SMTP delivery runs independently of
+the response; its latency does not hold up the response. The durable limits are
+3 requests/address and 20/IP per 15 minutes. Address keys are hashed. Address settings
+and resend share 5/account and 20/IP attempts per 15 minutes; token consumption allows
+20/IP. Settings/consumption return 429 on throttling; public reset requests retain their
+generic response. No forwarded IP header is trusted without deployment review.
+
+### Delivery configuration
+
+The default MAIL_TRANSPORT=disabled leaves registration/login working and visibly
+marks delivery unavailable in Settings. No recovery is promised for unverified accounts.
+
+For local tests, set MAIL_TRANSPORT=local, HOST=127.0.0.1 and PUBLIC_ORIGIN to your
+actual browser origin (for example http://127.0.0.1:5173), then restart npm run dev.
+Private JSON test emails appear in the Git-ignored repository .local/account-mail/
+folder. Open them locally in an editor and follow the link; do not paste links into
+chat or logs. The Vite development server explicitly denies access to `.local`, including
+through its filesystem route; production must serve only the built web assets. Files/directories
+use restrictive POSIX modes where supported; on Windows keep the workspace under a
+private user ACL. Delete test emails after testing. Local delivery is rejected in
+production, on non-loopback binding, or with a non-local public origin.
+
+For real delivery configure MAIL_TRANSPORT=smtp, PUBLIC_ORIGIN=https://your-domain,
+SMTP_HOST, SMTP_PORT (587 STARTTLS or 465 TLS), SMTP_USER, SMTP_PASSWORD and MAIL_FROM
+in server-only environment variables or a secret manager. No mail configuration is
+shipped to Vite. [Nodemailer SMTP](https://nodemailer.com/smtp) requires TLS here, validates
+certificates, disables protocol/debug logging, and cannot load attachments from URLs
+or files. Use a transactional email provider, verify the sender/domain, configure its
+SPF/DKIM/DMARC records, and test actual receipt and spam handling before public launch.
+No particular provider is required. SMTP delivery has bounded connection/socket waits.
+
+Delivery is attempted once; there is no durable mail queue in this milestone. Graceful
+shutdown waits for pending sends, but a process crash may lose a queued message. Users
+can request/resend a new link after the rate window. Verification delivery failures are
+shown to the signed-in owner; reset failures keep the generic response and emit a
+sanitized operational error. Monitor these errors and provider delivery/bounce reports.
+Do not promise recovery during an email-service outage or for unverified accounts.
+Periodically delete expired account_email_tokens and account_auth_limits rows; no raw
+email corpus or token is retained beyond the small local test-mail folder.
+
 
 ## Validation
 
@@ -127,7 +189,9 @@ email credentials are needed to test this limited milestone locally.
 the configured disposable `TEST_DATABASE_URL` and tests registration, password
 hashing, cookie rotation, CSRF, explicit linking, another browser/server, receipt
 retries, private chat, logout, expiration, throttling, and concurrent seat-link
-conflicts. Tests use synthetic accounts and games, never real credentials.
+conflicts. Recovery tests inject a fake transport and cover verification, expiry,
+reuse, replacement, CSRF, throttling, reset/session revocation and restored game access.
+Tests use synthetic accounts and games, never real credentials.
 
 ## Private game archive
 
@@ -186,7 +250,7 @@ password, and matching confirmation. Argon2id settings match registration. The
 transaction revokes all account sessions, invalidates other associated guest
 bearers (including linked original seats), then rotates the current guest and
 issues a fresh bound account session. Ownership records remain intact. Other
-browsers must log in again; forgotten passwords remain unrecoverable. Login
+browsers must log in again; forgotten passwords require a verified recovery address. Login
 rechecks the verified hash under the account lock to prevent a concurrent old
 password login from surviving a password change. Both settings routes use CSRF
 and durable per-account/per-IP 15-minute limits (10/30 attempts). Credentials

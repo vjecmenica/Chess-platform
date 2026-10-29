@@ -122,7 +122,8 @@ export interface ExplorerGamePage {
   readonly page: number; readonly hasMore: boolean;
 }
 export interface AccountIdentity { readonly id: string; readonly username: string }
-export interface AccountState { readonly account: AccountIdentity | null; readonly guestLinked: boolean;
+export interface AccountEmailState { readonly verified: string | null; readonly pending: string | null; readonly deliveryEnabled: boolean }
+export interface AccountState { readonly email?: AccountEmailState | null; readonly account: AccountIdentity | null; readonly guestLinked: boolean;
   readonly createdAt: string | null }
 export interface AccountGame { readonly id: string; readonly side: 'white' | 'black';
   readonly status: GameState['status']; readonly createdAt: string;

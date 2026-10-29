@@ -1,30 +1,19 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { accountGames, parseGameCursor } from './account-games.js';
 import { accountCookie, currentAccount, type Account } from './account-session.js';
 import { cookieToken, createGuest, requireGuest, rotateGuest, setSessionCookie, tokenHash } from './guest-session.js';
-
-const passwordOptions = { algorithm: 2 as const, memoryCost: 19456, timeCost: 2, parallelism: 1 };
+import { passwordOptions, passwordSchema, rateAllowed } from './account-security.js';
+import { revokeAccountSessions } from './account-recovery.js';
 // One dummy hash per process makes unknown-user logins take the same hashing path.
 let dummyHash: Promise<string> | undefined;
 const credentials = { type: 'object', required: ['username', 'password'], additionalProperties: false,
   properties: { username: { type: 'string', pattern: '^[A-Za-z0-9_]{3,24}$' },
-    password: { type: 'string', minLength: 15, maxLength: 128 } } } as const;
+    password: passwordSchema } } as const;
 
-async function rateAllowed(pool: pg.Pool, key: string, limit: number): Promise<boolean> {
-  const keyHash = createHash('sha256').update(key).digest();
-  const { rows } = await pool.query<{ attempts: number }>(`INSERT INTO chess.account_auth_limits
-    (key_hash, attempts, resets_at) VALUES ($1, 1, now() + interval '15 minutes')
-    ON CONFLICT (key_hash) DO UPDATE SET
-      attempts = CASE WHEN account_auth_limits.resets_at <= now() THEN 1 ELSE account_auth_limits.attempts + 1 END,
-      resets_at = CASE WHEN account_auth_limits.resets_at <= now() THEN now() + interval '15 minutes'
-        ELSE account_auth_limits.resets_at END RETURNING attempts`, [keyHash]);
-  return rows[0]!.attempts <= limit;
-}
-
-export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secure: boolean): void {
+export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secure: boolean, emailEnabled = false): void {
   app.get('/account', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const guest = await requireGuest(pool, request, reply);
@@ -32,9 +21,10 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
     const account = await currentAccount(pool, request, guest);
     const owner = (await pool.query<{ account_id: string | null }>(
       'SELECT account_id FROM chess.guest_sessions WHERE id = $1', [guest.id])).rows[0]!;
-    const created = account ? (await pool.query<{ created_at: Date }>(
-      'SELECT created_at FROM chess.accounts WHERE id = $1', [account.id])).rows[0]!.created_at : null;
-    return { account, guestLinked: account !== null && owner.account_id === account.id, createdAt: created?.toISOString() ?? null };
+    const details = account ? (await pool.query<{ created_at: Date; verified_email: string | null; pending_email: string | null }>(
+      'SELECT created_at, verified_email, pending_email FROM chess.accounts WHERE id = $1', [account.id])).rows[0]! : null;
+    return { account, guestLinked: account !== null && owner.account_id === account.id, createdAt: details?.created_at.toISOString() ?? null,
+      email: details ? { verified: details.verified_email, pending: details.pending_email, deliveryEnabled: emailEnabled } : null };
   });
 
   for (const mode of ['register', 'login'] as const) {
@@ -148,13 +138,7 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
             await client.query('UPDATE chess.accounts SET password_hash = $2 WHERE id = $1',
               [identity.id, await hash(request.body.newPassword!, passwordOptions)]);
             // Revoke other account bearers and their guest access, including linked original seats.
-            const revoked = await client.query<{ id: string }>(`SELECT id FROM chess.guest_sessions
-              WHERE id <> $2 AND (account_id = $1 OR id IN
-                (SELECT guest_id FROM chess.account_sessions WHERE account_id = $1)) ORDER BY id FOR UPDATE`, [identity.id, guest.id]);
-            for (const other of revoked.rows) await client.query(
-              'UPDATE chess.guest_sessions SET token_hash = $2, csrf_token = $3 WHERE id = $1',
-              [other.id, tokenHash(randomBytes(32).toString('hex')), randomBytes(32).toString('hex')]);
-            await client.query('DELETE FROM chess.account_sessions WHERE account_id = $1', [identity.id]);
+            await revokeAccountSessions(client, identity.id, guest.id);
           }
           const previous = cookieToken(request.headers.cookie, accountCookie)!;
           await client.query('DELETE FROM chess.account_sessions WHERE token_hash = $1', [tokenHash(previous)]);
