@@ -6,6 +6,7 @@ import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameChat } from './GameChat';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
+import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
 import { MastersPanel } from './MastersPanel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
@@ -1073,17 +1074,14 @@ export function App() {
         const stacked = window.matchMedia('(max-width: 900px)').matches;
         const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
         const frame = boardFrameRef.current?.getBoundingClientRect();
-        const lower = workspace.querySelector('.opening-book-card')?.getBoundingClientRect();
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY,
-          play && frame ? play.height - frame.height : 180, lower?.height ?? 320, stacked));
+          play && frame ? play.height - frame.height : 180, 320, stacked));
       });
     };
     const observer = new ResizeObserver(update);
     observer.observe(workspace);
-    const lower = workspace.querySelector('.opening-book-card');
-    if (lower) observer.observe(lower);
     window.addEventListener('resize', update); update();
     return () => { observer.disconnect(); cancelAnimationFrame(frameId); window.removeEventListener('resize', update); };
   }, [analysisOpen, game?.id]);
@@ -1351,7 +1349,7 @@ export function App() {
 
             </div>
             <div className="position-column">
-              {analysisOpen && displayedFen !== null && <EnginePanel key={game.id} game={game}
+              {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
                 selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
@@ -1360,6 +1358,9 @@ export function App() {
                   setSelected(null);
                 }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
+            <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
+              book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}
+                onOpenGame={openExplorerGame} onExplore={exploreBookMove} /> : null}>
             <aside className="game-sidebar" aria-label="Game controls and moves">
 
 
@@ -1535,15 +1536,12 @@ export function App() {
               </div>
 
             </aside>
+            </AnalysisSidebarTabs>
             </div>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
               playerNames={game.playerNames} />}
             {analysisOpen && <>
-              <div className="opening-book-card">
-                {analysis !== null && <MastersPanel game={game} tree={analysis}
-                      onOpenGame={openExplorerGame} onExplore={exploreBookMove} />}
-              </div>
               <div className="computer-analysis-card" ref={setReviewHost} />
             </>}
           </div>

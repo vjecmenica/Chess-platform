@@ -538,9 +538,9 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .position-column { display: contents; }
 .analysis-workspace .position-column { display: grid; grid-template-rows: auto minmax(0, 1fr);
   gap: 0; min-width: 0; }
-.game-layout.analysis-workspace .position-column > .game-sidebar { margin: 0; height: auto;
+.game-layout.analysis-workspace .sidebar-moves > .game-sidebar { margin: 0; height: auto;
   min-height: 260px; grid-template-rows: minmax(0, 1fr) auto; }
-.opening-book-card { min-width: 0; container-type: inline-size; }
+
 .computer-analysis-card .review-summary { gap: 8px; }
 .computer-analysis-card .review-player { min-width: 0; }
 .computer-analysis-card .review-player > strong { font-size: var(--text-body); }
@@ -617,20 +617,19 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-method { font-size: var(--text-meta); }
 @media (min-width: 901px) {
   .game-layout.analysis-workspace { width: 100%; max-width: 1544px; column-gap: 16px; row-gap: 12px;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto;
     grid-template-columns: minmax(0, min(max(var(--analysis-board-column,490px), 48%), calc(100% - 416px))) minmax(400px,1fr); }
   .analysis-workspace .play-column { grid-column: 1; padding-top: 22px; align-items: flex-end;
     justify-self: start; width: min(calc(100% - 16px), calc(var(--board-size, var(--default-board-size)) + 34px)); }
-  .analysis-workspace .position-column { grid-column: 2; grid-row: 1 / 3;
+  .analysis-workspace .position-column { grid-column: 2; grid-row: 1;
     margin-top: var(--player-alignment-offset,22px); align-self: start;
     height: var(--analysis-sidebar-height, calc(100dvh - 114px)); min-height: 0;
     border: 1px solid var(--analysis-border); border-radius: 8px; background: var(--analysis-surface); }
   .analysis-workspace .position-column > .engine-panel { border: 0; border-radius: 8px 8px 0 0; }
-  .game-layout.analysis-workspace .position-column > .game-sidebar { min-height: 0;
+  .game-layout.analysis-workspace .sidebar-moves > .game-sidebar { min-height: 0;
     border: 0; border-top: 1px solid var(--analysis-border); border-radius: 0 0 8px 8px; }
   .analysis-workspace .position-column .engine-heading { border-radius: 8px 8px 0 0; }
   .analysis-workspace .game-sidebar { padding: 8px 12px; }
-  .analysis-workspace .opening-book-card { grid-column: 1; grid-row: 2; }
   .analysis-workspace .analysis-footer-row { width: max(100%, 404px); max-width: calc(100vw - 36px); align-self: center; }
   .analysis-workspace .play-column > .player-material-bottom { margin-bottom: 26px; }
   .analysis-workspace .player-material-row, .analysis-workspace .captured-row { height: 24px; }
@@ -877,7 +876,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
       minmax(440px, 1fr); }
   .site-game-workspace.analysis-workspace .play-column { grid-column: 2; }
   .site-game-workspace.analysis-workspace .position-column { grid-column: 3; }
-  .site-game-workspace.analysis-workspace .opening-book-card { grid-column: 1 / 3; }
   .site-game-workspace.analysis-workspace .game-chat { grid-column: 1; grid-row: 1; }
   .game-layout.site-game-workspace:not(.analysis-workspace) {
     grid-template-columns: clamp(280px, 17vw, 320px)
@@ -907,5 +905,28 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 /* Very short desktops use natural flow so engine controls and game actions cannot be clipped. */
 @media (min-width: 901px) and (max-height: 650px) {
   .analysis-workspace .position-column { height: auto; }
-  .game-layout.analysis-workspace .position-column > .game-sidebar { min-height: 320px; }
+  .game-layout.analysis-workspace .sidebar-moves > .game-sidebar { min-height: 320px; }
+}
+
+/* Only the lower sidebar switches; the engine stays mounted above these panes. */
+.sidebar-tabs-shell { display: grid; grid-template-rows: auto minmax(0,1fr); min-height: 0; min-width: 0; }
+.sidebar-tabs { display: flex; gap: 4px; padding: 4px 10px 0; border-bottom: 1px solid #dedbd2; }
+.sidebar-tabs button { min-height: 38px; padding: 7px 12px; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 0; background: transparent; color: #756451; }
+.sidebar-tabs button[aria-selected="true"] { border-bottom-color: #875d35; color: #382b22; }
+.sidebar-tabs button:hover { background: #f2eee5; }
+.sidebar-tabs button:focus-visible { outline-offset: -3px; }
+.sidebar-tab-content { min-width: 0; min-height: 0; }
+.sidebar-tab-content[hidden] { display: none; }
+.sidebar-moves { display: grid; grid-template-rows: minmax(0,1fr); }
+.sidebar-book { overscroll-behavior: contain; overflow: auto; padding: 10px 12px; container-type: inline-size; scrollbar-gutter: stable; }
+.analysis-workspace .sidebar-book .masters-panel { border: 0; padding: 0; }
+.analysis-workspace .sidebar-book .masters-heading { display: none; }
+.analysis-workspace .sidebar-book .masters-moves,
+.analysis-workspace .sidebar-book .explorer-game-list { max-height: none; overflow: visible; }
+@media (min-width: 901px) {
+  .analysis-workspace .computer-analysis-card { grid-row: 2; }
+}
+@media (max-width: 900px) {
+  .sidebar-book { max-height: 65dvh; }
 }
