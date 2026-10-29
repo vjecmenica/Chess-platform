@@ -11,10 +11,17 @@ import { interactiveSearchLimits, scheduleInteractiveEngine } from './interactiv
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
 
-type ReviewState = { readonly kind: 'idle' | 'cancelled' }
+export type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
   | { readonly kind: 'complete'; readonly review: GameReview }
   | { readonly kind: 'error'; readonly message: string };
+
+/** Publish one lifecycle transition to both the panel and its parent's move annotations. */
+export function publishReviewState(next: ReviewState, onState: (state: ReviewState) => void,
+  onReport: (review: GameReview | null) => void) {
+  onState(next);
+  onReport(next.kind === 'complete' ? next.review : null);
+}
 
 export function AccuracyEstimate({ result }: { readonly result: PlayerAccuracy }) {
   const explanation = result.unavailable === 'no_moves' ? 'No moves by this player.'
@@ -229,26 +236,30 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     onEvaluationChange(null);
   }
 
+  function changeReview(next: ReviewState) {
+    publishReviewState(next, setReview, onReviewChange);
+  }
+
   function startReview() {
     if (cache.current === null || review.kind === 'running') return;
     runner.current?.cancel();
+    changeReview({ kind: 'running', progress: { completed: 0, total: game.history.length + 1, cached: 0 } });
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
         () => new Worker(engineWorkerUrl) as EngineWorker, cache.current,
-        progress => setReview({ kind: 'running', progress }),
+        progress => changeReview({ kind: 'running', progress }),
         evaluations => {
           try {
             const complete = buildGameReview(game, evaluations);
-            setReview({ kind: 'complete', review: complete });
-            onReviewChange(complete);
+            changeReview({ kind: 'complete', review: complete });
           }
-          catch { setReview({ kind: 'error', message: 'The review did not match the saved game.' }); }
+          catch { changeReview({ kind: 'error', message: 'The review did not match the saved game.' }); }
         },
-        message => setReview({ kind: 'error', message }));
+        message => changeReview({ kind: 'error', message }));
       runner.current = next;
       next.start();
-    } catch { setReview({ kind: 'error', message: 'The saved main line could not be reviewed.' }); }
+    } catch { changeReview({ kind: 'error', message: 'The saved main line could not be reviewed.' }); }
   }
 
   const evaluation = (state.kind === 'done' || state.kind === 'searching')
@@ -357,7 +368,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {reviewTab === 'computer' && <div className="review-control">
       <button type="button" className={review.kind === 'running' ? 'secondary' : 'primary'} disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
-          runner.current?.cancel(); setReview({ kind: 'cancelled' });
+          runner.current?.cancel(); changeReview({ kind: 'cancelled' });
         } else startReview();
       }}>{review.kind === 'running' ? 'Cancel analysis'
           : review.kind === 'complete' ? 'Analyze again' : 'Analyze game'}</button>

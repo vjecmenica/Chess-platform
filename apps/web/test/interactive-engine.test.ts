@@ -3,6 +3,12 @@ import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EngineCache, EngineController, searchProfile, type EngineWorker } from '../src/engine-analysis';
 import { interactiveSearchLimits, scheduleInteractiveEngine } from '../src/interactive-engine';
 import { GameReviewRunner } from '../src/game-review';
+import { buildGameReview, type GameReview } from '../src/game-review';
+import { publishReviewState, type ReviewState } from '../src/EnginePanel';
+import { importPgn } from '../src/pgn-import';
+import { MoveTree } from '../src/MoveTree';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 class Worker implements EngineWorker {
   commands: string[] = [];
@@ -14,6 +20,47 @@ class Worker implements EngineWorker {
   emit(data: string) { this.onmessage?.({ data } as MessageEvent<string>); }
   ready() { this.emit('uciok'); this.emit('readyok'); }
 }
+
+it('keeps the panel report and parent move annotations consistent across restart, cancel, failure and completion', async () => {
+  const game = importPgn('[Result "1-0"]\n\n1. e4 e5 1-0', 'lifecycle').game;
+  const evaluation = (fen: string, cp: number) => ({ fen, depth: 14,
+    score: { kind: 'cp' as const, value: cp }, bestMove: null, variation: [] });
+  const report = (cp: number) => buildGameReview(game, [
+    evaluation(game.history[0]!.beforeFen, cp),
+    ...game.history.map(move => evaluation(move.afterFen, 0)),
+  ]);
+  let panel: ReviewState = { kind: 'idle' };
+  let parent: GameReview | null = null;
+  const transition = (next: ReviewState) => publishReviewState(next,
+    state => { panel = state; }, review => { parent = review; });
+  const annotations = () => renderToStaticMarkup(createElement(MoveTree, { game, tree: null,
+    selected: { kind: 'main', ply: 2 }, interactive: true, review: parent,
+    onSelect: () => {}, onDelete: () => {} }));
+  const worker = new Worker(), interactiveStates = vi.fn();
+  const engine = new EngineController(() => worker, interactiveStates, new EngineCache());
+  const dispose = scheduleInteractiveEngine(engine, STANDARD_STARTING_FEN);
+  await Promise.resolve(); worker.ready();
+  const before = interactiveStates.mock.calls.length;
+  try {
+    for (const ending of [{ kind: 'cancelled' }, { kind: 'error', message: 'Worker failed' }] as const) {
+      transition({ kind: 'complete', review: report(400) });
+      expect(annotations()).toContain('Engine: Blunder');
+      transition({ kind: 'running', progress: { completed: 0, total: 3, cached: 0 } });
+      expect(parent).toBeNull(); expect(panel.kind).toBe('running');
+      expect(annotations()).not.toContain('Engine:');
+      transition(ending);
+      expect(parent).toBeNull(); expect(panel.kind).toBe(ending.kind);
+      expect(annotations()).not.toContain('Engine:');
+    }
+    const replacement = report(100);
+    transition({ kind: 'complete', review: replacement });
+    expect(parent).toBe(replacement); expect(panel.kind).toBe('complete');
+    expect(annotations()).toContain('Engine: Inaccuracy');
+    expect(annotations()).not.toContain('Engine: Blunder');
+    expect(worker.terminated).toBe(false); expect(worker.commands).not.toContain('stop');
+    expect(interactiveStates).toHaveBeenCalledTimes(before);
+  } finally { dispose(); }
+});
 
 it('starts once after development effect replay with interactive limits configured before UCI search', async () => {
   const workers: Worker[] = [];
