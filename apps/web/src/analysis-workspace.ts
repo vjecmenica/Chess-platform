@@ -5,6 +5,11 @@ export const minimumAnalysisBoardSize = 240;
 export const maximumAnalysisBoardSize = 1080;
 const minimumDefaultDesktopBoardSize = 334;
 
+/** Scrolling to reach a large board's grip must not enlarge the sidebar. */
+export function analysisSidebarHeight(viewportHeight: number, stripTop: number, scrollY: number): number {
+  return Math.max(0, viewportHeight - (stripTop + scrollY) - 20);
+}
+
 export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean,
   chatRail = false, analysis = false): number {
   // The wide site-game grid reserves a 320px chat rail, a 440px move panel,

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EvaluationBar, evaluationFillPercent, evaluationVisualState } from '../src/EvaluationBar';
-import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, evaluationBarState,
+import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, evaluationBarState,
   resizedBoardSize } from '../src/analysis-workspace';
 import type { EngineEvaluation } from '../src/engine-analysis';
 
@@ -14,6 +14,13 @@ function evaluation(fen = STANDARD_STARTING_FEN, kind: 'cp' | 'mate' = 'cp', val
 }
 
 describe('analysis workspace sizing', () => {
+  it('keeps the desktop sidebar height stable when reaching a large board scrolls the page', () => {
+    expect(analysisSidebarHeight(768, 94, 0)).toBe(654);
+    expect(analysisSidebarHeight(768, -506, 600)).toBe(654);
+    expect(analysisSidebarHeight(1080, 94, 0)).toBe(966);
+    expect(analysisSidebarHeight(1080, -206, 300)).toBe(966);
+    expect(analysisSidebarHeight(100, 94, 0)).toBe(0);
+  });
   it('reserves desktop height for player strips, controls, and a completed report', () => {
     // The height budget leaves 320px, so the usable desktop floor applies.
     expect(defaultAnalysisBoardSize(650, 900, 48, 170, 334, false)).toBe(334);

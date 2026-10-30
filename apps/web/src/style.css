@@ -329,7 +329,8 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .engine-score { font-weight: 700; font-variant-numeric: tabular-nums; color: #143d30; }
 .engine-result small, .engine-credit { color: var(--text-muted); font-size: var(--text-compact); }
-.engine-line { min-width: 0; overflow-wrap: anywhere; font-size: var(--text-compact); }
+.engine-line { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-compact); }
+.engine-rank, .engine-score { white-space: nowrap; }
 .engine-first-move { font-weight: 650; }
 .engine-credit { justify-self: start; }
 .review-control { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 5px;
@@ -546,7 +547,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .computer-analysis-card .review-player > strong { font-size: var(--text-body); }
 .computer-analysis-card .review-count strong, .computer-analysis-card .review-average b { font-size: 18px; }
 .book-columns, .masters-move { display: grid;
-  grid-template-columns: minmax(3.5rem, .6fr) minmax(4.75rem, .8fr) minmax(5.5rem, 1fr) minmax(8rem, 2.5fr);
+  grid-template-columns: minmax(2.5rem, .6fr) minmax(4rem, .8fr) minmax(5rem, 1fr) minmax(8.25rem, 2fr);
   gap: 6px; align-items: center; font-size: var(--text-compact); }
 .book-columns { line-height: 1.35; }
 .masters-move button { background: transparent; color: inherit; border: 0; border-radius: 0; padding: 4px 0; }
@@ -590,8 +591,8 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-control button { min-height: 32px; padding: 5px 8px; }
 .analysis-workspace .engine-heading-actions { gap: 5px; }
 .analysis-workspace .engine-result { gap: 7px; }
-.analysis-workspace .engine-candidate { grid-template-columns: 14px 50px minmax(0,1fr); gap: 5px; padding: 5px; background: #f4f2eb; border-radius: 4px; }
-.analysis-workspace .engine-line { white-space: normal; line-height: 1.45; overflow-wrap: anywhere; }
+.analysis-workspace .engine-candidate { grid-template-columns: 14px minmax(50px, max-content) minmax(0,1fr); gap: 5px; padding: 5px; background: #f4f2eb; border-radius: 4px; }
+.analysis-workspace .engine-line { line-height: 1.45; }
 .analysis-workspace .book-columns { color: var(--text-muted); padding-bottom: 5px; }
 .analysis-workspace .masters-moves { max-height: 215px; }
 .analysis-workspace .masters-move { min-height: 32px; }
@@ -643,11 +644,9 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   .analysis-workspace .review-summary { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
   .analysis-workspace .review-player + .review-player { padding-left: 8px; }
   .analysis-workspace .review-count { grid-column: 1/-1; flex-direction: row; justify-content: flex-start; gap: 6px; padding: 4px 6px; }
-  .book-columns, .masters-move { grid-template-columns: minmax(3rem, .7fr) minmax(4.75rem, 1fr) minmax(5.5rem, 1fr); }
-  .book-columns > :last-child, .masters-move > .book-outcomes { grid-column: 1 / -1; }
 }
 /* Book statistics follow their column width, including a small resized board. */
-@container (max-width: 490px) {
+@container (max-width: 350px) {
   .book-columns, .masters-move { grid-template-columns: minmax(3rem, .7fr) minmax(4.75rem, 1fr) minmax(5.5rem, 1fr); }
   .book-columns > :last-child, .masters-move > .book-outcomes { grid-column: 1 / -1; }
 }

@@ -37,7 +37,7 @@ import { MoveTree } from './MoveTree';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
 import { createResizePreview } from './board-resize';
-import { defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
+import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
@@ -1046,7 +1046,7 @@ export function App() {
       const top = layout?.querySelector('.play-column > .player-material-top')?.getBoundingClientRect();
       const bottom = layout?.querySelector('.play-column > .player-material-bottom')?.getBoundingClientRect();
       if (layout && top && bottom) {
-        layout.style.setProperty('--analysis-sidebar-height', `${Math.max(0, window.innerHeight - top.top - 20)}px`);
+        layout.style.setProperty('--analysis-sidebar-height', `${analysisSidebarHeight(window.innerHeight, top.top, window.scrollY)}px`);
         setPlayerWorkspace({
           top: Math.round(top.top - layout.getBoundingClientRect().top),
           height: Math.round(bottom.bottom - top.top),
