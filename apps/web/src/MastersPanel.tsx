@@ -14,7 +14,7 @@ export function ExplorerContent({ result, onExplore, onRetry, examples }: {
   const id = useId();
   return <section className="masters-panel" aria-label="Opening explorer">
     <div className="masters-heading"><strong>Opening Book</strong></div>
-    <div className="book-source-tabs" role="group" aria-label="Opening Book sources">
+    <div className="book-source-tabs analysis-view-tabs" role="group" aria-label="Opening Book sources">
       <button type="button" id={id + '-masters'} aria-pressed="true" aria-controls={id + '-content'}
         aria-description="Masters statistics from licensed TWIC games.">Masters</button>
       <button type="button" aria-pressed="false" disabled

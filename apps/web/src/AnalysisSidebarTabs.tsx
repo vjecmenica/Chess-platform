@@ -11,7 +11,7 @@ export function AnalysisSidebarTabs({ enabled, book, children }: {
   if (!enabled) return children;
   return <div className="sidebar-tabs-shell">
     {/* Native pressed buttons reserve Left/Right for workspace move navigation. */}
-    <div className="sidebar-tabs" role="group" aria-label="Analysis sidebar">
+    <div className="sidebar-tabs analysis-view-tabs" role="group" aria-label="Analysis sidebar">
       {(['moves', 'book'] as const).map(tab => <button key={tab} type="button"
         id={`${id}-${tab}-tab`} aria-controls={`${id}-${tab}-panel`}
         aria-pressed={active === tab} onClick={() => setActive(tab)}>{tab === 'moves' ? 'Moves' : 'Opening Book'}</button>)}

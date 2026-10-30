@@ -745,13 +745,14 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-results { gap: 6px; }
 .analysis-workspace .review-graph { height: 112px; }
 .analysis-workspace .review-summary { max-width: 1000px; width: 100%; }
-.review-tabs { display: flex; gap: 4px; border-bottom: 1px solid #dedbd2; }
-.review-tabs button { min-height: 34px; padding: 5px 12px; border: 0; border-bottom: 2px solid transparent;
-  background: transparent; color: #5b665d; font: inherit; font-size: var(--text-compact); cursor: pointer; }
-.review-tabs button:hover:not(:disabled) { color: #213c30; background: #f2eee5; }
-.review-tabs button[aria-pressed="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
-.review-tabs button:focus-visible, .move-time-column:focus-visible { outline: 3px solid #a66422; outline-offset: -3px; }
-.review-tabs button:disabled { opacity: .5; cursor: default; }
+.analysis-view-tabs { display: flex; gap: 4px; border-bottom: 1px solid #dedbd2; }
+.analysis-view-tabs button { min-height: 34px; padding: 5px 12px; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 5px; background: transparent; color: #5b665d; font: inherit;
+  font-size: var(--text-compact); cursor: pointer; }
+.analysis-view-tabs button:hover:not(:disabled) { color: #213c30; background: #f2eee5; }
+.analysis-view-tabs button[aria-pressed="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
+.analysis-view-tabs button:focus-visible, .move-time-column:focus-visible { outline: 3px solid #a66422; outline-offset: -3px; }
+.analysis-view-tabs button:disabled { opacity: .5; cursor: default; }
 .review-content > [role="region"] { min-width: 0; }
 .move-times-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .move-times { width: 100%; min-width: 0; }
@@ -972,22 +973,15 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 
 /* Only the lower sidebar switches; the engine stays mounted above these panes. */
 .sidebar-tabs-shell { display: grid; grid-template-rows: auto minmax(0,1fr); min-height: 0; min-width: 0; }
-.sidebar-tabs { display: flex; gap: 4px; padding: 4px 10px 0; border-bottom: 1px solid #dedbd2; }
-.sidebar-tabs button { min-height: 38px; padding: 7px 12px; border: 0; border-bottom: 2px solid transparent;
-  border-radius: 0; background: transparent; color: #756451; }
-.sidebar-tabs button[aria-pressed="true"] { border-bottom-color: #875d35; color: #382b22; }
-.sidebar-tabs button:hover { background: #f2eee5; }
-.sidebar-tabs button:focus-visible { outline-offset: -3px; }
+.sidebar-tabs { padding: 4px 10px 0; }
 .sidebar-tab-content { min-width: 0; min-height: 0; }
 .sidebar-tab-content[hidden] { display: none; }
 .sidebar-moves { display: grid; grid-template-rows: minmax(0,1fr); }
 .sidebar-book { display: flex; flex-direction: column; overscroll-behavior: contain; overflow: auto; padding: 10px 12px; container-type: inline-size; scrollbar-gutter: stable; }
 .analysis-workspace .sidebar-book .masters-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; border: 0; padding: 0; gap: 6px; }
 .analysis-workspace .sidebar-book .masters-heading { display: none; }
-.book-source-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; flex: none; }
-.book-source-tabs button { min-height: 38px; padding: 3px 6px; font-size: var(--text-compact);
-  border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; }
-.book-source-tabs button[aria-pressed="true"] { color: #382b22; border-bottom-color: #875d35; }
+.book-source-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); flex: none; }
+.book-source-tabs button { min-width: 0; }
 .book-source-tabs small { display: block; font-size: var(--text-caption); }
 .book-source-content { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
 .masters-statistics { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 64px; }

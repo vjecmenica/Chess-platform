@@ -107,6 +107,7 @@ export class GameReviewRunner {
   private current = 0;
   private cached = 0;
   private running = false;
+  private firstWorkerSearch = true;
   private nextTimer: ReturnType<typeof setTimeout> | null = null;
   private watchdog: ReturnType<typeof setTimeout> | null = null;
 
@@ -114,8 +115,9 @@ export class GameReviewRunner {
     makeWorker: () => EngineWorker, private readonly cache: EngineCache,
     private readonly onProgress: (progress: ReviewProgress) => void,
     private readonly onComplete: (evaluations: readonly EngineEvaluation[]) => void,
-    private readonly onError: (message: string) => void) {
-    this.controller = new EngineController(makeWorker, state => this.handleEngine(state), cache);
+    private readonly onError: (message: string) => void,
+    options: { readonly threads?: number } = {}) {
+    this.controller = new EngineController(makeWorker, state => this.handleEngine(state), cache, options);
   }
 
   start(): void {
@@ -145,7 +147,10 @@ export class GameReviewRunner {
     const fen = this.positions[this.current]!;
     const cached = this.cache.get(fen);
     if (cached) { this.accept(cached, true); return; }
-    this.watchdog = setTimeout(() => this.fail('The engine took too long to review a position.'), 20_000);
+    // The Full build can take longer to download and initialize on the first uncached position.
+    this.watchdog = setTimeout(() => this.fail('The engine took too long to review a position.'),
+      this.firstWorkerSearch ? 90_000 : 20_000);
+    this.firstWorkerSearch = false;
     this.controller.start(fen);
   }
 

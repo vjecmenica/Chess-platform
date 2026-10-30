@@ -61,7 +61,7 @@ export function browserSupportsEngineThreads(): boolean {
   return engineThreadFailure(browserEngineThreadCapabilities()) === null;
 }
 
-/** Reserve capacity for the UI and the separately bounded, one-thread Lite review. */
+/** Leave room for the UI and a separate bounded game-review worker. */
 export function maximumEngineThreads(hardwareConcurrency: number): number {
   return Math.max(1, Math.min(4, Math.floor(Number.isFinite(hardwareConcurrency) ? hardwareConcurrency : 2) - 2));
 }

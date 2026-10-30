@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewGraph, reviewAdvantageSegments, reviewGraphX, reviewGraphY,
   reviewPositionText } from '../src/EnginePanel';
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
+import { engineCacheIdentity, engineDescription, fullEngine } from '../src/engine-builds';
 import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel, nextReviewedMovePly,
   reviewBadge, reviewMethodVersion, reviewPositions, reviewSummary,
   type ReviewProgress } from '../src/game-review';
@@ -183,6 +184,27 @@ describe('browser-local full-game review', () => {
     expect(progress.at(-1)).toEqual({ completed: 3, total: 3, cached: 1 });
     expect(errors).toEqual([]);
     expect(worker.terminated).toBe(true);
+  });
+
+  it('uses the selected Full build and threads for a bounded review without mixing Lite cache', () => {
+    vi.useFakeTimers();
+    const positions = [STANDARD_STARTING_FEN];
+    const cache = new EngineCache(undefined, engineCacheIdentity(fullEngine, 2),
+      engineDescription(fullEngine, 2));
+    const worker = new FakeWorker();
+    const completed: EngineEvaluation[][] = [];
+    const runner = new GameReviewRunner(positions, () => worker, cache, () => {},
+      evaluations => completed.push([...evaluations]), () => {}, { threads: 2 });
+    runner.start();
+    worker.emit('uciok');
+    expect(worker.sent).toContain('setoption name Threads value 2');
+    worker.emit('readyok');
+    expect(worker.sent).toContain('go depth 14 movetime 1200');
+    worker.emit('info depth 14 score cp 15 pv e2e4');
+    worker.emit('bestmove e2e4');
+    vi.runAllTimers();
+    expect(completed[0]?.[0]?.engine).toBe('Stockfish 19 Full · 2 threads');
+    expect(new EngineCache().get(STANDARD_STARTING_FEN)).toBeUndefined();
   });
 
   it('cancels without a result and reports worker failures', () => {

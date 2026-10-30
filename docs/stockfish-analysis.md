@@ -91,24 +91,25 @@ Full multithreading requires cross-origin isolation, SharedArrayBuffer and share
 WASM memory. Otherwise **Full single-threaded** is selected, and Threads is absent.
 Lite is always single-threaded. Threads starts at **1** and is capped at
 `max(1, min(4, floor(hardwareConcurrency) - 2))`; unavailable core data uses one.
-The cap reserves capacity for the UI and the one-thread review on larger devices.
+The cap leaves some capacity for the UI and a separate review worker on larger devices.
 Hardware concurrency is a browser hint, not guaranteed dedicated CPU capacity.
 Both controllers keep Hash at 16 MB; the Full neural network/runtime additionally
 uses substantially more memory than Lite. A higher thread count may reduce
 responsiveness or battery life; mobile users can select Lite and stop searches.
 
-**Computer Analysis remains Stockfish 19 Lite, one thread, depth 14 / 1.2 seconds
-per position**, with its existing pause, cancellation, watchdog, CPL/accuracy method
-and cache. Its panel explicitly names this build even if interactive Full is running.
-There are at most two engine instances per Analysis workspace: interactive (1–4
-search threads) and the bounded one-thread Lite review. Changing engine or Threads
-replaces only the interactive worker, retaining search limits/lines and review state.
-Review start/cancel/finish does not stop the interactive engine. Concurrent work can
-still saturate low-core devices; Stop and Cancel remain independent controls.
+**Computer Analysis uses the same selected build and effective thread count as Engine
+Evaluation**, with its own worker and a bounded depth 14 / 1.2 seconds per position.
+It retains its pause, cancellation, watchdog and CPL/accuracy method. Changing the
+build or Threads cancels an active review and clears its previous results; rerun the
+review under the new selection. At most two engine instances run in one Analysis
+workspace, and review start/cancel/finish does not stop interactive evaluation.
+Running two Full workers at once can use considerable CPU and memory, especially
+with multiple threads. Stop and Cancel remain independent controls.
 
 Interactive caches separate exact build variant, effective thread count, FEN,
 MultiPV count and depth/time profile. Full, Full single-threaded, and Lite never
-reuse each other's scores. The previous Lite cache remains valid for review.
+reuse each other's scores. Review results also use the matching build/thread cache;
+the previous Lite review cache remains available when Lite is selected.
 Evaluation records identify their engine, including in the evaluation-bar tooltip
 when it uses a review result. Unlimited searches are not completed-result caches.
 

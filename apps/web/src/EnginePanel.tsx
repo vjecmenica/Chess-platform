@@ -206,7 +206,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const variant = resolveEngine(fallback ? 'lite' : preference.choice, isolated);
   const threads = effectiveThreads(variant, preference.threads, maxThreads);
   const description = engineDescription(variant, threads);
-  const [lineCount, setLineCount] = useState<MultiPvCount>(1);
+  const [lineCount, setLineCount] = useState<MultiPvCount>(3);
   const [searchSettings, setSearchSettings] = useState(createInteractiveSettings);
   const { depth, timeMs, unlimitedDepth, unlimitedTime } = searchSettings.current;
   const continuous = unlimitedDepth && unlimitedTime;
@@ -246,9 +246,13 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, [settingsOpen]);
 
   useEffect(() => {
-    reviewCache.current = new EngineCache(sessionOnly ? undefined : browserStorage());
+    runner.current?.cancel();
+    runner.current = null;
+    reviewCache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
+      engineCacheIdentity(variant, threads), description);
+    changeReview({ kind: 'idle' });
     return () => { runner.current?.cancel(); runner.current = null; reviewCache.current = null; };
-  }, []);
+  }, [variant.id, threads, sessionOnly]);
 
   useEffect(() => {
     cache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
@@ -303,7 +307,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
-        () => createBrowserEngineWorker(liteEngine.url), reviewCache.current,
+        () => createBrowserEngineWorker(variant.url), reviewCache.current,
         progress => changeReview({ kind: 'running', progress }),
         evaluations => {
           try {
@@ -312,7 +316,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           }
           catch { changeReview({ kind: 'error', message: 'The review did not match the saved game.' }); }
         },
-        message => changeReview({ kind: 'error', message }));
+        message => changeReview({ kind: 'error', message }),
+        variant.multithreaded ? { threads } : {});
       runner.current = next;
       next.start();
     } catch { changeReview({ kind: 'error', message: 'The saved main line could not be reviewed.' }); }
@@ -357,7 +362,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           setSettingsOpen(false); settingsButtonRef.current?.focus();
         }}>Close</button></div>
       <label className="engine-line-setting">Engine
-        <select aria-label="Analysis engine" aria-description="Applies to Engine Evaluation. Computer Analysis uses Stockfish 19 Lite."
+        <select aria-label="Analysis engine" aria-description="Applies to Engine Evaluation and Computer Analysis."
           value={preference.choice} onChange={event => {
           changeEngine({ ...preference, choice: event.target.value === 'lite' ? 'lite' : 'full' });
         }}><option value="full">Stockfish 19 Full</option><option value="lite">Stockfish 19 Lite</option></select>
@@ -461,7 +466,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </span>}
     </div>}
     </div>
-    <div className="review-tabs" role="group" aria-label="Game analysis views">
+    <div className="review-tabs analysis-view-tabs" role="group" aria-label="Game analysis views">
       <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
         aria-controls="computer-analysis-view"
         onClick={() => setReviewTab('computer')}>Computer Analysis</button>
@@ -475,7 +480,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     </div>
     <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button"
       hidden={reviewTab !== 'computer'}>
-    <small className="review-engine">Stockfish 19 Lite · 1 thread · depth 14 / 1.2s per position</small>
+    <small className="review-engine">{description} · depth 14 / 1.2s per position</small>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
