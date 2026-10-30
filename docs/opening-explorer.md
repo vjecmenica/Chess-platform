@@ -14,6 +14,11 @@ The interactive engine remains mounted above both sidebar tabs. Its header switc
 controls only current-position evaluation, independently of Computer Analysis. The
 header score reuses the current position’s first PV in White’s perspective; pending
 positions and a stopped engine do not display another position’s score.
+The blue plus beside the reached depth toggles continuous current-position analysis:
+both depth and time limits become unlimited. Activating it again restores the last
+bounded settings, including a single finite limit. The settings popover reflects the
+same limits. The engine switch still stops the worker immediately; Computer Analysis
+keeps its separate bounded search profile.
 
 ## Private source data
 

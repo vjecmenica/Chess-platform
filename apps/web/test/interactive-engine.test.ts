@@ -1,7 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EngineCache, EngineController, searchProfile, type EngineWorker } from '../src/engine-analysis';
-import { interactiveSearchLimits, scheduleInteractiveEngine } from '../src/interactive-engine';
+import { createInteractiveSettings, interactiveSearchLimits, scheduleInteractiveEngine,
+  toggleContinuousSettings, updateInteractiveSettings } from '../src/interactive-engine';
+import { interactiveLimits } from '../src/EnginePanel';
 import { GameReviewRunner } from '../src/game-review';
 import { buildGameReview, type GameReview } from '../src/game-review';
 import { publishReviewState, type ReviewState } from '../src/EnginePanel';
@@ -20,6 +22,52 @@ class Worker implements EngineWorker {
   emit(data: string) { this.onmessage?.({ data } as MessageEvent<string>); }
   ready() { this.emit('uciok'); this.emit('readyok'); }
 }
+
+it('runs continuously without the old time limit and restores the exact bounded profile', () => {
+  let settings = createInteractiveSettings();
+  settings = updateInteractiveSettings(settings, { depth: 18, timeMs: 2400,
+    unlimitedDepth: false, unlimitedTime: false });
+  const states = vi.fn(), worker = new Worker();
+  const controller = new EngineController(() => worker, states, new EngineCache());
+  const apply = () => controller.setSearchLimits(interactiveLimits(
+    settings.current.unlimitedDepth ? null : settings.current.depth,
+    settings.current.unlimitedTime ? null : settings.current.timeMs));
+  apply(); controller.start(STANDARD_STARTING_FEN); worker.ready();
+  expect(worker.commands.at(-1)).toBe('go depth 18 movetime 2400');
+  settings = toggleContinuousSettings(settings); apply();
+  expect(settings.current).toMatchObject({ unlimitedDepth: true, unlimitedTime: true });
+  expect(worker.commands.at(-1)).toBe('stop');
+  worker.emit('bestmove e2e4'); worker.emit('readyok');
+  expect(worker.commands.at(-1)).toBe('go infinite');
+  worker.emit('info depth 28 score cp 20 pv e2e4');
+  expect(states.mock.lastCall?.[0]).toMatchObject({ kind: 'searching', evaluation: { depth: 28 } });
+  settings = toggleContinuousSettings(settings); apply();
+  worker.emit('bestmove e2e4'); worker.emit('readyok');
+  expect(worker.commands.at(-1)).toBe('go depth 18 movetime 2400');
+  expect(settings.current).toEqual({ depth: 18, timeMs: 2400,
+    unlimitedDepth: false, unlimitedTime: false });
+  controller.dispose();
+});
+
+it('synchronizes popover edits with continuous mode and remembers partially bounded limits', () => {
+  let settings = createInteractiveSettings();
+  settings = updateInteractiveSettings(settings, { depth: 22, timeMs: 3700,
+    unlimitedDepth: true, unlimitedTime: false });
+  settings = toggleContinuousSettings(settings);
+  settings = toggleContinuousSettings(settings);
+  expect(settings.current).toEqual({ depth: 22, timeMs: 3700,
+    unlimitedDepth: true, unlimitedTime: false });
+  // Selecting both Unlimited checkboxes uses the same continuous mode as the shortcut.
+  settings = updateInteractiveSettings(settings, { ...settings.current, unlimitedTime: true });
+  settings = toggleContinuousSettings(settings);
+  expect(settings.current.unlimitedTime).toBe(false);
+  settings = toggleContinuousSettings(settings);
+  // A finite popover edit exits continuous mode and becomes the next restore target.
+  settings = updateInteractiveSettings(settings, { ...settings.current, depth: 16, unlimitedDepth: false });
+  settings = toggleContinuousSettings(toggleContinuousSettings(settings));
+  expect(settings.current).toEqual({ depth: 16, timeMs: 3700,
+    unlimitedDepth: false, unlimitedTime: true });
+});
 
 it('can stop and restart interactive evaluation while the independent review worker keeps running', async () => {
   vi.useFakeTimers();

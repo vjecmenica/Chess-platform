@@ -7,7 +7,8 @@ import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
-import { interactiveSearchLimits, scheduleInteractiveEngine } from './interactive-engine';
+import { createInteractiveSettings, scheduleInteractiveEngine, toggleContinuousSettings, updateInteractiveSettings,
+  type InteractiveSettingsState } from './interactive-engine';
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
 
@@ -189,10 +190,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 }) {
   const [enabled, setEnabled] = useState(true);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
-  const [depth, setDepth] = useState<number>(interactiveSearchLimits.depth);
-  const [timeMs, setTimeMs] = useState<number>(interactiveSearchLimits.timeMs);
-  const [unlimitedDepth, setUnlimitedDepth] = useState(false);
-  const [unlimitedTime, setUnlimitedTime] = useState(false);
+  const [searchSettings, setSearchSettings] = useState(createInteractiveSettings);
+  const { depth, timeMs, unlimitedDepth, unlimitedTime } = searchSettings.current;
+  const continuous = unlimitedDepth && unlimitedTime;
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const [reviewTab, setReviewTab] = useState<'computer' | 'times'>('computer');
@@ -247,13 +247,25 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount, profile) ?? null); },
     [fen, lineCount, profile, onEvaluationChange]);
 
+  function applySettings(next: InteractiveSettingsState) {
+    setSearchSettings(next);
+    const settings = next.current;
+    controller.current?.setSearchLimits(interactiveLimits(
+      settings.unlimitedDepth ? null : settings.depth, settings.unlimitedTime ? null : settings.timeMs));
+    onEvaluationChange(null);
+  }
+
   function updateLimits(nextDepth: number, nextTimeMs: number,
     nextUnlimitedDepth: boolean, nextUnlimitedTime: boolean) {
-    setDepth(nextDepth); setTimeMs(nextTimeMs);
-    setUnlimitedDepth(nextUnlimitedDepth); setUnlimitedTime(nextUnlimitedTime);
-    controller.current?.setSearchLimits(interactiveLimits(
-      nextUnlimitedDepth ? null : nextDepth, nextUnlimitedTime ? null : nextTimeMs));
-    onEvaluationChange(null);
+    applySettings(updateInteractiveSettings(searchSettings, { depth: nextDepth, timeMs: nextTimeMs,
+      unlimitedDepth: nextUnlimitedDepth, unlimitedTime: nextUnlimitedTime }));
+  }
+
+  function toggleContinuous() {
+    applySettings(toggleContinuousSettings(searchSettings));
+    if (!continuous && (!enabled || state.kind === 'error')) {
+      controller.current?.start(fen); setEnabled(true);
+    }
   }
 
   function changeReview(next: ReviewState) {
@@ -297,18 +309,22 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
-      <strong>Engine Evaluation</strong>
-      <div className="engine-heading-actions">
-        <EngineToggle enabled={enabled && state.kind !== 'error'}
-          score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null}
-          onToggle={() => {
-            if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
-            else { controller.current?.start(fen); setEnabled(true); }
-          }} />
-        <button type="button" className="secondary" ref={settingsButtonRef}
-          aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
-          onClick={() => setSettingsOpen(value => !value)}>Settings</button>
-      </div>
+      <EngineToggle enabled={enabled && state.kind !== 'error'}
+        score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null}
+        onToggle={() => {
+          if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
+          else { controller.current?.start(fen); setEnabled(true); }
+        }} />
+      <strong className="engine-panel-title">Engine Evaluation</strong>
+      <button type="button" className="engine-settings-button" ref={settingsButtonRef}
+        aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
+        onClick={() => setSettingsOpen(value => !value)}>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"
+          strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <path d="M9.5 2h5l.5 2.7 2 .9 2.4-1.3 2.5 4.4-2 1.8v2.4l2 1.8-2.5 4.4-2.4-1.3-2 .9-.5 2.7h-5L9 18.4l-2-.9-2.4 1.3-2.5-4.4 2-1.8v-2.4l-2-1.8 2.5-4.4L7 5.3l2-.9Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </button>
     </div>
     {settingsOpen && <div className="engine-settings-popover" id="engine-settings"
       role="dialog" aria-label="Engine settings" ref={settingsRef}>
@@ -356,14 +372,21 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
       title={`${engineBuild}, GPLv3. Runs in this browser.`}>Engine license and source</a>
     </div>}
+    <div className="engine-depth-row">
+      <small className="engine-depth">Depth {evaluation?.depth ?? '—'}{state.kind === 'done' && state.cached ? ' · cached' : ''}</small>
+      <button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous}
+        aria-description="Analyze without a depth or time limit. Activate again to restore the previous bounded limits."
+        onClick={toggleContinuous}>
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"
+          aria-hidden="true" focusable="false"><path d="M8 2v12M2 8h12" /></svg>
+      </button>
+      {state.kind === 'searching' && <small className="engine-search-status">{continuous ? 'Continuous' : 'Searching'}</small>}
+    </div>
     {!enabled && <p className="engine-idle">Evaluate the selected position with Stockfish in this browser.</p>}
     {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && (state.kind === 'searching' || state.kind === 'done') &&
       <div className="engine-result" role="group" aria-label="Engine lines">
-      <small className="engine-depth">Depth {evaluation?.depth ?? '—'}
-        {state.kind === 'done' && state.cached ? ' · cached'
-          : state.kind === 'searching' ? ' · searching' : ''}</small>
       {engineLineRows(lines, lineCount).map((line, index) => {
         const rank = index + 1;
         return line ? <div className="engine-candidate" key={rank}
