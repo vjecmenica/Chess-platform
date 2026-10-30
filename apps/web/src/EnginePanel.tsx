@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
-import { EngineCache, EngineController, engineBuild, engineWorkerUrl,
+import { EngineCache, EngineController,
   evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
-  type EngineLine, type EngineState, type EngineWorker, type MultiPvCount, type SearchLimits } from './engine-analysis';
+  type EngineLine, type EngineState, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
@@ -11,6 +11,13 @@ import { createInteractiveSettings, scheduleInteractiveEngine, toggleContinuousS
   type InteractiveSettingsState } from './interactive-engine';
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
+import { createBrowserEngineWorker } from './browser-engine-worker';
+import { browserSupportsEngineThreads, effectiveThreads, engineCacheIdentity, engineDescription, liteEngine, maximumEngineThreads,
+  readEnginePreference, resolveEngine, saveEnginePreference, type EnginePreference } from './engine-builds';
+
+function browserStorage(): Storage | undefined {
+  try { return window.localStorage; } catch { return undefined; }
+}
 
 export type ReviewState = { readonly kind: 'idle' | 'cancelled' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
@@ -189,6 +196,13 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   readonly sessionOnly?: boolean;
 }) {
   const [enabled, setEnabled] = useState(true);
+  const [preference, setPreference] = useState(() => readEnginePreference(browserStorage()));
+  const [fallback, setFallback] = useState(false);
+  const [isolated] = useState(browserSupportsEngineThreads);
+  const maxThreads = maximumEngineThreads(typeof navigator === 'undefined' ? 2 : navigator.hardwareConcurrency);
+  const variant = resolveEngine(fallback ? 'lite' : preference.choice, isolated);
+  const threads = effectiveThreads(variant, preference.threads, maxThreads);
+  const description = engineDescription(variant, threads);
   const [lineCount, setLineCount] = useState<MultiPvCount>(1);
   const [searchSettings, setSearchSettings] = useState(createInteractiveSettings);
   const { depth, timeMs, unlimitedDepth, unlimitedTime } = searchSettings.current;
@@ -202,6 +216,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
   const cache = useRef<EngineCache | null>(null);
+  const reviewCache = useRef<EngineCache | null>(null);
   const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
   const hasMoveTimes = useMemo(() => moveTimes(game).some(move => move.elapsedMs !== null), [game]);
@@ -228,24 +243,36 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, [settingsOpen]);
 
   useEffect(() => {
-    let storage: Storage | undefined;
-    if (!sessionOnly) {
-      try { storage = window.localStorage; } catch { /* Analysis still works without storage. */ }
-    }
-    cache.current = new EngineCache(storage);
+    reviewCache.current = new EngineCache(sessionOnly ? undefined : browserStorage());
+    return () => { runner.current?.cancel(); runner.current = null; reviewCache.current = null; };
+  }, []);
+
+  useEffect(() => {
+    cache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
+      engineCacheIdentity(variant, threads), description);
+    onEvaluationChange(null);
     controller.current = new EngineController(
-      () => new Worker(engineWorkerUrl) as EngineWorker, setState, cache.current);
-    const stopInteractive = scheduleInteractiveEngine(controller.current, fen);
+      () => createBrowserEngineWorker(variant.url), next => {
+        if (next.kind === 'error' && variant.id !== liteEngine.id) {
+          setState({ kind: 'loading' }); setFallback(true); onEvaluationChange(null);
+        } else setState(next);
+      }, cache.current, variant.multithreaded ? { threads } : {});
+    controller.current.setLineCount(lineCount);
+    const stopInteractive = scheduleInteractiveEngine(controller.current, fen, limits, enabled);
     return () => {
-      runner.current?.cancel(); runner.current = null;
       stopInteractive(); controller.current = null;
       cache.current = null;
     };
-  }, []);
+  }, [variant.id, threads]);
 
   useEffect(() => { if (enabled) controller.current?.setPosition(fen); }, [enabled, fen]);
   useEffect(() => { onEvaluationChange(cache.current?.get(fen, lineCount, profile) ?? null); },
-    [fen, lineCount, profile, onEvaluationChange]);
+    [fen, lineCount, profile, variant.id, threads, onEvaluationChange]);
+
+  function changeEngine(next: EnginePreference) {
+    setPreference(next); saveEnginePreference(browserStorage(), next); setFallback(false);
+    setState(enabled ? { kind: 'loading' } : { kind: 'off' }); onEvaluationChange(null);
+  }
 
   function applySettings(next: InteractiveSettingsState) {
     setSearchSettings(next);
@@ -273,13 +300,13 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }
 
   function startReview() {
-    if (cache.current === null || review.kind === 'running') return;
+    if (reviewCache.current === null || review.kind === 'running') return;
     runner.current?.cancel();
     changeReview({ kind: 'running', progress: { completed: 0, total: game.history.length + 1, cached: 0 } });
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
-        () => new Worker(engineWorkerUrl) as EngineWorker, cache.current,
+        () => createBrowserEngineWorker(liteEngine.url), reviewCache.current,
         progress => changeReview({ kind: 'running', progress }),
         evaluations => {
           try {
@@ -332,6 +359,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         <button type="button" className="secondary" onClick={() => {
           setSettingsOpen(false); settingsButtonRef.current?.focus();
         }}>Close</button></div>
+      <label className="engine-line-setting">Engine
+        <select aria-label="Analysis engine" aria-description="Applies to Engine Evaluation. Computer Analysis uses Stockfish 19 Lite."
+          value={preference.choice} onChange={event => {
+          changeEngine({ ...preference, choice: event.target.value === 'lite' ? 'lite' : 'full' });
+        }}><option value="full">Stockfish 19 Full</option><option value="lite">Stockfish 19 Lite</option></select>
+      </label>
+      {variant.multithreaded && <label className="engine-range-setting engine-thread-setting">Threads
+        <input type="range" aria-label="Engine threads" min="1" max={maxThreads} value={threads}
+          disabled={maxThreads === 1} onChange={event => changeEngine({ ...preference, threads: Number(event.target.value) })} />
+        <output>{threads}</output>
+      </label>}
+      {preference.choice === 'full' && !isolated && <small>Full single-threaded: browser isolation is unavailable.</small>}
       <label className="engine-line-setting">Lines
           <select value={lineCount}
             aria-label="Candidate lines" onChange={event => {
@@ -370,7 +409,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </div>
     </div>
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
-      title={`${engineBuild}, GPLv3. Runs in this browser.`}>Engine license and source</a>
+      title={`${description}, GPLv3. Runs in this browser.`}>Engine license and source</a>
     </div>}
     <div className="engine-depth-row">
       <small className="engine-depth">Depth {evaluation?.depth ?? '—'}{state.kind === 'done' && state.cached ? ' · cached' : ''}</small>
@@ -381,9 +420,17 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           aria-hidden="true" focusable="false"><path d="M8 2v12M2 8h12" /></svg>
       </button>
       {state.kind === 'searching' && <small className="engine-search-status">{continuous ? 'Continuous' : 'Searching'}</small>}
+      <small className="engine-build">{description}</small>
     </div>
+    {fallback && <div className="engine-fallback" role="status">Full could not run. Using Stockfish 19 Lite.
+      <button type="button" className="secondary" onClick={() => {
+        setState({ kind: 'loading' }); setFallback(false); setEnabled(true);
+      }}>Retry Full</button></div>}
     {!enabled && <p className="engine-idle">Evaluate the selected position with Stockfish in this browser.</p>}
-    {enabled && state.kind === 'loading' && <span role="status">Loading engine…</span>}
+    {enabled && state.kind === 'loading' && <div className="engine-loading" role="status">
+      <span>Loading {variant === liteEngine ? 'Lite' : 'Full'}{state.progress === undefined ? '…' : ` · ${state.progress}%`}</span>
+      <progress aria-label="Engine download" max="100" value={state.progress} />
+    </div>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
     {enabled && (state.kind === 'searching' || state.kind === 'done') &&
       <div className="engine-result" role="group" aria-label="Engine lines">
@@ -442,6 +489,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     </div>
     <div id="computer-analysis-view" role="tabpanel" aria-label="Computer Analysis"
       hidden={reviewTab !== 'computer'}>
+    <small className="review-engine">Stockfish 19 Lite · 1 thread · depth 14 / 1.2s per position</small>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />

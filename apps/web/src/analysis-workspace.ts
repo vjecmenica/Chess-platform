@@ -35,7 +35,8 @@ export function evaluationBarState(evaluation: EngineEvaluation | null, fen: str
   const label = evaluation.score.kind === 'mate' && evaluation.score.value === 0
     ? `${score > 0 ? 'White' : 'Black'} wins by mate`
     : `White perspective ${evaluationLabel(evaluation)}`;
-  return { whitePercent: 50 + score / 20, label };
+    return { whitePercent: 50 + score / 20,
+      label: evaluation.engine ? `${label} · ${evaluation.engine}` : label };
 }
 
 /** Default only: explicit resizing remains width-constrained and can extend the page. */

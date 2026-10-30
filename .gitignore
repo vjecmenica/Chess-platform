@@ -5,6 +5,7 @@ node_modules/
 
 # Generated output, caches and test reports
 dist/
+apps/web/public/engine/stockfish-19.0.0/
 build/
 coverage/
 .cache/

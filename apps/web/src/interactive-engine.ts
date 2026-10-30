@@ -32,9 +32,10 @@ export function toggleContinuousSettings(state: InteractiveSettingsState): Inter
 }
 
 /** Configure before opening a worker; a discarded development effect never starts it. */
-export function scheduleInteractiveEngine(controller: EngineController, fen: string) {
+export function scheduleInteractiveEngine(controller: EngineController, fen: string,
+  limits: SearchLimits = interactiveSearchLimits, enabled = true) {
   let cancelled = false;
-  controller.setSearchLimits(interactiveSearchLimits);
-  queueMicrotask(() => { if (!cancelled) controller.start(fen); });
+  controller.setSearchLimits(limits);
+  queueMicrotask(() => { if (!cancelled && enabled) controller.start(fen); });
   return () => { cancelled = true; controller.dispose(); };
 }

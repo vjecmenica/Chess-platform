@@ -2,6 +2,12 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Required on the document and worker responses for SharedArrayBuffer/pthreads.
+export const analysisHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
 export default defineConfig(({ mode }) => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   // Read only non-secret proxy settings; never expose DATABASE_URL to the browser.
@@ -15,10 +21,10 @@ export default defineConfig(({ mode }) => {
   };
   return {
     plugins: [react()],
-    server: { port: 5173, strictPort: true, proxy,
+    server: { port: 5173, strictPort: true, proxy, headers: analysisHeaders,
       // Keep Vite's sensitive-file defaults and block private development mail and fixtures.
       fs: { deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.local/**'] },
     },
-    preview: { port: 4173, strictPort: true, proxy },
+    preview: { port: 4173, strictPort: true, proxy, headers: analysisHeaders },
   };
 });

@@ -1,7 +1,7 @@
 import { createPositionFromFen } from '@chess/domain';
+import { liteEngine } from './engine-builds';
 
-export const engineBuild = 'Stockfish 19 lite single-threaded';
-export const engineWorkerUrl = '/engine/stockfish-19-lite-single.js';
+// Keep the existing Lite review cache; other builds receive distinct namespaces.
 const cacheKey = 'chess-engine:stockfish-19-lite-single:depth14-time1200:v1';
 export type MultiPvCount = 1 | 2 | 3 | 4 | 5;
 export type SearchLimits = { readonly mode: 'bounded'; readonly depth: number | null;
@@ -33,6 +33,7 @@ export interface EngineLine {
 }
 
 export interface EngineEvaluation {
+  readonly engine?: string;
   readonly fen: string;
   readonly depth: number;
   readonly score: { readonly kind: 'cp' | 'mate'; readonly value: number };
@@ -41,13 +42,14 @@ export interface EngineEvaluation {
   readonly lines?: readonly EngineLine[];
 }
 
-export type EngineState = { readonly kind: 'off' | 'loading' }
+export type EngineState = { readonly kind: 'off' } | { readonly kind: 'loading'; readonly progress?: number }
   | { readonly kind: 'searching'; readonly fen: string; readonly evaluation?: EngineEvaluation;
     readonly lines?: readonly EngineLine[] }
   | { readonly kind: 'done'; readonly evaluation: EngineEvaluation; readonly cached: boolean }
   | { readonly kind: 'error'; readonly message: string };
 
 export interface EngineWorker {
+  onprogress?: ((percent: number) => void) | null;
   postMessage(message: string): void;
   terminate(): void;
   onmessage: ((event: MessageEvent<string>) => void) | null;
@@ -100,6 +102,7 @@ function validEvaluation(value: unknown): value is EngineEvaluation {
   if (typeof value !== 'object' || value === null) return false;
   const item = value as Partial<EngineEvaluation>;
   return typeof item.fen === 'string' && item.fen.length <= 128
+    && (item.engine === undefined || typeof item.engine === 'string' && item.engine.length <= 100)
     && Number.isInteger(item.depth) && item.depth! >= 0 && item.depth! <= 100
     && (item.score?.kind === 'cp' || item.score?.kind === 'mate')
     && Number.isInteger(item.score.value) && Math.abs(item.score.value) < 100_000
@@ -125,11 +128,14 @@ export class EngineCache {
     return `${profile}:${count}:${fen}`;
   }
   private storageKey(count: MultiPvCount, profile: string): string {
-    const base = count === 1 ? cacheKey : `${cacheKey}:multipv${count}:v1`;
+    const namespace = this.identity === liteEngine.id ? cacheKey
+      : `chess-engine:${this.identity}:depth14-time1200:v1`;
+    const base = count === 1 ? namespace : `${namespace}:multipv${count}:v1`;
     return profile === 'default' ? base : `${base}:${profile}`;
   }
 
-  constructor(private readonly storage?: EngineStorage) {
+  constructor(private readonly storage?: EngineStorage,
+    private readonly identity = liteEngine.id, readonly engineLabel = liteEngine.label) {
     for (const count of [1, 2, 3, 4, 5] as const) this.load(count, 'default');
   }
 
@@ -145,7 +151,7 @@ export class EngineCache {
       for (const item of entries.slice(-200)) if (validEvaluation(item)
         && (count === 1 || item.lines !== undefined
           && item.lines.length > 0 && item.lines.length <= count))
-        this.memory.set(this.key(item.fen, count, profile), item);
+        this.memory.set(this.key(item.fen, count, profile), { ...item, engine: this.engineLabel });
     } catch { /* Storage is optional. */ }
   }
 
@@ -186,7 +192,10 @@ export class EngineController {
 
   constructor(private readonly makeWorker: () => EngineWorker,
     private readonly onState: (state: EngineState) => void,
-    private readonly cache: EngineCache) {}
+    private readonly cache: EngineCache, private readonly options: { readonly threads?: number } = {}) {
+    if (options.threads !== undefined && (!Number.isInteger(options.threads)
+      || options.threads < 1 || options.threads > 4)) throw new RangeError('Engine threads must be between 1 and 4.');
+  }
 
   start(fen: string): void { this.enabled = true; this.setPosition(fen); }
 
@@ -252,6 +261,8 @@ export class EngineController {
       const worker = this.makeWorker();
       this.worker = worker;
       worker.onmessage = event => { if (this.worker === worker) this.handleMessage(String(event.data)); };
+      worker.onprogress = progress => { if (this.worker === worker && !this.ready)
+        this.onState({ kind: 'loading', progress }); };
       worker.onerror = () => { if (this.worker === worker) this.fail('Stockfish could not load in this browser.'); };
       worker.postMessage('uci');
     } catch { this.fail('Stockfish could not start in this browser.'); }
@@ -311,6 +322,8 @@ export class EngineController {
       }
       if (line === 'uciok') {
         this.worker?.postMessage('setoption name Hash value 16');
+        if (this.options.threads !== undefined)
+          this.worker?.postMessage(`setoption name Threads value ${this.options.threads}`);
         this.worker?.postMessage(`setoption name MultiPV value ${this.lineCount}`);
         this.waitingReady = true;
         this.worker?.postMessage('isready');
@@ -376,7 +389,7 @@ export class EngineController {
     this.lastLiveSignature = signature;
     const primary = lines.find(line => line.rank === 1);
     const evaluation: EngineEvaluation | undefined = primary === undefined ? undefined
-      : { fen, depth: primaryDepth!, score: primary.score,
+      : { fen, engine: this.cache.engineLabel, depth: primaryDepth!, score: primary.score,
         bestMove: primary.variation[0] ?? null, variation: primary.variation,
         ...(this.activeLineCount === 1 ? {} : { lines }) };
     if (evaluation) this.lastShown = { evaluation, count: this.activeLineCount,
@@ -398,7 +411,7 @@ export class EngineController {
     const lines = [...atDepth!.values()].filter(info => info.rank <= this.activeLineCount)
       .sort((a, b) => a.rank - b.rank).map(info => ({ rank: info.rank,
         score: info.score, variation: info.pv }));
-    return { fen, depth: depth!,
+    return { fen, engine: this.cache.engineLabel, depth: depth!,
       score: primary.score, bestMove: bestMove === undefined ? primary.pv[0] ?? null : bestMove,
       variation: primary.pv,
       ...(this.activeLineCount === 1 ? {} : { lines }) };
