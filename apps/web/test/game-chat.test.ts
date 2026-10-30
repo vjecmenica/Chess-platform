@@ -50,6 +50,10 @@ it('waits for server permission without flashing a read-only notice, including f
   const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
   const html = renderToStaticMarkup(createElement(GameChat, props));
   expect(html).toContain('Loading chat');
+  expect(html).toContain('aria-label="Game conversation and private notes"');
+  expect(html).toMatch(/aria-pressed="true"[^>]*>Chat/);
+  expect(html).toMatch(/aria-pressed="false"[^>]*>Notes/);
+  expect(html).toContain('Private notes');
   expect(html).toContain('<h2 id="chat-heading-game">Game chat</h2>');
   expect(html).toContain('aria-expanded="true" aria-controls="chat-content-game">Hide</button>');
   expect(html).not.toMatch(/<details|<summary|Hide chat|Show chat/);
@@ -97,7 +101,8 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     expect(html).toContain('aria-expanded="false" aria-controls="chat-content-game">Show</button>');
     expect(html).toContain('id="chat-content-game" hidden=""');
     expect(html).not.toContain('<form');
-    expect(html).not.toContain('role="log"');
+    // Content stays mounted under the hidden container to preserve chat and note drafts.
+    expect(html).toContain('role="log"');
     const opponent = renderToStaticMarkup(createElement(GameChat, { ...props, side: 'black' }));
     expect(opponent).toContain('data-hidden="false"');
     expect(opponent).toContain('role="log"');

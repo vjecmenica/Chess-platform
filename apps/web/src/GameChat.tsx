@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
+import { GameNotes } from './GameNotes';
 import { chatComposerState, chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom,
   type ChatPermission } from './game-chat';
 
@@ -33,6 +34,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
 }
 
 export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames }: Props) {
+  const [activePanel, setActivePanel] = useState<'chat' | 'notes'>('chat');
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
   // Send acknowledgements can arrive before older opponent messages are fetched.
@@ -143,7 +145,12 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
-    {!hidden && <>
+    <div className="analysis-view-tabs" role="group" aria-label="Game conversation and private notes">
+      <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat</button>
+      <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
+    </div>
+    <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken} /></div>
+    <div className="game-chat-tab" hidden={hidden || activePanel !== 'chat'}>
       <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
         aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
           following.current = nearChatBottom(event.currentTarget);
@@ -161,7 +168,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
         <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
       <ChatComposer gameId={gameId} state={composerState} text={text} sending={sending} retrying={pending.current !== null}
         onSend={() => { void send(); }} onText={value => { pending.current = null; setText(value); }} />
-    </>}
+    </div>
     </div>
   </aside>;
 }

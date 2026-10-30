@@ -34,6 +34,7 @@ describe('local opening explorer in PostgreSQL', () => {
       expect(response.statusCode).toBe(200);
       const listing = (await app.inject({ url: '/opening-explorer/games?fen=' + encodeURIComponent(fen), headers })).json();
       expect(listing.games).toHaveLength(3);
+      expect(listing.totalPages).toBe(1);
       expect(listing.games.every((g: { ply: number; uci: string }) => g.ply === 4 && g.uci === 'c2c4')).toBe(true);
       expect(response.json()).toEqual({ opening: null, moves: [{ uci: 'c2c4', san: 'c4', white: 1, draws: 1, black: 1 }] });
       const changedCounters = await app.inject({ url: `/opening-explorer?fen=${encodeURIComponent(fen.replace('4 3', '0 17'))}`, headers });
@@ -151,6 +152,8 @@ describe('local opening explorer in PostgreSQL', () => {
       const first = (await app.inject({ url, headers })).json();
       const second = (await app.inject({ url: url + '&page=1', headers })).json();
       expect(first.games).toHaveLength(10); expect(first.hasMore).toBe(true);
+      expect(first.totalPages).toBe(5);
+      expect(second.totalPages).toBe(5);
       expect(second.games.every((g: { id: string }) => !first.games.some((f: { id: string }) => f.id === g.id))).toBe(true);
       expect((await app.inject({ url: url + '&page=4', headers })).json()).toMatchObject({ hasMore: false, page: 4 });
       const last = (await pool.query('SELECT max(id)::text AS id FROM chess.explorer_records')).rows[0].id;

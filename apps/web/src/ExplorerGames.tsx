@@ -64,7 +64,10 @@ export function ExplorerGameList({ data, page, loadingId, onSelect, onPage }: {
         {game.eco ? ` · ${game.eco}` : ''}</small>
     </button>)}</div>
     {loadingId !== null && <span role="status">Opening game…</span>}
-    {data && <div className="explorer-pagination"><button type="button" disabled={page === 0} onClick={() => onPage(page - 1)}>Previous games</button>
-      <span>Page {page + 1}</span><button type="button" disabled={!data.hasMore} onClick={() => onPage(page + 1)}>Next games</button></div>}
+    {data && <div className="explorer-pagination" aria-label="Example game sample pages">
+      <button type="button" aria-label="Previous games" disabled={page === 0} onClick={() => onPage(page - 1)}>‹</button>
+      <span>Page {data.totalPages === 0 ? 0 : page + 1}/{data.totalPages}</span>
+      <button type="button" aria-label="Next games" disabled={!data.hasMore} onClick={() => onPage(page + 1)}>›</button>
+      <small>Up to 50 example games</small></div>}
  </>;
 }

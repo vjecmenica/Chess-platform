@@ -576,6 +576,14 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .explorer-game-list { max-height: 260px; overflow-y: auto; display: grid; gap: .4rem; margin: .5rem 0; }
 .explorer-game { display: flex; flex-direction: column; align-items: flex-start; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .explorer-game-heading { line-height: 1.45; }
+.explorer-pagination { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.explorer-pagination button { min-width: 36px; font-size: 20px; padding: 3px 10px; }
+.game-chat-tab { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+.game-chat-tab[hidden], .game-chat-content > [hidden] { display: none; }
+.game-notes { display: flex; flex-direction: column; gap: 8px; }
+.game-notes-tab { min-height: 0; flex: 1; overflow: auto; }
+.game-notes label { margin: 0; }
+.game-notes textarea { min-height: 160px; width: 100%; resize: vertical; box-sizing: border-box; font: inherit; }
 .explorer-game-result { padding: 0 4px; border-radius: 3px; background: #eee5d6; color: #60452e; white-space: nowrap; font-weight: 600; }
 .explorer-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .explorer-pagination button { padding: .35rem .5rem; }

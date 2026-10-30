@@ -22,8 +22,10 @@ export function registerExplorerGameRoutes(app: FastifyInstance, pool: pg.Pool,
         g.white_fide_id, g.black_fide_id, g.result, g.game_date, g.event, g.site, g.round, g.eco, g.opening,
         g.time_control, p.ply, p.uci FROM chess.explorer_game_positions p
         JOIN chess.explorer_records g ON g.id=p.game_id WHERE p.position=$1
-        ORDER BY p.game_id LIMIT $2 OFFSET $3`, [position, page === 4 ? pageSize : pageSize + 1, page * pageSize])).rows;
-      return { games: rows.slice(0, pageSize), page, hasMore: rows.length > pageSize };
+        ORDER BY p.game_id LIMIT $2`, [position, sampleSize])).rows;
+      const totalPages = Math.ceil(rows.length / pageSize);
+      return { games: rows.slice(page * pageSize, (page + 1) * pageSize), page,
+        totalPages, hasMore: page + 1 < totalPages };
     });
   });
   app.get<{ Params: { id: string }; Querystring: { fen: string } }>('/opening-explorer/games/:id', {

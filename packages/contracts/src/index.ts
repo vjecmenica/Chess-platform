@@ -119,7 +119,7 @@ export interface ExplorerListedGame {
 }
 export interface ExplorerGamePage {
   readonly games: readonly ExplorerListedGame[];
-  readonly page: number; readonly hasMore: boolean;
+  readonly page: number; readonly hasMore: boolean; readonly totalPages: number;
 }
 export interface AccountIdentity { readonly id: string; readonly username: string }
 export interface AccountEmailState { readonly verified: string | null; readonly pending: string | null; readonly deliveryEnabled: boolean }
