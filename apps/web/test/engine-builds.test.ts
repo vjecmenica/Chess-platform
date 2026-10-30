@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EngineCache } from '../src/engine-analysis';
-import { browserSupportsEngineThreads, effectiveThreads, engineCacheIdentity, engineDescription, enginePreferenceKey,
+import { browserEngineThreadCapabilities, browserSupportsEngineThreads, engineThreadFailure, effectiveThreads, engineCacheIdentity, engineDescription, enginePreferenceKey,
   fullEngine, fullSingleEngine, liteEngine, maximumEngineThreads, readEnginePreference, resolveEngine,
   saveEnginePreference } from '../src/engine-builds';
 import { evaluationBarState } from '../src/analysis-workspace';
@@ -24,6 +24,7 @@ it('defaults to Full, persists the choice, and rejects corrupt preferences witho
 });
 
 it('requires isolation and shared WASM memory, using Full single-threaded otherwise', () => {
+  vi.stubGlobal('isSecureContext', true);
   vi.stubGlobal('crossOriginIsolated', false);
   expect(browserSupportsEngineThreads()).toBe(false);
   expect(resolveEngine('full', browserSupportsEngineThreads())).toBe(fullSingleEngine);
@@ -34,6 +35,33 @@ it('requires isolation and shared WASM memory, using Full single-threaded otherw
   expect(browserSupportsEngineThreads()).toBe(false);
   expect(resolveEngine('lite', true)).toBe(liteEngine);
   expect(resolveEngine('lite', false)).toBe(liteEngine);
+});
+
+it('distinguishes insecure pages, policy/iframe restrictions, missing SAB and shared WASM support', () => {
+  const available = { secure: true, isolated: true, embedded: false, policyAllowed: true,
+    sharedArrayBuffer: true, sharedWasmMemory: true };
+  expect(engineThreadFailure(available)).toBeNull();
+  expect(engineThreadFailure({ ...available, secure: false })).toContain('not a secure context');
+  expect(engineThreadFailure({ ...available, policyAllowed: false })).toContain('Permissions-Policy');
+  expect(engineThreadFailure({ ...available, isolated: false })).toContain('including 304 responses');
+  expect(engineThreadFailure({ ...available, isolated: false, embedded: true })).toContain('iframe');
+  expect(engineThreadFailure({ ...available, sharedArrayBuffer: false })).toContain('SharedArrayBuffer');
+  expect(engineThreadFailure({ ...available, sharedWasmMemory: false })).toContain('Shared WebAssembly');
+});
+
+it('reads browser capabilities and policy instead of attributing every failure to isolation', () => {
+  vi.stubGlobal('isSecureContext', true); vi.stubGlobal('crossOriginIsolated', true);
+  vi.stubGlobal('document', { permissionsPolicy: { allowsFeature: (name: string) => name !== 'cross-origin-isolated' } });
+  expect(browserEngineThreadCapabilities()).toMatchObject({ secure: true, isolated: true,
+    policyAllowed: false, sharedArrayBuffer: true, sharedWasmMemory: true });
+  expect(browserSupportsEngineThreads()).toBe(false);
+  vi.stubGlobal('document', { featurePolicy: { features: () => ['camera'], allowsFeature: () => false } });
+  expect(browserEngineThreadCapabilities().policyAllowed).toBeNull();
+  expect(browserSupportsEngineThreads()).toBe(true);
+  vi.stubGlobal('document', {});
+  vi.stubGlobal('WebAssembly', { Memory: class { constructor() { throw new Error('Shared memory unsupported'); } } });
+  expect(browserEngineThreadCapabilities()).toMatchObject({ policyAllowed: null, sharedWasmMemory: false });
+  expect(engineThreadFailure(browserEngineThreadCapabilities())).toContain('Shared WebAssembly');
 });
 
 it('bounds interactive CPU parallelism while reserving a single-thread Lite review', () => {

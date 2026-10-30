@@ -12,7 +12,7 @@ import { createInteractiveSettings, scheduleInteractiveEngine, toggleContinuousS
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
 import { createBrowserEngineWorker } from './browser-engine-worker';
-import { browserSupportsEngineThreads, effectiveThreads, engineCacheIdentity, engineDescription, liteEngine, maximumEngineThreads,
+import { browserEngineThreadCapabilities, engineThreadFailure, effectiveThreads, engineCacheIdentity, engineDescription, liteEngine, maximumEngineThreads,
   readEnginePreference, resolveEngine, saveEnginePreference, type EnginePreference } from './engine-builds';
 
 function browserStorage(): Storage | undefined {
@@ -198,7 +198,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const [enabled, setEnabled] = useState(true);
   const [preference, setPreference] = useState(() => readEnginePreference(browserStorage()));
   const [fallback, setFallback] = useState(false);
-  const [isolated] = useState(browserSupportsEngineThreads);
+  const [capabilities] = useState(browserEngineThreadCapabilities);
+  const threadFailure = engineThreadFailure(capabilities);
+  const isolated = threadFailure === null;
   const maxThreads = maximumEngineThreads(typeof navigator === 'undefined' ? 2 : navigator.hardwareConcurrency);
   const variant = resolveEngine(fallback ? 'lite' : preference.choice, isolated);
   const threads = effectiveThreads(variant, preference.threads, maxThreads);
@@ -370,7 +372,16 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           disabled={maxThreads === 1} onChange={event => changeEngine({ ...preference, threads: Number(event.target.value) })} />
         <output>{threads}</output>
       </label>}
-      {preference.choice === 'full' && !isolated && <small>Full single-threaded: browser isolation is unavailable.</small>}
+      {preference.choice === 'full' && threadFailure !== null && <small>Full single-threaded: {threadFailure}</small>}
+      {preference.choice === 'full' && <details className="engine-thread-diagnostics">
+        <summary>Thread diagnostics</summary>
+        <dl>{[
+          ['Secure context', capabilities.secure], ['Cross-origin isolated', capabilities.isolated],
+          ['Top-level document', !capabilities.embedded], ['Permissions-Policy allows isolation', capabilities.policyAllowed],
+          ['SharedArrayBuffer', capabilities.sharedArrayBuffer], ['Shared WebAssembly memory', capabilities.sharedWasmMemory],
+        ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt>
+          <dd>{value === null ? 'Not reported' : value ? 'Yes' : 'No'}</dd></div>)}</dl>
+      </details>}
       <label className="engine-line-setting">Lines
           <select value={lineCount}
             aria-label="Candidate lines" onChange={event => {

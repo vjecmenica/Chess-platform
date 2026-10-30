@@ -15,11 +15,50 @@ export function resolveEngine(choice: EngineChoice, isolated: boolean): EngineVa
   return choice === 'lite' ? liteEngine : isolated ? fullEngine : fullSingleEngine;
 }
 
+export interface EngineThreadCapabilities {
+  readonly secure: boolean;
+  readonly isolated: boolean;
+  readonly embedded: boolean;
+  readonly policyAllowed: boolean | null;
+  readonly sharedArrayBuffer: boolean;
+  readonly sharedWasmMemory: boolean;
+}
+
+export function engineThreadFailure(capabilities: EngineThreadCapabilities): string | null {
+  if (!capabilities.secure) return 'This page is not a secure context. Use HTTPS or a loopback address.';
+  if (capabilities.policyAllowed === false) return 'Permissions-Policy blocks cross-origin-isolated.';
+  if (!capabilities.isolated) return capabilities.embedded
+    ? 'This embedded document is not cross-origin isolated. Check the parent headers and iframe allow/sandbox restrictions.'
+    : 'This document is not cross-origin isolated. Check the HTML COOP/COEP headers, including 304 responses, then reload.';
+  if (!capabilities.sharedArrayBuffer) return 'SharedArrayBuffer is unavailable in this browser.';
+  if (!capabilities.sharedWasmMemory) return 'Shared WebAssembly memory is unavailable in this browser.';
+  return null;
+}
+
+export function browserEngineThreadCapabilities(): EngineThreadCapabilities {
+  type Policy = { allowsFeature(name: string): boolean; features?(): string[] };
+  type PolicyDocument = { permissionsPolicy?: Policy; featurePolicy?: Policy };
+  const policyDocument = typeof document === 'undefined' ? undefined : document as PolicyDocument;
+  const policy = policyDocument?.permissionsPolicy ?? policyDocument?.featurePolicy;
+  let policyAllowed: boolean | null = null;
+  try {
+    // Older policy APIs return false for unknown feature names; that is not a denial.
+    if (policy && (!policy.features || policy.features().includes('cross-origin-isolated')))
+      policyAllowed = policy.allowsFeature('cross-origin-isolated');
+  } catch { /* Not exposed by this browser. */ }
+  const sharedArrayBuffer = typeof SharedArrayBuffer === 'function';
+  let sharedWasmMemory = false;
+  if (sharedArrayBuffer) try {
+    sharedWasmMemory = new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true }).buffer instanceof SharedArrayBuffer;
+  } catch { /* A browser can expose SAB without supporting shared WASM memory. */ }
+  return { secure: typeof isSecureContext !== 'undefined' && isSecureContext,
+    isolated: typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated,
+    embedded: typeof window !== 'undefined' && window.top !== window,
+    policyAllowed, sharedArrayBuffer, sharedWasmMemory };
+}
+
 export function browserSupportsEngineThreads(): boolean {
-  if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated
-    || typeof SharedArrayBuffer !== 'function') return false;
-  try { return new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true }).buffer instanceof SharedArrayBuffer; }
-  catch { return false; }
+  return engineThreadFailure(browserEngineThreadCapabilities()) === null;
 }
 
 /** Reserve capacity for the UI and the separately bounded, one-thread Lite review. */

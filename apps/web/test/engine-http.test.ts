@@ -12,11 +12,15 @@ async function checkHeaders(origin: string, path: string) {
   expect(response.headers.get('cross-origin-opener-policy')).toBe('same-origin');
   expect(response.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
   await response.arrayBuffer();
+  if (path === '/' || path.startsWith('/challenge/'))
+    expect(response.headers.get('content-type')).toContain('text/html');
   const etag = response.headers.get('etag');
   if (path !== '/') expect(etag).not.toBeNull();
   if (etag) {
     const cached = await fetch(origin + path, { headers: { 'If-None-Match': etag } });
     expect(cached.status).toBe(304);
+    expect(cached.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+    expect(cached.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
     expect((await cached.arrayBuffer()).byteLength).toBe(0);
   }
 }
@@ -29,7 +33,13 @@ it('serves isolation headers and cache validators for documents and engine asset
     const address = server.httpServer!.address();
     if (!address || typeof address === 'string') throw new Error('Expected a TCP server.');
     const origin = `http://127.0.0.1:${address.port}`;
+    const document = await fetch(origin + '/challenge/00000000-0000-4000-8000-000000000001',
+      { headers: { Accept: 'text/html', 'Sec-Fetch-Dest': 'document' } });
+    expect(document.status).toBe(200);
+    expect(document.redirected).toBe(false);
+    expect(await document.text()).toContain('<meta name="chess-isolation-policy" content="1">');
     await checkHeaders(origin, '/');
+    await checkHeaders(origin, '/challenge/00000000-0000-4000-8000-000000000001');
     await checkHeaders(origin, '/engine/stockfish-19-lite-single.js');
     await checkHeaders(origin, '/engine/stockfish-19-lite-single.wasm');
     const wasm = await fetch(origin + '/engine/stockfish-19-lite-single.wasm', { method: 'HEAD' });
@@ -50,6 +60,7 @@ it('applies the same isolation and cache behavior when previewing production sta
     if (!address || typeof address === 'string') throw new Error('Expected a TCP server.');
     const origin = `http://127.0.0.1:${address.port}`;
     await checkHeaders(origin, '/');
+    await checkHeaders(origin, '/challenge/00000000-0000-4000-8000-000000000001');
     await checkHeaders(origin, '/engine/test.wasm');
   } finally {
     await new Promise<void>((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));

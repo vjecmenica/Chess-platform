@@ -32,6 +32,16 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
+The `chess-analysis-isolation` Vite plugin sets these **before** the built-in
+HTML, module and static-file handlers. Vite 8.3.1 can return a matching ETag's
+304 before applying `server.headers` / `preview.headers`; declaring those settings
+alone therefore leaves conditional responses without the policies. Tests cover
+both 200 and 304 documents (including `/challenge/...`), scripts and WASM.
+An injected `chess-isolation-policy` HTML marker changes the old document's ETag
+once, so a previously unisolated cached representation gets a fresh 200. Engine
+asset URLs and caching are unchanged. Increment the marker when changing the
+document policy, and rebuild preview assets after pulling changes.
+
 The eventual production static host/reverse proxy must preserve these policies,
 serve WASM as `application/wasm` and JS as JavaScript, and use HTTPS outside local
 loopback. Do not block `cross-origin-isolated` via Permissions-Policy. All engine
@@ -39,6 +49,29 @@ and pthread worker files must be same-origin. See
 [browser isolation requirements](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated).
 COOP separates cross-origin popup relationships; the application currently does
 not depend on them. Keep this in mind before adding OAuth popups or external embeds.
+
+### Diagnosing a local single-thread fallback
+
+Use **Engine settings → Thread diagnostics**. This reports the actual document's
+secure-context and isolation flags, whether it is top-level, the exposed
+Permissions-Policy decision, SharedArrayBuffer and a small shared-WASM allocation
+probe. Failure text names the failing prerequisite; it never enables threads by
+overriding a browser check. A browser without a policy-inspection API reports
+`Not reported`, rather than assuming permission was denied.
+
+In Chrome Network, inspect the **document** navigation, its final origin/URL and
+redirect chain, and both a fresh 200 and conditional 304. A missing header on an
+asset or raw 304 alone does not identify the cached document's effective policy.
+Reload the document after changing the server policy; HMR cannot turn an existing
+unisolated document into an isolated one. If headers still differ, verify the
+process on the actual browser port and its checkout. A Vite process from another
+clone will not receive this checkout's edits until that clone is updated/restarted.
+Never share request Cookie headers, reset URLs or tokens while collecting evidence.
+
+The runtime regression also executes the exact unmodified Full WASM under Node,
+observing pthread launches for `Threads=1` versus `Threads=2`. This confirms that
+the UCI setting changes the engine's worker pool; it does **not** verify browser
+isolation or prove that an individual Chrome session uses multiple threads.
 
 No special cache-busting query or forced reload is used for engine fetches.
 Normal HTTP caches/validators avoid repeated network bodies; Vite revalidates with

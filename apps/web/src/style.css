@@ -335,6 +335,11 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-fallback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--text-compact); }
 .engine-thread-setting { display: grid; grid-template-columns: 86px minmax(0,1fr) 42px; align-items: center; gap: 10px; }
 .engine-thread-setting input { min-width: 0; width: 100%; }
+.engine-thread-diagnostics { font-size: var(--text-compact); color: var(--text-muted); }
+.engine-thread-diagnostics summary { cursor: pointer; }
+.engine-thread-diagnostics dl { display: grid; gap: 5px; margin: 8px 0 0; }
+.engine-thread-diagnostics dl > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+.engine-thread-diagnostics dd { margin: 0; }
 .review-engine { display: block; margin: 0 0 8px; color: var(--text-muted); font-size: var(--text-meta); }
 .engine-settings-popover { position: absolute; z-index: 10; top: calc(100% + 4px); right: 0;
   display: grid; gap: 16px; width: min(420px, calc(100vw - 32px), 100%); max-height: min(480px, 75dvh);

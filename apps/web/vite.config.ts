@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig, loadEnv } from 'vite';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // Required on the document and worker responses for SharedArrayBuffer/pthreads.
@@ -7,6 +8,22 @@ export const analysisHeaders = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
+
+function analysisIsolation(): Plugin {
+  const headersFirst = (_request: IncomingMessage, response: ServerResponse, next: () => void) => {
+    for (const [name, value] of Object.entries(analysisHeaders)) response.setHeader(name, value);
+    next();
+  };
+  return {
+    name: 'chess-analysis-isolation',
+    // Vite's HTML/module/static 304 paths can return before applying server.headers.
+    configureServer(server) { server.middlewares.use(headersFirst); },
+    configurePreviewServer(server) { server.middlewares.use(headersFirst); },
+    // Change the HTML validator once so previously cached, unisolated documents get a 200.
+    // Increment this marker if the document isolation policy changes in a future release.
+    transformIndexHtml() { return [{ tag: 'meta', attrs: { name: 'chess-isolation-policy', content: '1' }, injectTo: 'head' }]; },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -20,7 +37,7 @@ export default defineConfig(({ mode }) => {
     },
   };
   return {
-    plugins: [react()],
+    plugins: [analysisIsolation(), react()],
     server: { port: 5173, strictPort: true, proxy, headers: analysisHeaders,
       // Keep Vite's sensitive-file defaults and block private development mail and fixtures.
       fs: { deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml', '**/.git/**', '**/.local/**'] },
