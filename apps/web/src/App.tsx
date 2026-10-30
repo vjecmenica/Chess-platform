@@ -1211,7 +1211,7 @@ export function App() {
                 <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef}
                   onContextMenu={event => event.preventDefault()}
-                  title={analysisOpen ? 'Right-drag: arrow. Right-click or Shift+F10: circle. Shift+Enter on two squares: arrow. Escape: clear marks.' : undefined}
+                  aria-description={analysisOpen ? 'Right-drag: arrow. Right-click or Shift+F10: circle. Shift+Enter on two squares: arrow. Escape: clear marks.' : undefined}
                   aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
@@ -1269,7 +1269,7 @@ export function App() {
                 <div className="board-files" aria-hidden="true">{coordinates?.files.map(file =>
                   <span key={file}>{file}</span>)}</div>
                 <button type="button" className="board-resize-grip"
-                  aria-label="Resize board" title="Drag to resize board; use arrow keys for small steps"
+                  aria-label="Resize board" aria-description="Drag to resize board; use arrow keys for small steps"
                   onPointerDown={event => {
                     if (event.button !== 0 && event.pointerType === 'mouse') return;
                     event.preventDefault(); event.stopPropagation();
@@ -1362,7 +1362,7 @@ export function App() {
                       disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
                         else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
-                      aria-label="Previous move" title="Previous move">
+                      aria-label="Previous move">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
                         <path d="m15 5-7 7 7 7" />
@@ -1372,7 +1372,7 @@ export function App() {
                         : displayedPly === game.history.length}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
                         else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
-                      aria-label="Next move" title="Next move">
+                      aria-label="Next move">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
                         <path d="m9 5 7 7-7 7" />
@@ -1402,7 +1402,7 @@ export function App() {
                   onClick={() => setAnalysisBoard(current => current?.gameId === game.id
                     ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>}
                 {analysisOpen && canExportGame(game) && <button type="button" className="secondary pgn-download"
-                  title="Download this game's main line and available headers. Clocks and analysis comments are not included."
+                  aria-description="Download this game's main line and available headers. Clocks and analysis comments are not included."
                   onClick={() => downloadGamePgn(game, imported?.headers)}>Download PGN</button>}
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}

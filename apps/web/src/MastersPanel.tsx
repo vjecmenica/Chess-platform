@@ -21,7 +21,7 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
         <div className="book-columns" aria-hidden="true"><span>Move</span><span>Played %</span><span>Games</span><span>White / Draw / Black</span></div>
         {data.moves.map(move => <div role="listitem" key={move.uci}>
           <button type="button" className="masters-move" onClick={() => onExplore(move.uci)}
-            title={`Explore ${move.san} as a local analysis variation`}><span className="book-san">{move.san}</span>
+            aria-description={`Explore ${move.san} as a local analysis variation`}><span className="book-san">{move.san}</span>
           <span>{playedPercentage(data.moves, move.games).toFixed(1)}%</span>
           <span aria-label={`${move.games.toLocaleString()} games`}>{move.games.toLocaleString()}</span>
           <span className="book-outcomes" role="img"
@@ -29,7 +29,6 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
             <span className="book-outcome-bar" aria-hidden="true">{([['white', move.white], ['draw', move.draws], ['black', move.black]] as const).map(([side, count]) => {
               const percent = count * 100 / move.games;
               return <span key={side} className={`book-${side}`} style={{ width: `${percent}%` }}
-                title={`${side === 'draw' ? 'Draw' : side === 'white' ? 'White wins' : 'Black wins'}: ${percent.toFixed(1)}%`}
                 aria-hidden="true" />;
             })}</span>
             <span className="book-outcome-values" aria-hidden="true">

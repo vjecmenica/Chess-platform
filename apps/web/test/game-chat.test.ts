@@ -69,7 +69,8 @@ it('follows server permission across finalization and renders an enabled post-ga
   expect(pending).not.toContain('read-only');
   const state = chatComposerState({ status: 'finished', canSend: true }, 'finished');
   const finished = renderToStaticMarkup(createElement(ChatComposer, { ...props, state }));
-  expect(finished).toContain('Message your opponent');
+  expect(finished).toContain('class="visually-hidden" for="chat-game">Chat message</label>');
+  expect(finished).not.toContain('placeholder=');
   expect(finished).toContain('maxLength="500"');
   expect(finished).not.toContain('disabled=""');
   expect(finished).not.toContain('read-only');
@@ -91,6 +92,7 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     const html = renderToStaticMarkup(createElement(GameChat, props));
     expect(getItem).toHaveBeenCalledWith('game-chat-hidden:game:white');
     expect(html).toContain('data-hidden="true"');
+    expect(html).toMatch(/game-chat-header"><h2[^>]*>Game chat<\/h2><span>Players only<\/span>[\s\S]*?>Show<\/button>/);
     expect(html).toContain('aria-expanded="false" aria-controls="chat-content-game">Show</button>');
     expect(html).toContain('id="chat-content-game" hidden=""');
     expect(html).not.toContain('<form');

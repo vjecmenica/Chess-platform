@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { createPosition } from '@chess/domain';
+import { createPosition, createPositionFromFen } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
 import { createAnalysisTree, deleteVariation, playAnalysisMove, promoteVariation,
   selectBranch, selectMain, setMoveNote } from '../src/analysis-model';
@@ -67,12 +67,23 @@ describe('analysis move list', () => {
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);
     expect((complete.match(/class="move-pair"/g) ?? [])).toHaveLength(1);
-    expect(complete).toMatch(/class="move-link numbered-move"[^>]*aria-label="1\. e4"[^>]*>[\s\S]*move-number[^>]*>1\.<\/span>[\s\S]*move-content">e4<\/span><\/button>/);
+    expect(complete).toMatch(/move-pair-row"><span class="move-number">1\.<\/span><span class="move-cell">/);
+    expect(complete).toMatch(/aria-label="1\. e4"[^>]*>[\s\S]*move-content">e4<\/span><\/button>/);
     expect(complete).toMatch(/aria-label="1\.\.\. e5"[^>]*>[\s\S]*move-content">e5<\/span><\/button>/);
     const incomplete = markup(savedGame(3), null);
     expect((incomplete.match(/class="move-pair"/g) ?? [])).toHaveLength(2);
     expect(incomplete).toContain('>Nf3</span></button>');
     expect(moveNotation(2, 'e5')).toBe('1... e5');
+  });
+
+  it('keeps a Black-only first pair in the Black cell', () => {
+    const position = createPositionFromFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1');
+    position.submitMove({ side: 'black', from: 'e7', to: 'e5' });
+    const game = { ...savedGame(0), position: position.getPosition(), history: position.getHistory() };
+    const html = markup(game, null);
+    expect(html).toMatch(/move-number">1\.<\/span><span class="move-cell"><\/span><span class="move-cell">/);
+    expect(html).toContain('aria-label="1... e5"');
+    expect(html).not.toContain('aria-label="1. e5"');
   });
 
   it('keeps consecutive variation moves inline and indents only real forks', () => {
@@ -109,7 +120,7 @@ describe('analysis move list', () => {
     expect(variation).toContain('inline-number');
     expect(variation).toContain('move-content">c5');
     expect(variation).toContain('Sicilian Defense');
-    expect(html).toContain('Speculative move (PGN $5)');
+    expect(html).toContain('Speculative move, PGN $5');
     expect(html).toContain('!?');
   });
 
@@ -138,18 +149,20 @@ describe('analysis move list', () => {
     const branch = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');
     expect(markup(game, branch)).toContain('class="moves analysis-moves"');
     expect(markup(game, branch)).toContain('aria-keyshortcuts="Shift+F10"');
-    expect(markup(game, branch)).toContain('Right-click, long-press, or press Shift+F10 for analysis options');
+    expect(markup(game, branch)).not.toContain(' title=');
     expect(markup({ ...game, status: 'active', result: null }, null, false))
       .toContain('class="moves live-moves"');
   });
 
-  it('uses full half-row buttons with a number inside the first move and preserves noninteractive live rows', () => {
+  it('keeps numbers outside equally spaced move buttons and omits the duplicate Start entry', () => {
     const game = savedGame();
     const html = markup(game, createAnalysisTree(game));
     const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
     const white = buttons.find(button => button.includes('aria-label="1. e4"'))!;
     const black = buttons.find(button => button.includes('aria-label="1... e5"'))!;
-    expect(white).toContain('move-number');
+    expect(white).not.toContain('move-number');
+    expect(html).toContain('class="move-number">1.</span>');
+    expect(html).not.toContain('>Start</button>');
     expect(white).toContain('move-content">e4');
     expect(black).toContain('move-content">e5');
     expect(black).not.toContain('move-number');
@@ -180,8 +193,8 @@ describe('analysis move list', () => {
 
   it('renders a live move list as noninteractive paired text', () => {
     const html = markup({ ...savedGame(), status: 'active', result: null }, null, false);
-    expect(html).toContain('>e4</span></span>');
-    expect(html).toContain('>e5</span></span>');
+    expect(html).toContain('>e4</span>');
+    expect(html).toContain('>e5</span>');
     expect(html).not.toContain('<button');
     expect(html).not.toContain('aria-current');
   });

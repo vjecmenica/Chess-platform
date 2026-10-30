@@ -25,9 +25,9 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
   if (state === 'loading') return null;
   if (state === 'read_only') return <p className="game-chat-read-only">Chat is read-only</p>;
   return <form aria-busy={state === 'refreshing'} onSubmit={event => { event.preventDefault(); onSend(); }}>
-    <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Message your opponent</label>
+    <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Chat message</label>
     <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
-      placeholder="Message your opponent" disabled={sending || state !== 'allowed'} onChange={event => onText(event.target.value)} />
+      disabled={sending || state !== 'allowed'} onChange={event => onText(event.target.value)} />
     <button className="primary" type="submit" disabled={sending || state !== 'allowed' || !text.trim()}>{sending ? 'Sending…' : retrying ? 'Retry send' : 'Send'}</button>
   </form>;
 }
@@ -139,7 +139,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   }
 
   return <aside className="game-chat" data-hidden={hidden} aria-labelledby={`chat-heading-${gameId}`}>
-    <div className="game-chat-header"><div><h2 id={`chat-heading-${gameId}`}>Game chat</h2><span>Players only</span></div>
+    <div className="game-chat-header"><h2 id={`chat-heading-${gameId}`}>Game chat</h2><span>Players only</span>
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>

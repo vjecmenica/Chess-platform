@@ -82,20 +82,17 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
       suppressTouchSelection.current = null; }, 700);
   }
 
-  function moveButton(move: MoveView, compact = false, lineStart = false, rowNumber?: number) {
+  function moveButton(move: MoveView, compact = false, lineStart = false) {
     const nag = nagDetails(move.note?.nag);
     const reviewed = move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined;
     const badge = reviewed && reviewBadge(reviewed.label);
     const book = tree !== null && bookMoves?.has(`${game.id}:${cursorKey(move.cursor)}`);
-    const number = rowNumber !== undefined
-      ? <span className="move-number" aria-hidden={interactive || undefined}>{rowNumber}.</span>
-      : compact && (move.ply % 2 === 1 || lineStart)
-        ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
-    if (!interactive) return <span key={cursorKey(move.cursor)} className={rowNumber === undefined
-      ? 'move-text' : 'move-text numbered-move'}>{number}<span>{move.san}</span></span>;
+    const number = compact && (move.ply % 2 === 1 || lineStart)
+      ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
+    if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
     return <span key={cursorKey(move.cursor)}
       className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
-      <button type="button" className={`move-link${rowNumber === undefined ? '' : ' numbered-move'}`} aria-current={move.selected ? 'step' : undefined}
+      <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
         aria-label={[move.notation,
           ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
           ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
@@ -103,7 +100,6 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           ...(book ? ['Book move, confirmed by the opening explorer'] : [])].join(', ')}
         aria-description={move.note?.comment}
         aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
-        title={tree === null ? 'Saved game move' : 'Right-click, long-press, or press Shift+F10 for analysis options'}
         onContextMenu={event => { if (tree !== null) { event.preventDefault();
           if (touchMenuTimer.current !== null) suppressNextTouchClick(event.currentTarget);
           cancelTouchMenu();
@@ -128,14 +124,11 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
         onClick={event => { if (suppressTouchSelection.current === event.currentTarget) {
           suppressTouchSelection.current = null; return;
         }
-          onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol"
-          title={`${nag.description} (PGN $${nag.value})`}>{moveNagLabel(nag.value)}</span>}
+          onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
           {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
-            title={`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
-              ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`}
             aria-hidden="true">{badge}</span>}
-      {book && <span className="book-badge" title="Book move confirmed by the opening explorer">Book</span>}
-      {move.note?.comment && <span className="move-comment" title={move.note.comment}>
+      {book && <span className="book-badge">Book</span>}
+      {move.note?.comment && <span className="move-comment">
         {move.note.comment}</span>}</span></button>
     </span>;
   }
@@ -177,10 +170,9 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
       else pair.black = move;
     }
     return <ol className="main-line">{pairs.map(pair => <li key={pair.number} className="move-pair">
-      <div className="move-pair-row">
-        <span className="move-cell">{pair.white && moveButton(pair.white, false, false, pair.number)}</span>
-        <span className="move-cell">{pair.black && moveButton(pair.black, false, false,
-          pair.white ? undefined : pair.number)}</span></div>
+      <div className="move-pair-row"><span className="move-number">{pair.number}.</span>
+        <span className="move-cell">{pair.white && moveButton(pair.white)}</span>
+        <span className="move-cell">{pair.black && moveButton(pair.black)}</span></div>
       {pair.white && variations(pair.white, depth)}
       {pair.black && variations(pair.black, depth)}
     </li>)}</ol>;
@@ -190,9 +182,6 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     : interactive ? ' saved-replay-moves' : ' live-moves'}`}
     aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
     <h3>Moves</h3>
-    {interactive && <button type="button" className="move-link start-link"
-      aria-current={view.startSelected ? 'step' : undefined}
-      onClick={() => onSelect({ kind: 'main', ply: 0 })}>Start</button>}
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : renderLine(view.main, 0, true)}
     {menu !== null && tree !== null && <div className="analysis-menu" ref={menuRef} role="dialog"
       aria-label={`Options for ${menu.move.notation}`}
@@ -229,7 +218,7 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
             onChange={event => setNagQuery(event.target.value)} />
           {filteredNagGroups.map(group => <section key={group.label} aria-label={group.label}>
             <h4>{group.label}</h4><div className="nag-grid">{group.options.map(option =>
-              <button key={option.value} type="button" title={`${option.description} (PGN $${option.value})`}
+              <button key={option.value} type="button"
                 aria-label={`${option.description}, ${option.glyph}, PGN $${option.value}`}
                 aria-pressed={menu.move.note?.nag === option.value}
                 onClick={() => { onNote?.(menu.move.cursor, { nag: option.value }); closeMenu(); }}>

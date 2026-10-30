@@ -36,7 +36,7 @@ describe('Masters opening explorer', () => {
     expect(html).toContain('class="book-white" style="width:65%"');
     expect(html).toContain('class="book-draw" style="width:25%"');
     expect(html).toContain('class="book-black" style="width:10%"');
-    expect(html).toContain('Black wins: 10.0%');
+    expect(html).not.toContain(' title=');
     expect(html).toContain('class="book-outcome-values" aria-hidden="true"><span>65%</span><span>25%</span><span>10%</span>');
     expect(html).toContain('Played %');
     expect(html).toContain('White 65.0%'); expect(html).toContain('Draw 25.0%'); expect(html).toContain('Black 10.0%');

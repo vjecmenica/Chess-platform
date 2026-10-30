@@ -393,7 +393,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         onClick={() => setReviewTab('computer')}>Computer Analysis</button>
       <button type="button" role="tab" aria-selected={reviewTab === 'times'}
         aria-controls="move-times-view" tabIndex={reviewTab === 'times' ? 0 : -1} disabled={!hasMoveTimes}
-        title={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
+        aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
         onClick={() => setReviewTab('times')}>Move times</button>
     </div>
     <div id="move-times-view" role="tabpanel" aria-label="Move times" hidden={reviewTab !== 'times'}>
@@ -418,7 +418,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
               const next = nextReviewedMovePly(review.review, side, label, selectedPly);
               return <button key={kind} type="button" className={`review-count review-${kind}`}
                 disabled={next === null} onClick={() => { if (next !== null) onSelectPly(next); }}
-                title={next === null ? `No ${kind} moves by ${side}` : `Show next ${kind} by ${side}`}>
+                aria-description={next === null ? `No ${kind} moves by ${side}` : `Show next ${kind} by ${side}`}>
                 <strong>{summary[kind]}</strong>
                 <span>{kind === 'inaccuracy' ? 'inaccuracies' : `${kind}s`}</span>
               </button>;

@@ -33,11 +33,11 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
     </div>
     <div className="finished-result-actions">
       <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
-        title="Analysis edits last until Analysis closes and do not affect the game."
+        aria-description="Analysis edits last until Analysis closes and do not affect the game."
         onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>
     </div>
     <button type="button" className="result-resize-handle"
-      aria-label="Resize result area" title="Drag to resize result area; use arrow keys on the handle"
+      aria-label="Resize result area" aria-description="Drag to resize result area; use arrow keys on the handle"
       onPointerDown={event => {
         if (event.button !== 0 || area.current === null) return;
         const currentHeight = area.current.getBoundingClientRect().height;
