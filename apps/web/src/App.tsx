@@ -43,7 +43,7 @@ import type { GameReview } from './game-review';
 import { FinishedResultArea } from './FinishedResultArea';
 import { importParsedPgn, importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
-import { isEditableKeyTarget, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
+import { moveNavigationDirection, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 import { advanceDragVisual } from './drag-visual';
 
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
@@ -995,10 +995,8 @@ export function App() {
   useEffect(() => {
     if (game?.status !== 'active' && game?.status !== 'finished') return;
     const navigate = (event: KeyboardEvent) => {
-      const direction = event.key === 'ArrowLeft' ? -1
-        : event.key === 'ArrowRight' ? 1 : null;
-      if (direction === null || event.defaultPrevented || event.altKey || event.ctrlKey
-        || event.metaKey || event.shiftKey || isEditableKeyTarget(event.target)) return;
+      const direction = moveNavigationDirection(event);
+      if (direction === null) return;
       if (analysisOpen && analysis !== null) {
         if (direction === -1 && analysis.cursor.kind === 'main' && analysis.cursor.ply === 0) return;
         const next = direction === -1 ? previousPosition(analysis) : nextPosition(analysis, game);

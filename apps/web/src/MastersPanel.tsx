@@ -14,20 +14,15 @@ export function ExplorerContent({ result, onExplore, onRetry, examples }: {
   const id = useId();
   return <section className="masters-panel" aria-label="Opening explorer">
     <div className="masters-heading"><strong>Opening Book</strong></div>
-    <div className="book-source-tabs" role="tablist" aria-label="Opening Book sources">
-      <button type="button" role="tab" id={id + '-masters'} aria-selected="true" aria-controls={id + '-content'}
-        aria-description="Masters statistics from licensed TWIC games."
-        onKeyDown={event => {
-          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-            event.preventDefault(); event.stopPropagation();
-          }
-        }}>Masters</button>
-      <button type="button" role="tab" aria-selected="false" disabled
+    <div className="book-source-tabs" role="group" aria-label="Opening Book sources">
+      <button type="button" id={id + '-masters'} aria-pressed="true" aria-controls={id + '-content'}
+        aria-description="Masters statistics from licensed TWIC games.">Masters</button>
+      <button type="button" aria-pressed="false" disabled
         aria-description="Coming soon. Site-game opening statistics are not available.">Site games<small>Coming soon</small></button>
-      <button type="button" role="tab" aria-selected="false" disabled
+      <button type="button" aria-pressed="false" disabled
         aria-description="Coming soon. Your personal opening statistics are not available.">Player<small>Coming soon</small></button>
     </div>
-    <div className="book-source-content" role="tabpanel" id={id + '-content'} aria-labelledby={id + '-masters'}>
+    <div className="book-source-content" role="region" id={id + '-content'} aria-labelledby={id + '-masters'}>
     <div className="masters-statistics">
     {result === null && <p role="status">Loading opening statistics…</p>}
     {result?.kind === 'error' && <p role="status">{result.message} <button type="button"

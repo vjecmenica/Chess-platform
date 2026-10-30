@@ -179,8 +179,9 @@ it('labels Masters as the sole available source and expands examples outside the
     result: { kind: 'ok', data: parseMastersResponse(response, game().position.fen) },
     onExplore: () => {}, onRetry: () => {}, examples: createElement('p', null, 'Example replay content'),
   }));
-  expect(html).toContain('role="tablist" aria-label="Opening Book sources"');
-  expect(html).toMatch(/aria-selected="true"[^>]*>Masters<\/button>/);
+  expect(html).toContain('role="group" aria-label="Opening Book sources"');
+  expect(html).toMatch(/aria-pressed="true"[^>]*>Masters<\/button>/);
+  expect(html).not.toContain('role="tab');
   expect(html).toMatch(/disabled=""[^>]*Site-game opening statistics are not available/);
   expect(html).toMatch(/disabled=""[^>]*Your personal opening statistics are not available/);
   expect(html).toContain('Site games<small>Coming soon</small>');

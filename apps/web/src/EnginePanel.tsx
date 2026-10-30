@@ -377,7 +377,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt>
           <dd>{value === null ? 'Not reported' : value ? 'Yes' : 'No'}</dd></div>)}</dl>
       </details>}
-      <label className="engine-line-setting">Lines
+      <label className="engine-line-setting engine-line-count">Lines
           <select value={lineCount}
             aria-label="Candidate lines" onChange={event => {
               const count = Number(event.target.value) as MultiPvCount;
@@ -461,28 +461,19 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </span>}
     </div>}
     </div>
-    <div className="review-tabs" role="tablist" aria-label="Game analysis views"
-      onKeyDown={event => {
-        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-        event.preventDefault(); event.stopPropagation();
-        const next = event.key === 'ArrowRight' ? 'times' : 'computer';
-        if (next === 'times' && !hasMoveTimes) return;
-        setReviewTab(next);
-        event.currentTarget.querySelector<HTMLButtonElement>(`[aria-controls="${next === 'times'
-          ? 'move-times-view' : 'computer-analysis-view'}"]`)?.focus();
-      }}>
-      <button type="button" role="tab" aria-selected={reviewTab === 'computer'}
-        aria-controls="computer-analysis-view" tabIndex={reviewTab === 'computer' ? 0 : -1}
+    <div className="review-tabs" role="group" aria-label="Game analysis views">
+      <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
+        aria-controls="computer-analysis-view"
         onClick={() => setReviewTab('computer')}>Computer Analysis</button>
-      <button type="button" role="tab" aria-selected={reviewTab === 'times'}
-        aria-controls="move-times-view" tabIndex={reviewTab === 'times' ? 0 : -1} disabled={!hasMoveTimes}
+      <button type="button" id="move-times-button" aria-pressed={reviewTab === 'times'}
+        aria-controls="move-times-view" disabled={!hasMoveTimes}
         aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
         onClick={() => setReviewTab('times')}>Move times</button>
     </div>
-    <div id="move-times-view" role="tabpanel" aria-label="Move times" hidden={reviewTab !== 'times'}>
+    <div id="move-times-view" role="region" aria-labelledby="move-times-button" hidden={reviewTab !== 'times'}>
       {reviewTab === 'times' && <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />}
     </div>
-    <div id="computer-analysis-view" role="tabpanel" aria-label="Computer Analysis"
+    <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button"
       hidden={reviewTab !== 'computer'}>
     <small className="review-engine">Stockfish 19 Lite · 1 thread · depth 14 / 1.2s per position</small>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}

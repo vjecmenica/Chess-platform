@@ -349,6 +349,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   min-height: 34px; padding: 4px 8px; border: 1px solid #baa58b;
   border-radius: 5px; background: #fffdf8; color: #493829; }
 .engine-line-setting select:hover { border-color: #8b6948; }
+.engine-line-count select { grid-column: 2; justify-self: start; width: 4.5rem; max-width: 100%; }
 .engine-search-settings { display: grid; gap: 10px; min-width: 0; }
 .engine-range-setting input { appearance: none; width: 100%; min-width: 0; height: 32px;
   padding: 0; margin: 0; border: 0; background: transparent; accent-color: #8b6545; cursor: pointer; }
@@ -748,10 +749,10 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .review-tabs button { min-height: 34px; padding: 5px 12px; border: 0; border-bottom: 2px solid transparent;
   background: transparent; color: #5b665d; font: inherit; font-size: var(--text-compact); cursor: pointer; }
 .review-tabs button:hover:not(:disabled) { color: #213c30; background: #f2eee5; }
-.review-tabs button[aria-selected="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
+.review-tabs button[aria-pressed="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
 .review-tabs button:focus-visible, .move-time-column:focus-visible { outline: 3px solid #a66422; outline-offset: -3px; }
 .review-tabs button:disabled { opacity: .5; cursor: default; }
-.review-content > [role="tabpanel"] { min-width: 0; }
+.review-content > [role="region"] { min-width: 0; }
 .move-times-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .move-times { width: 100%; min-width: 0; }
 .move-times-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding: 0 2px 5px; }
@@ -974,7 +975,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .sidebar-tabs { display: flex; gap: 4px; padding: 4px 10px 0; border-bottom: 1px solid #dedbd2; }
 .sidebar-tabs button { min-height: 38px; padding: 7px 12px; border: 0; border-bottom: 2px solid transparent;
   border-radius: 0; background: transparent; color: #756451; }
-.sidebar-tabs button[aria-selected="true"] { border-bottom-color: #875d35; color: #382b22; }
+.sidebar-tabs button[aria-pressed="true"] { border-bottom-color: #875d35; color: #382b22; }
 .sidebar-tabs button:hover { background: #f2eee5; }
 .sidebar-tabs button:focus-visible { outline-offset: -3px; }
 .sidebar-tab-content { min-width: 0; min-height: 0; }
@@ -986,7 +987,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .book-source-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; flex: none; }
 .book-source-tabs button { min-height: 38px; padding: 3px 6px; font-size: var(--text-compact);
   border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; }
-.book-source-tabs button[aria-selected="true"] { color: #382b22; border-bottom-color: #875d35; }
+.book-source-tabs button[aria-pressed="true"] { color: #382b22; border-bottom-color: #875d35; }
 .book-source-tabs small { display: block; font-size: var(--text-caption); }
 .book-source-content { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
 .masters-statistics { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 64px; }

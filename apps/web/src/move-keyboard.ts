@@ -12,5 +12,15 @@ export function isViewingLiveHistory(status: string | undefined, selectedPly: nu
 
 export function isEditableKeyTarget(target: EventTarget | null): boolean {
   if (target === null || typeof (target as Element).closest !== 'function') return false;
-  return (target as Element).closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]') !== null;
+  return (target as Element).closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), '
+    + '[role="textbox"], [role="slider"], [role="spinbutton"], [role="combobox"], [role="listbox"], '
+    + '[role="menu"], [role="menubar"], [role="tree"], [role="grid"], [role="tablist"], [role="radiogroup"]') !== null;
+}
+
+/** Ordinary panel buttons leave horizontal arrows to the window's move navigation. */
+export function moveNavigationDirection(event: Pick<KeyboardEvent,
+  'key' | 'defaultPrevented' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'target'>): -1 | 1 | null {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+    || isEditableKeyTarget(event.target)) return null;
+  return event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : null;
 }
