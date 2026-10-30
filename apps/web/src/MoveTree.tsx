@@ -127,9 +127,9 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
           onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
           {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
             aria-hidden="true">{badge}</span>}
-      {book && <span className="book-badge">Book</span>}
+      {book && <span className="book-badge">Book</span>}</span>
       {move.note?.comment && <span className="move-comment">
-        {move.note.comment}</span>}</span></button>
+        {move.note.comment}</span>}</button>
     </span>;
   }
 

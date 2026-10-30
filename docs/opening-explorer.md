@@ -1,10 +1,19 @@
 # Self-hosted opening explorer
 
-Finished-game Analysis has an **Explorer** tab. It loads candidate moves and a restricted
+Finished-game Analysis has an **Opening Book** tab. It loads candidate moves and a restricted
 sample of games reaching the selected position from our own API. Candidates create local
 variations. Listed games open in the existing session-local replay/analysis view at the
 matching ply, with complete main-line navigation, player metadata, Stockfish and review.
 The original platform game is unchanged. No external service is a fallback.
+
+**Masters** is the available source, backed by licensed TWIC data. **Site games** and
+**Player** are disabled placeholders and make no dataset requests. The candidate list
+shows about seven rows when space permits, with its own scrolling; shorter sidebars
+reduce that area while retaining expanded example games and their pagination below it.
+The interactive engine remains mounted above both sidebar tabs. Its header switch
+controls only current-position evaluation, independently of Computer Analysis. The
+header score reuses the current position’s first PV in White’s perspective; pending
+positions and a stopped engine do not display another position’s score.
 
 ## Private source data
 

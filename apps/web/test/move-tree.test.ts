@@ -124,6 +124,24 @@ describe('analysis move list', () => {
     expect(html).toContain('!?');
   });
 
+  it('retains long promotion SAN, its number, annotation and comment in a compact variation button', () => {
+    const position = createPositionFromFen('1r2k3/P7/8/8/8/8/8/4K3 w - - 0 1');
+    const game = { ...savedGame(0), position: position.getPosition(), history: [] };
+    const first = playAnalysisMove(createAnalysisTree(game), game, 'a7', 'a8', 'q');
+    if (!first.accepted) throw new Error('Expected legal promotion');
+    const second = playAnalysisMove(selectMain(first.tree, game, 0), game, 'a7', 'b8', 'q');
+    if (!second.accepted) throw new Error('Expected legal capture promotion');
+    const tree = setMoveNote(second.tree, second.tree.cursor, { nag: 1, comment: 'Promote with check.' });
+    const html = markup(game, tree);
+    expect(html).toContain('class="variation-line"');
+    expect(html).toContain('aria-label="1. axb8=Q+, Good move, PGN $1"');
+    expect(html).toContain('aria-description="Promote with check."');
+    expect(html).toContain('inline-number');
+    expect(html).toContain('move-content">axb8=Q+');
+    expect(html).toContain('Promote with check.</span>');
+    expect(html).toContain('aria-keyshortcuts="Shift+F10"');
+  });
+
   it('shows a less familiar PGN value after its move with a readable description', () => {
     const game = savedGame();
     const branch = play(game, selectMain(createAnalysisTree(game), game, 1), 'c7', 'c5');

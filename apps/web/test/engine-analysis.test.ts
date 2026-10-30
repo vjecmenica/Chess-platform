@@ -6,7 +6,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, searchCommand,
   searchProfile, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
-import { candidateLines, EnginePanel, engineLineRows, interactiveLimits } from '../src/EnginePanel';
+import { candidateLines, currentEngineEvaluation, EnginePanel, EngineToggle, engineLineRows, interactiveLimits } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -56,7 +56,9 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toContain('Unlimited depth');
     expect(html).not.toContain('Unlimited search time');
     expect(html).not.toContain('Search limit mode');
-    expect(html).toContain('Stop engine');
+    expect(html).toContain('role="switch" aria-checked="true"');
+    expect(html).toContain('aria-label="Interactive engine"');
+    expect(html).not.toMatch(/Start engine|Stop engine/);
     expect(html).not.toContain('More lines share the 1.2-second search budget');
   });
 
@@ -333,4 +335,24 @@ describe('browser Stockfish controller', () => {
     } });
     expect(new EngineCache(storage).get(start, 3)?.lines).toHaveLength(2);
   });
+});
+
+it('renders an accessible engine switch and a labelled score without using a button title', () => {
+  const render = (enabled: boolean, score: string | null) => renderToStaticMarkup(createElement(EngineToggle,
+    { enabled, score, onToggle: () => {} }));
+  expect(render(true, '+0.37')).toContain('role="switch" aria-checked="true"');
+  expect(render(true, '+0.37')).toContain('Current position, White perspective +0.37');
+  expect(render(true, 'Mate -3')).toContain('>Mate -3</strong>');
+  expect(render(true, null)).toContain('Current position evaluation pending');
+  expect(render(false, null)).toContain('role="switch" aria-checked="false"');
+  expect(render(false, null)).toContain('Interactive engine off');
+  expect(render(true, '+0.37')).not.toContain(' title=');
+});
+
+it('never uses another position’s cached or in-progress evaluation for the header', () => {
+  const evaluation = { fen: afterE4, depth: 20, score: { kind: 'cp' as const, value: 37 }, bestMove: null, variation: [] };
+  const state: EngineState = { kind: 'done', evaluation, cached: true };
+  expect(currentEngineEvaluation(state, start)).toBeNull();
+  expect(candidateLines(currentEngineEvaluation(state, afterE4)!)[0]?.score).toBe('-0.37');
+  expect(currentEngineEvaluation({ kind: 'off' }, afterE4)).toBeNull();
 });

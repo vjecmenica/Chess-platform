@@ -139,7 +139,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   }
 
   return <aside className="game-chat" data-hidden={hidden} aria-labelledby={`chat-heading-${gameId}`}>
-    <div className="game-chat-header"><h2 id={`chat-heading-${gameId}`}>Game chat</h2><span>Players only</span>
+    <div className="game-chat-header"><h2 id={`chat-heading-${gameId}`}>Game chat</h2>
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>

@@ -54,6 +54,7 @@ it('waits for server permission without flashing a read-only notice, including f
   expect(html).toContain('aria-expanded="true" aria-controls="chat-content-game">Hide</button>');
   expect(html).not.toMatch(/<details|<summary|Hide chat|Show chat/);
   expect(html).not.toContain('Chat is read-only');
+  expect(html).not.toContain('Players only');
   const finished = renderToStaticMarkup(createElement(GameChat, { ...props, gameStatus: 'finished' }));
   expect(finished).not.toContain('Chat is read-only');
   expect(finished).not.toContain('<form');
@@ -92,7 +93,7 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     const html = renderToStaticMarkup(createElement(GameChat, props));
     expect(getItem).toHaveBeenCalledWith('game-chat-hidden:game:white');
     expect(html).toContain('data-hidden="true"');
-    expect(html).toMatch(/game-chat-header"><h2[^>]*>Game chat<\/h2><span>Players only<\/span>[\s\S]*?>Show<\/button>/);
+    expect(html).toMatch(/game-chat-header"><h2[^>]*>Game chat<\/h2>[\s\S]*?>Show<\/button>/);
     expect(html).toContain('aria-expanded="false" aria-controls="chat-content-game">Show</button>');
     expect(html).toContain('id="chat-content-game" hidden=""');
     expect(html).not.toContain('<form');

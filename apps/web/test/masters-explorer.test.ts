@@ -47,7 +47,7 @@ describe('Masters opening explorer', () => {
   it('makes the entire candidate row one native button containing its statistics and outcome bar', () => {
     const result = { kind: 'ok' as const, data: parseMastersResponse(response, game().position.fen) };
     const html = renderToStaticMarkup(createElement(ExplorerContent, { result, onExplore: () => {}, onRetry: () => {} }));
-    const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)];
+    const buttons = [...html.matchAll(/<button\b[^>]*class="masters-move"[^>]*>[\s\S]*?<\/button>/g)];
     expect(buttons).toHaveLength(1);
     const row = buttons[0]![0];
     expect(row).toContain('class="masters-move"');
@@ -172,4 +172,21 @@ it('uses every candidate support count for played percentage, including off-scre
  const moves = [1, 3, 6].map(games => ({ uci: 'e2e4', san: 'e4', games, white: games, draws: 0, black: 0 }));
  expect(playedPercentage(moves, 3)).toBe(30);
  expect(playedPercentage([], 0)).toBe(0);
+});
+
+it('labels Masters as the sole available source and expands examples outside the candidate list', () => {
+  const html = renderToStaticMarkup(createElement(ExplorerContent, {
+    result: { kind: 'ok', data: parseMastersResponse(response, game().position.fen) },
+    onExplore: () => {}, onRetry: () => {}, examples: createElement('p', null, 'Example replay content'),
+  }));
+  expect(html).toContain('role="tablist" aria-label="Opening Book sources"');
+  expect(html).toMatch(/aria-selected="true"[^>]*>Masters<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*Site-game opening statistics are not available/);
+  expect(html).toMatch(/disabled=""[^>]*Your personal opening statistics are not available/);
+  expect(html).toContain('Site games<small>Coming soon</small>');
+  expect(html).toContain('Player<small>Coming soon</small>');
+  expect(html).toMatch(/aria-expanded="true"[^>]*>Example games/);
+  expect(html).toContain('Example replay content');
+  expect(html.indexOf('Example replay content')).toBeGreaterThan(html.indexOf('book-examples'));
+  expect(html.indexOf('Source: licensed TWIC')).toBeGreaterThan(html.indexOf('Example replay content'));
 });

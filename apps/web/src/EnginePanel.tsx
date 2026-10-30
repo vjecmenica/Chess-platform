@@ -157,6 +157,26 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   </div>;
 }
 
+export function EngineToggle({ enabled, score, onToggle }: {
+  enabled: boolean; score: string | null; onToggle: () => void;
+}) {
+  return <div className="engine-toggle-status">
+    <button type="button" className="engine-toggle" role="switch" aria-checked={enabled}
+      aria-label="Interactive engine" aria-description="Turn current-position evaluation on or off. Computer Analysis runs independently."
+      onClick={onToggle}>
+      <span className="engine-toggle-track" aria-hidden="true"><span>{enabled ? '✓' : ''}</span></span>
+    </button>
+    <strong className="engine-current-score" aria-label={score === null
+      ? enabled ? 'Current position evaluation pending' : 'Interactive engine off'
+      : `Current position, White perspective ${score}`}>{score ?? '—'}</strong>
+  </div>;
+}
+
+export function currentEngineEvaluation(state: EngineState, fen: string): EngineEvaluation | null {
+  return (state.kind === 'done' || state.kind === 'searching') && state.evaluation?.fen === fen
+    ? state.evaluation : null;
+}
+
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
   onEvaluationChange, onEvaluationPendingChange, reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
@@ -262,9 +282,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     } catch { changeReview({ kind: 'error', message: 'The saved main line could not be reviewed.' }); }
   }
 
-  const evaluation = (state.kind === 'done' || state.kind === 'searching')
-    && state.evaluation?.fen === fen
-    ? state.evaluation : null;
+  const evaluation = currentEngineEvaluation(state, fen);
   // Reuse SAN conversion when review progress or parent callbacks render this panel.
   const lines = useMemo(() => state.kind === 'searching' && state.fen === fen && state.lines
     ? state.lines.map(line => candidateLine(fen, line))
@@ -281,15 +299,15 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     <div className="engine-heading">
       <strong>Engine Evaluation</strong>
       <div className="engine-heading-actions">
+        <EngineToggle enabled={enabled && state.kind !== 'error'}
+          score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null}
+          onToggle={() => {
+            if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
+            else { controller.current?.start(fen); setEnabled(true); }
+          }} />
         <button type="button" className="secondary" ref={settingsButtonRef}
           aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
           onClick={() => setSettingsOpen(value => !value)}>Settings</button>
-        <button type="button" className={enabled && state.kind !== 'error' ? 'secondary' : 'primary'} aria-pressed={enabled}
-          onClick={() => {
-            if (enabled && state.kind === 'error') controller.current?.start(fen);
-            else if (enabled) { controller.current?.stop(); setEnabled(false); }
-            else { controller.current?.start(fen); setEnabled(true); }
-          }}>{enabled ? state.kind === 'error' ? 'Retry engine' : 'Stop engine' : 'Start engine'}</button>
       </div>
     </div>
     {settingsOpen && <div className="engine-settings-popover" id="engine-settings"

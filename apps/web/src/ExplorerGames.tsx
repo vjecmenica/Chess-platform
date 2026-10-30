@@ -42,12 +42,10 @@ export function ExplorerGames({ fen, onOpen }: {
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [selection, fen]);
   return <section className="explorer-games" aria-label="Games reaching this position">
-    <strong>Games at this position</strong>
     {error && <p role="status">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!data && !error && <p role="status">Loading games…</p>}
     {data && data.games.length === 0 && <p>No games available.</p>}
     <ExplorerGameList data={data} page={page} fen={fen} loadingId={loadingId} onSelect={setSelection} onPage={setPage} />
-    <small>Limited sample · replay inside the platform.</small>
   </section>;
 }
 
@@ -62,8 +60,7 @@ export function ExplorerGameList({ data, page, fen, loadingId, onSelect, onPage 
       <span>{game.result} · {game.game_date ?? 'Date unavailable'}</span>
       <small>{game.event ?? 'Event unavailable'} · Round {game.round ?? 'unavailable'}
         {game.eco ? ` · ${game.eco}` : ''}{game.opening ? ` · ${game.opening}` : ''}</small>
-      <small>{game.uci ? `Played ${playedMove(fen, game.uci)} · ` : 'No next move · '}</small>
-      <small>{loadingId === game.id ? 'Opening…' : `Replay from ply ${game.ply}`}</small>
+      <small>{game.uci ? `Played ${playedMove(fen, game.uci)} · ` : 'No next move · '}{loadingId === game.id ? 'Opening…' : `Replay from ply ${game.ply}`}</small>
     </button>)}</div>
     {data && <div className="explorer-pagination"><button type="button" disabled={page === 0} onClick={() => onPage(page - 1)}>Previous games</button>
       <span>Page {page + 1}</span><button type="button" disabled={!data.hasMore} onClick={() => onPage(page + 1)}>Next games</button></div>}

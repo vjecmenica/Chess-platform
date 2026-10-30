@@ -21,6 +21,32 @@ class Worker implements EngineWorker {
   ready() { this.emit('uciok'); this.emit('readyok'); }
 }
 
+it('can stop and restart interactive evaluation while the independent review worker keeps running', async () => {
+  vi.useFakeTimers();
+  const workers: Worker[] = [];
+  const controller = new EngineController(() => {
+    const worker = new Worker(); workers.push(worker); return worker;
+  }, () => {}, new EngineCache());
+  const reviewWorker = new Worker(), complete = vi.fn();
+  const runner = new GameReviewRunner([STANDARD_STARTING_FEN], () => reviewWorker,
+    new EngineCache(), () => {}, complete, () => {});
+  const dispose = scheduleInteractiveEngine(controller, STANDARD_STARTING_FEN);
+  try {
+    await Promise.resolve(); workers[0]!.ready();
+    runner.start(); reviewWorker.ready();
+    controller.stop();
+    expect(workers[0]!.terminated).toBe(true);
+    expect(reviewWorker.terminated).toBe(false);
+    controller.start(STANDARD_STARTING_FEN); workers[1]!.ready();
+    expect(workers[1]!.commands).toContain('go depth 25 movetime 15000');
+    reviewWorker.emit('info depth 14 score cp 20 pv e2e4');
+    reviewWorker.emit('bestmove e2e4');
+    await vi.runAllTimersAsync();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(workers[1]!.terminated).toBe(false);
+  } finally { runner.cancel(); dispose(); vi.useRealTimers(); }
+});
+
 it('keeps the panel report and parent move annotations consistent across restart, cancel, failure and completion', async () => {
   const game = importPgn('[Result "1-0"]\n\n1. e4 e5 1-0', 'lifecycle').game;
   const evaluation = (fen: string, cp: number) => ({ fen, depth: 14,
