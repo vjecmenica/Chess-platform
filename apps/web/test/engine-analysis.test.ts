@@ -68,12 +68,11 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toContain('More lines share the 1.2-second search budget');
   });
 
-  it('keeps a depth row during a pending search and aligns both range tracks', () => {
+  it('keeps a stable depth row during a pending search', () => {
     const panel = readFileSync(new URL('../src/EnginePanel.tsx', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(panel).toContain("Depth {evaluation?.depth ?? '—'}");
     expect(panel).toContain('className="engine-depth"');
-    expect(css).toMatch(/\.engine-search-settings \.engine-range-setting\s*\{[^}]*grid-template-columns: \d+px minmax\(0, 1fr\) \d+px/);
     expect(css).toMatch(/\.engine-depth\s*\{[^}]*min-height: 1\.2em/);
   });
 

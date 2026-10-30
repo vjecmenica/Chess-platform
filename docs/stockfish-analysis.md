@@ -5,6 +5,10 @@ Analysis opens interactive **Stockfish 19 Full** by default, with depth 25 and a
 lower-download/memory option. The engine choice and requested thread count are
 browser preferences, including for imported/blank analysis; no account setting or
 database data is added. Other search controls keep their existing session behavior.
+Depth and Search time each have a final `∞` slider position after their finite
+maxima (40 and 30.0 seconds). The limits remain independent; both endpoints mean
+`go infinite`. Moving left restores a finite limit immediately. The blue + shortcut
+uses that same state and restores the last bounded combination when switched off.
 
 Full downloads only when an uncached interactive search starts in Analysis. Home,
 ordinary live play, and cached positions do not start a download. The upstream

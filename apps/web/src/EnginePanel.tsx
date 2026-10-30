@@ -7,7 +7,8 @@ import { EngineCache, EngineController,
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
-import { createInteractiveSettings, scheduleInteractiveEngine, toggleContinuousSettings, updateInteractiveSettings,
+import { createInteractiveSettings, depthSlider, timeSlider, updateDepthSlider, updateTimeSlider,
+  scheduleInteractiveEngine, toggleContinuousSettings,
   type InteractiveSettingsState } from './interactive-engine';
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
@@ -284,12 +285,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     onEvaluationChange(null);
   }
 
-  function updateLimits(nextDepth: number, nextTimeMs: number,
-    nextUnlimitedDepth: boolean, nextUnlimitedTime: boolean) {
-    applySettings(updateInteractiveSettings(searchSettings, { depth: nextDepth, timeMs: nextTimeMs,
-      unlimitedDepth: nextUnlimitedDepth, unlimitedTime: nextUnlimitedTime }));
-  }
-
   function toggleContinuous() {
     applySettings(toggleContinuousSettings(searchSettings));
     if (!continuous && (!enabled || state.kind === 'error')) {
@@ -394,30 +389,19 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           </select>
         </label>
     <div className="engine-search-settings" role="group" aria-label="Interactive search limits">
-      <div className="engine-limit-setting">
-        <label className="engine-range-setting">Depth
-          <input type="range" min="1" max="40" value={depth}
-            disabled={unlimitedDepth}
-            onChange={event => updateLimits(Number(event.target.value), timeMs,
-              unlimitedDepth, unlimitedTime)} />
-          <output>{unlimitedDepth ? '—' : depth}</output>
-        </label>
-        <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited depth"
-          checked={unlimitedDepth}
-          onChange={event => updateLimits(depth, timeMs, event.target.checked, unlimitedTime)} />Unlimited</label>
-      </div>
-      <div className="engine-limit-setting">
-        <label className="engine-range-setting">Search time
-          <input type="range" min="200" max="30000" step="100" value={timeMs}
-            disabled={unlimitedTime}
-            onChange={event => updateLimits(depth, Number(event.target.value),
-              unlimitedDepth, unlimitedTime)} />
-          <output>{unlimitedTime ? '—' : `${(timeMs / 1000).toFixed(1)}s`}</output>
-        </label>
-        <label className="engine-unlimited"><input type="checkbox" aria-label="Unlimited search time"
-          checked={unlimitedTime}
-          onChange={event => updateLimits(depth, timeMs, unlimitedDepth, event.target.checked)} />Unlimited</label>
-      </div>
+      <label className="engine-range-setting">Depth
+        <input type="range" aria-label="Depth" min={depthSlider.min} max={depthSlider.max} step={depthSlider.step}
+          value={unlimitedDepth ? depthSlider.max : depth} aria-valuetext={unlimitedDepth ? 'Unlimited depth' : `Depth ${depth}`}
+          onChange={event => applySettings(updateDepthSlider(searchSettings, Number(event.target.value)))} />
+        <output aria-label={unlimitedDepth ? 'Unlimited depth' : undefined}>{unlimitedDepth ? '∞' : depth}</output>
+      </label>
+      <label className="engine-range-setting">Search time
+        <input type="range" aria-label="Search time" min={timeSlider.min} max={timeSlider.max} step={timeSlider.step}
+          value={unlimitedTime ? timeSlider.max : timeMs}
+          aria-valuetext={unlimitedTime ? 'Unlimited search time' : `${(timeMs / 1000).toFixed(1)} seconds`}
+          onChange={event => applySettings(updateTimeSlider(searchSettings, Number(event.target.value)))} />
+        <output aria-label={unlimitedTime ? 'Unlimited search time' : undefined}>{unlimitedTime ? '∞' : `${(timeMs / 1000).toFixed(1)}s`}</output>
+      </label>
     </div>
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
       title={`${description}, GPLv3. Runs in this browser.`}>Engine license and source</a>

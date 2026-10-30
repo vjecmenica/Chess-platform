@@ -1,8 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { EngineCache, EngineController, searchProfile, type EngineWorker } from '../src/engine-analysis';
+import { EngineCache, EngineController, searchCommand, searchProfile, type EngineWorker } from '../src/engine-analysis';
 import { createInteractiveSettings, interactiveSearchLimits, scheduleInteractiveEngine,
-  toggleContinuousSettings, updateInteractiveSettings } from '../src/interactive-engine';
+  toggleContinuousSettings, updateInteractiveSettings, updateDepthSlider, updateTimeSlider } from '../src/interactive-engine';
 import { interactiveLimits } from '../src/EnginePanel';
 import { GameReviewRunner } from '../src/game-review';
 import { buildGameReview, type GameReview } from '../src/game-review';
@@ -22,6 +22,53 @@ class Worker implements EngineWorker {
   emit(data: string) { this.onmessage?.({ data } as MessageEvent<string>); }
   ready() { this.emit('uciok'); this.emit('readyok'); }
 }
+
+function settingsCommand(state: ReturnType<typeof createInteractiveSettings>): string {
+  return searchCommand(interactiveLimits(state.current.unlimitedDepth ? null : state.current.depth,
+    state.current.unlimitedTime ? null : state.current.timeMs));
+}
+
+it('retains every finite slider value and uses a distinct final position for each unlimited limit', () => {
+  for (let depth = 1; depth <= 40; depth++)
+    expect(settingsCommand(updateDepthSlider(createInteractiveSettings(), depth)))
+      .toBe(`go depth ${depth} movetime 15000`);
+  for (let time = 200; time <= 30_000; time += 100)
+    expect(settingsCommand(updateTimeSlider(createInteractiveSettings(), time)))
+      .toBe(`go depth 25 movetime ${time}`);
+  const maximum = updateTimeSlider(updateDepthSlider(createInteractiveSettings(), 40), 30_000);
+  expect(settingsCommand(maximum)).toBe('go depth 40 movetime 30000');
+  expect(settingsCommand(updateDepthSlider(maximum, 41))).toBe('go movetime 30000');
+  expect(settingsCommand(updateTimeSlider(maximum, 30_100))).toBe('go depth 40');
+  const infinite = updateTimeSlider(updateDepthSlider(maximum, 41), 30_100);
+  expect(settingsCommand(infinite)).toBe('go infinite');
+  // One step left from either endpoint restores that finite maximum immediately.
+  expect(settingsCommand(updateDepthSlider(infinite, 40))).toBe('go depth 40');
+  expect(settingsCommand(updateTimeSlider(infinite, 30_000))).toBe('go movetime 30000');
+  expect(settingsCommand(updateTimeSlider(updateDepthSlider(infinite, 40), 30_000)))
+    .toBe('go depth 40 movetime 30000');
+  for (const depth of [0, 42, 40.5, NaN]) expect(() => updateDepthSlider(maximum, depth)).toThrow(RangeError);
+  for (const time of [0, 30_200, 30_050, NaN]) expect(() => updateTimeSlider(maximum, time)).toThrow(RangeError);
+});
+
+it('synchronizes the + shortcut with endpoint edits and restores the last bounded combination', () => {
+  const bounded = updateTimeSlider(updateDepthSlider(createInteractiveSettings(), 40), 30_000);
+  let state = toggleContinuousSettings(bounded);
+  expect(settingsCommand(state)).toBe('go infinite');
+  state = toggleContinuousSettings(state);
+  expect(state.current).toEqual(bounded.current);
+  state = updateDepthSlider(state, 41);
+  expect(settingsCommand(state)).toBe('go movetime 30000');
+  // Both sliders at their endpoints activate the same state as the + button.
+  state = updateTimeSlider(state, 30_100);
+  expect(settingsCommand(state)).toBe('go infinite');
+  state = toggleContinuousSettings(state);
+  expect(settingsCommand(state)).toBe('go movetime 30000');
+  // A finite edit also exits continuous mode without changing the other limit.
+  state = updateTimeSlider(toggleContinuousSettings(state), 700);
+  expect(settingsCommand(state)).toBe('go movetime 700');
+  state = toggleContinuousSettings(toggleContinuousSettings(state));
+  expect(settingsCommand(state)).toBe('go movetime 700');
+});
 
 it('runs continuously without the old time limit and restores the exact bounded profile', () => {
   let settings = createInteractiveSettings();
@@ -57,7 +104,7 @@ it('synchronizes popover edits with continuous mode and remembers partially boun
   settings = toggleContinuousSettings(settings);
   expect(settings.current).toEqual({ depth: 22, timeMs: 3700,
     unlimitedDepth: true, unlimitedTime: false });
-  // Selecting both Unlimited checkboxes uses the same continuous mode as the shortcut.
+  // Making both limits unlimited uses the same continuous mode as the shortcut.
   settings = updateInteractiveSettings(settings, { ...settings.current, unlimitedTime: true });
   settings = toggleContinuousSettings(settings);
   expect(settings.current.unlimitedTime).toBe(false);
