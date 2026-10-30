@@ -44,6 +44,21 @@ describe('Masters opening explorer', () => {
     expect(html).toContain('licensed TWIC');
     expect(html).not.toMatch(/Lichess|OAuth|download/i);
   });
+  it('makes the entire candidate row one native button containing its statistics and outcome bar', () => {
+    const result = { kind: 'ok' as const, data: parseMastersResponse(response, game().position.fen) };
+    const html = renderToStaticMarkup(createElement(ExplorerContent, { result, onExplore: () => {}, onRetry: () => {} }));
+    const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)];
+    expect(buttons).toHaveLength(1);
+    const row = buttons[0]![0];
+    expect(row).toContain('class="masters-move"');
+    expect(row).toContain('>Nf3</span>');
+    expect(row).toContain('100.0%');
+    expect(row).toContain('20 games');
+    expect(row).toContain('book-outcome-bar');
+    expect(row.slice(1)).not.toContain('<button');
+    expect(html).not.toContain('onClick=');
+  });
+
   it('keeps minority and zero outcomes readable outside the proportional result bar', () => {
     const result = { kind: 'ok' as const, data: { opening: null, moves: [
       { uci: 'e2e4', san: 'e4', games: 100, white: 99, draws: 1, black: 0 },

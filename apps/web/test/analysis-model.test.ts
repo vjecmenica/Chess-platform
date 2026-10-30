@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GameReadResponse, SavedMove } from '@chess/contracts';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
-import { analysisStorageKey, createAnalysisTree, cursorFen, deleteVariation, lastMainPosition,
-  mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, restoreAnalysis,
-  promoteVariation, selectBranch, selectMain, serializeAnalysis, setMoveNote } from '../src/analysis-model';
+import { clearStoredAnalysisTrees, createAnalysisTree, cursorFen, deleteVariation, lastMainPosition,
+  mainAncestorPly, nextPosition, playAnalysisMove, previousPosition,
+  promoteVariation, selectBranch, selectMain, setMoveNote } from '../src/analysis-model';
 
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 function finishedAt(fen: string, history: readonly SavedMove[] = []): GameReadResponse {
@@ -69,36 +69,52 @@ describe('finished-game analysis tree', () => {
     expect(game.position.fen).toBe(STANDARD_STARTING_FEN);
   });
 
-  it('restores a branch tree after refresh and rejects older or altered storage', () => {
-    const game = finishedAt(STANDARD_STARTING_FEN);
-    const first = play(game, createAnalysisTree(game), 'e2', 'e4');
-    const second = play(game, first, 'e7', 'e5');
-    const withSibling = play(game, selectMain(second, game, 0), 'd2', 'd4');
-    const saved = serializeAnalysis(withSibling);
-    const freshRead = JSON.parse(JSON.stringify(game)) as GameReadResponse;
-    expect(analysisStorageKey(game.id)).toBe('chess.analysis.v1.saved-game');
-    expect(restoreAnalysis(freshRead, saved)).toEqual(withSibling);
-    expect(restoreAnalysis(game, JSON.stringify({ ...JSON.parse(saved), version: 0 }))).toBeNull();
-    const altered = JSON.parse(saved);
-    altered.nodes[1].to = 'e4';
-    expect(restoreAnalysis(game, JSON.stringify(altered))).toBeNull();
-    expect(restoreAnalysis(game, '{bad json')).toBeNull();
-    expect(restoreAnalysis({ ...game, id: 'different' }, saved)).toBeNull();
+  it('starts a fresh tree after closing or reloading without changing recorded moves or source notes', () => {
+    const game = finishedAt(afterE4, [savedE4]);
+    const sourceNotes = { m1: { comment: 'Imported source comment', nag: 1 } };
+    const initial = createAnalysisTree(game, sourceNotes);
+    let edited = play(game, selectMain(initial, game, 0), 'd2', 'd4');
+    edited = setMoveNote(edited, edited.cursor, { comment: 'Temporary note', nag: 2 });
+    edited = promoteVariation(edited, 1);
+    edited = setMoveNote(edited, { kind: 'main', ply: 1 }, { comment: 'Edited source comment' });
+    expect(edited.nodes).toHaveLength(1);
+    const reopened = createAnalysisTree(game, sourceNotes);
+    expect(reopened.nodes).toEqual([]);
+    expect(reopened.promoted).toEqual({});
+    expect(reopened.notes).toEqual(sourceNotes);
+    expect(reopened.notes.m1?.comment).toBe('Imported source comment');
+    expect(createAnalysisTree(JSON.parse(JSON.stringify(game)))).toEqual(createAnalysisTree(game));
+    expect(game.history).toEqual([savedE4]);
     expect(game.result).toEqual({ outcome: 'draw', reason: 'agreement' });
   });
 
-  it('restores after deleting a branch, keeping unique future IDs', () => {
+  it('removes all legacy move trees without clearing preferences, caches, or other game data', () => {
+    const entries = new Map([
+      ['chess.analysis.v1.saved-game', '{old tree}'],
+      ['chess.analysis.v1.other-game', '{another tree}'],
+      ['chess-analysis-board:saved-game:v1', '{board preferences}'],
+      ['engine-cache', '{cached evaluation}'], ['guest-data', 'untouched'],
+    ]);
+    const storage = { get length() { return entries.size; },
+      key: (index: number) => [...entries.keys()][index] ?? null,
+      removeItem: (key: string) => { entries.delete(key); } };
+    clearStoredAnalysisTrees(storage);
+    clearStoredAnalysisTrees(storage);
+    expect([...entries.keys()]).toEqual([
+      'chess-analysis-board:saved-game:v1', 'engine-cache', 'guest-data',
+    ]);
+  });
+
+  it('keeps unique future IDs after deleting a branch', () => {
     const game = finishedAt(STANDARD_STARTING_FEN);
     const first = play(game, createAnalysisTree(game), 'd2', 'd4');
     const sibling = play(game, selectMain(first, game, 0), 'e2', 'e4');
     const pruned = deleteVariation(sibling, 1);
-    const restored = restoreAnalysis(game, serializeAnalysis(pruned));
-    expect(restored).toEqual(pruned);
-    expect(play(game, selectMain(restored!, game, 0), 'c2', 'c4').nodes.map(node => node.id))
+    expect(play(game, selectMain(pruned, game, 0), 'c2', 'c4').nodes.map(node => node.id))
       .toEqual([2, 3]);
   });
 
-  it('persists comments, NAGs, and promotion while deleting only chosen branch notes', () => {
+  it('retains in-session comments, NAGs, and promotion while deleting only chosen branch notes', () => {
     const game = finishedAt(afterE4, [savedE4]);
     const d4 = play(game, selectMain(createAnalysisTree(game), game, 0), 'd2', 'd4');
     const c4 = play(game, selectMain(d4, game, 0), 'c2', 'c4');
@@ -106,23 +122,13 @@ describe('finished-game analysis tree', () => {
       { comment: 'Alternative first move' }), { kind: 'branch', id: 1 }, { nag: 5 });
     const withMainNote = setMoveNote(noted, { kind: 'main', ply: 1 }, { nag: 14 });
     const promoted = promoteVariation(withMainNote, 1);
-    expect(restoreAnalysis(game, serializeAnalysis(promoted))).toEqual(promoted);
     const deleted = deleteVariation(promoted, 1);
     expect(deleted.nodes.map(node => node.san)).toEqual(['c4']);
     expect(deleted.notes.b1).toBeUndefined();
     expect(deleted.notes.m1?.nag).toBe(14);
     expect(deleted.promoted.m0).toBeUndefined();
-    expect(restoreAnalysis(game, serializeAnalysis(deleted))).toEqual(deleted);
     const withoutGlyph = setMoveNote(promoted, { kind: 'branch', id: 1 }, { nag: undefined });
     expect(withoutGlyph.notes.b1).toEqual({ comment: 'Alternative first move' });
-    const older = JSON.parse(serializeAnalysis(promoted));
-    older.version = 1;
-    delete older.notes;
-    delete older.promoted;
-    expect(restoreAnalysis(game, JSON.stringify(older))?.nodes).toEqual(promoted.nodes);
-    const malformed = JSON.parse(serializeAnalysis(promoted));
-    malformed.notes.b1.nag = 999;
-    expect(restoreAnalysis(game, JSON.stringify(malformed))).toBeNull();
     expect(() => setMoveNote(promoted, { kind: 'branch', id: 1 }, { nag: 999 }))
       .toThrow('Unsupported PGN annotation');
   });
@@ -137,13 +143,11 @@ describe('finished-game analysis tree', () => {
     tree = setMoveNote(tree, { kind: 'main', ply: 1 }, { nag: 139 });
     tree = promoteVariation(tree, 1);
     tree = selectMain(tree, game, 1);
-    expect(restoreAnalysis(game, serializeAnalysis(tree))).toEqual(tree);
     const pruned = deleteVariation(tree, 2);
     expect(pruned.notes.b1).toEqual({ comment: 'Candidate', nag: 8 });
     expect(pruned.notes.m1).toEqual({ nag: 139 });
     const cleared = setMoveNote(pruned, { kind: 'branch', id: 1 }, { nag: undefined });
     expect(cleared.notes.b1).toEqual({ comment: 'Candidate' });
-    expect(restoreAnalysis(game, serializeAnalysis(cleared))).toEqual(cleared);
   });
 
   it('promotes nested ancestors so the chosen continuation becomes the local main line', () => {
@@ -156,7 +160,6 @@ describe('finished-game analysis tree', () => {
     expect(nextPosition(selectMain(promoted, game, 0), game).cursor).toEqual({ kind: 'branch', id: 1 });
     expect(nextPosition(selectBranch(promoted, 1), game).cursor).toEqual({ kind: 'branch', id: 2 });
     expect(lastMainPosition(promoted, game).cursor).toEqual({ kind: 'branch', id: 3 });
-    expect(restoreAnalysis(game, serializeAnalysis(promoted))).toEqual(promoted);
   });
 
   it('uses domain legality for invalid moves, castling, en passant, and promotion', () => {

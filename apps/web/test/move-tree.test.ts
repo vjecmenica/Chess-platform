@@ -67,10 +67,11 @@ describe('analysis move list', () => {
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);
     expect((complete.match(/class="move-pair"/g) ?? [])).toHaveLength(1);
-    expect(complete).toMatch(/move-number">1\.<\/span>[\s\S]*move-cell[\s\S]*>e4<\/button>[\s\S]*move-cell[\s\S]*>e5<\/button>/);
+    expect(complete).toMatch(/class="move-link numbered-move"[^>]*aria-label="1\. e4"[^>]*>[\s\S]*move-number[^>]*>1\.<\/span>[\s\S]*move-content">e4<\/span><\/button>/);
+    expect(complete).toMatch(/aria-label="1\.\.\. e5"[^>]*>[\s\S]*move-content">e5<\/span><\/button>/);
     const incomplete = markup(savedGame(3), null);
     expect((incomplete.match(/class="move-pair"/g) ?? [])).toHaveLength(2);
-    expect(incomplete).toContain('>Nf3</button>');
+    expect(incomplete).toContain('>Nf3</span></button>');
     expect(moveNotation(2, 'e5')).toBe('1... e5');
   });
 
@@ -102,6 +103,12 @@ describe('analysis move list', () => {
     expect(html).toContain('1...');
     expect(html).toContain('c5');
     expect(html).toContain('Sicilian Defense');
+    expect(html).toContain('aria-description="Sicilian Defense"');
+    const variation = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)]
+      .find(match => match[0].includes('aria-label="1... c5,'))?.[0];
+    expect(variation).toContain('inline-number');
+    expect(variation).toContain('move-content">c5');
+    expect(variation).toContain('Sicilian Defense');
     expect(html).toContain('Speculative move (PGN $5)');
     expect(html).toContain('!?');
   });
@@ -136,39 +143,23 @@ describe('analysis move list', () => {
       .toContain('class="moves live-moves"');
   });
 
-  it('keeps the current saved move and its path free of green fills and borders', () => {
-    const position = createPosition();
-    for (const [side, from, to] of [
-      ['white', 'd2', 'd4'], ['black', 'd7', 'd5'],
-      ['white', 'c2', 'c4'], ['black', 'e7', 'e6'],
-    ] as const) position.submitMove({ side, from, to });
-    const game = { ...savedGame(0), version: 4, position: position.getPosition(),
-      history: position.getHistory() };
-    const html = markup(game, null);
-    expect(html).toContain('class="moves saved-replay-moves"');
-    expect(html).toContain('aria-current="step" aria-label="2... e6"');
-    expect(html).toContain('class="move-entry saved-move on-path"');
-    expect(html).toContain('>e6</button>');
-
-    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    const replayRule = css.match(/\.saved-replay-moves \.move-link\[aria-current="step"\],\s*\.saved-replay-moves \.move-entry\.on-path > \.move-link\s*\{([^}]*)\}/)?.[1];
-    expect(replayRule).toMatch(/background:\s*transparent/);
-    expect(replayRule).toMatch(/box-shadow:\s*none/);
-    expect(replayRule).toMatch(/border:\s*0/);
-  });
-
-  it('aligns live, replay, and analysis move text at the same row inset', () => {
+  it('uses full half-row buttons with a number inside the first move and preserves noninteractive live rows', () => {
     const game = savedGame();
+    const html = markup(game, createAnalysisTree(game));
+    const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
+    const white = buttons.find(button => button.includes('aria-label="1. e4"'))!;
+    const black = buttons.find(button => button.includes('aria-label="1... e5"'))!;
+    expect(white).toContain('move-number');
+    expect(white).toContain('move-content">e4');
+    expect(black).toContain('move-content">e5');
+    expect(black).not.toContain('move-number');
+    for (const button of buttons) expect(button.slice(1)).not.toContain('<button');
     const live = markup({ ...game, status: 'active', result: null }, null, false);
-    const replay = markup(game, null);
-    const analysis = markup(game, createAnalysisTree(game));
-    expect(live).toMatch(/move-pair-row[\s\S]*class="move-text">e4<\/span>/);
-    expect(replay).toMatch(/move-pair-row[\s\S]*class="move-link"[\s\S]*>e4<\/button>/);
-    expect(analysis).toContain('class="moves analysis-moves"');
-
+    expect(live).not.toContain('<button');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.move-pair-row \.move-text,\s*\.move-pair-row \.move-link\s*\{\s*padding-inline:\s*5px;/);
-    expect(css).not.toMatch(/\.analysis-moves \.move-pair-row \.move-link\s*\{[^}]*padding-inline:/);
+    expect(css).toContain('.move-cell .move-link');
+    expect(css).toMatch(/\.move-link\[aria-current="step"\] \{ background: #e8ddca/);
+    expect(css).not.toMatch(/\.move-link[^}]*text-decoration:\s*underline/);
   });
 
   it('promotes an alternative locally while retaining the saved continuation and other branches', () => {
@@ -189,8 +180,8 @@ describe('analysis move list', () => {
 
   it('renders a live move list as noninteractive paired text', () => {
     const html = markup({ ...savedGame(), status: 'active', result: null }, null, false);
-    expect(html).toContain('>e4</span>');
-    expect(html).toContain('>e5</span>');
+    expect(html).toContain('>e4</span></span>');
+    expect(html).toContain('>e5</span></span>');
     expect(html).not.toContain('<button');
     expect(html).not.toContain('aria-current');
   });

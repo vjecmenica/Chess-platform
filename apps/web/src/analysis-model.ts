@@ -30,10 +30,11 @@ export interface AnalysisTree {
   readonly promoted: Readonly<Record<string, number>>;
 }
 
-export function createAnalysisTree(game: GameReadResponse): AnalysisTree {
+export function createAnalysisTree(game: GameReadResponse,
+  sourceNotes: AnalysisTree['notes'] = {}): AnalysisTree {
   if (game.status !== 'finished') throw new Error('Analysis requires a finished game.');
   return { gameId: game.id, savedFen: game.position.fen, nodes: [],
-    cursor: { kind: 'main', ply: game.history.length }, nextId: 1, notes: {}, promoted: {} };
+    cursor: { kind: 'main', ply: game.history.length }, nextId: 1, notes: sourceNotes, promoted: {} };
 }
 
 export function cursorKey(cursor: AnalysisCursor): string {
@@ -175,80 +176,14 @@ export function deleteVariation(tree: AnalysisTree, id: number): AnalysisTree {
       ? deletedRoot.parent : tree.cursor };
 }
 
-export function analysisStorageKey(gameId: string): string {
-  return `chess.analysis.v1.${gameId}`;
-}
-
-export function serializeAnalysis(tree: AnalysisTree): string {
-  return JSON.stringify({ version: 2, gameId: tree.gameId, savedFen: tree.savedFen,
-    cursor: tree.cursor, nextId: tree.nextId, notes: tree.notes, promoted: tree.promoted,
-    nodes: tree.nodes.map(({ id, parent, from, to, promotion }) =>
-      ({ id, parent, from, to, ...(promotion === undefined ? {} : { promotion }) })) });
-}
-
-export function restoreAnalysis(game: GameReadResponse, raw: string): AnalysisTree | null {
-  if (raw.length > 100_000 || game.status !== 'finished') return null;
-  try {
-    const saved: unknown = JSON.parse(raw);
-    if (!isRecord(saved) || (saved.version !== 1 && saved.version !== 2) || saved.gameId !== game.id
-      || saved.savedFen !== game.position.fen || !Array.isArray(saved.nodes)
-      || saved.nodes.length > 500 || !Number.isSafeInteger(saved.nextId)) return null;
-    let tree = createAnalysisTree(game);
-    for (const entry of saved.nodes as unknown[]) {
-      if (!isRecord(entry) || !Number.isSafeInteger(entry.id)
-        || Number(entry.id) < tree.nextId || Number(entry.id) > 1_000_000
-        || !validCursor(entry.parent, tree, game)
-        || typeof entry.from !== 'string' || typeof entry.to !== 'string'
-        || (entry.promotion !== undefined && !['q', 'r', 'b', 'n'].includes(String(entry.promotion))))
-        return null;
-      const parent = entry.parent as AnalysisCursor;
-      const atParent = { ...tree, cursor: parent, nextId: entry.id as number };
-      const moved = playAnalysisMove(atParent, game, entry.from, entry.to,
-        entry.promotion as Promotion | undefined);
-      if (!moved.accepted || moved.tree.nodes.length !== tree.nodes.length + 1) return null;
-      tree = moved.tree;
-    }
-    if (Number(saved.nextId) < tree.nextId || Number(saved.nextId) > 1_000_001
-      || !validCursor(saved.cursor, tree, game)) return null;
-    if (saved.version === 2) {
-      if (!isRecord(saved.notes) || !isRecord(saved.promoted)) return null;
-      for (const [key, value] of Object.entries(saved.notes)) {
-        if (!validMoveKey(key, tree, game) || !isRecord(value)
-          || value.comment !== undefined && (typeof value.comment !== 'string' || value.comment.length > 2000)
-          || value.nag !== undefined && (!Number.isInteger(value.nag) || !supportedNag(Number(value.nag)))) return null;
-      }
-      for (const [key, value] of Object.entries(saved.promoted)) {
-        const child = tree.nodes.find(item => item.id === value);
-        if (!validCursorKey(key, tree, game) || !child || cursorKey(child.parent) !== key) return null;
-      }
-      tree = { ...tree, notes: saved.notes as Record<string, MoveNote>,
-        promoted: saved.promoted as Record<string, number> };
-    }
-    return { ...tree, nextId: saved.nextId as number, cursor: saved.cursor as AnalysisCursor };
-  } catch { return null; }
+/** Remove only retired move-tree storage, preserving board preferences and engine caches. */
+export function clearStoredAnalysisTrees(storage: Pick<Storage, 'length' | 'key' | 'removeItem'>): void {
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index);
+    if (key?.startsWith('chess.analysis.v1.')) storage.removeItem(key);
+  }
 }
 
 function supportedNag(value: number): boolean {
   return nagDetails(value) !== undefined;
-}
-
-function validCursorKey(key: string, tree: AnalysisTree, game: GameReadResponse): boolean {
-  if (/^m\d+$/.test(key)) return Number(key.slice(1)) <= game.history.length;
-  return /^b\d+$/.test(key) && tree.nodes.some(item => item.id === Number(key.slice(1)));
-}
-
-function validMoveKey(key: string, tree: AnalysisTree, game: GameReadResponse): boolean {
-  return key !== 'm0' && validCursorKey(key, tree, game);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function validCursor(value: unknown, tree: AnalysisTree, game: GameReadResponse): boolean {
-  if (!isRecord(value)) return false;
-  return value.kind === 'main' ? Number.isInteger(value.ply) && Number(value.ply) >= 0
-    && Number(value.ply) <= game.history.length
-    : value.kind === 'branch' && Number.isInteger(value.id)
-      && tree.nodes.some(item => item.id === value.id);
 }

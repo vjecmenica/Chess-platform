@@ -81,7 +81,10 @@ describe('browser-local analysis board controls', () => {
     expect(html).toContain('L 350 350');
     const raw = serializeAnalysisBoard(state);
     expect(analysisBoardStorageKey(game.id)).toBe('chess-analysis-board:game:v1');
-    expect(restoreAnalysisBoard(game.id, raw)).toEqual(state);
+    expect(restoreAnalysisBoard(game.id, raw)).toEqual({ ...state, positions: {} });
+    expect(raw).not.toContain(afterE4);
+    expect(restoreAnalysisBoard(game.id, JSON.stringify({ version: 1, ...state })))
+      .toEqual({ ...state, positions: {} });
     expect(game).toEqual({ id: 'game', position: { fen: afterE4 }, history: [{ san: 'e4' }] });
   });
 
@@ -93,6 +96,7 @@ describe('browser-local analysis board controls', () => {
     const invalid = { ...createAnalysisBoard('game'), positions: {
       [start]: { arrows: [{ from: 'a0', to: 'e4', color: 'orange' }], marks: [] },
     } };
-    expect(restoreAnalysisBoard('game', serializeAnalysisBoard(invalid as never))).toBeNull();
+    expect(restoreAnalysisBoard('game', JSON.stringify({ version: 1, ...invalid })))
+      .toEqual(createAnalysisBoard('game')); // Old drawings are ignored, never restored.
   });
 });

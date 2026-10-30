@@ -49,7 +49,7 @@ describe('shared game presentation', () => {
     const imported = importPgn('1. e4 1-0', 'imported');
     const result = importedResultDisplay(imported);
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
-      ...result, analysisOpen: true, sessionOnly: true, onToggleAnalysis: () => {},
+      ...result, analysisOpen: true, onToggleAnalysis: () => {},
     }));
     expect(html).toContain('class="finished-result-area"');
     expect(html).toContain('class="final-result"');

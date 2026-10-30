@@ -21,7 +21,6 @@ export interface AnalysisBoardState {
 }
 
 const empty: PositionAnnotations = { arrows: [], marks: [] };
-const squarePattern = /^[a-h][1-8]$/;
 
 /** One completed pointer or keyboard gesture; a release outside cancels it. */
 export function applyAnnotationGesture(state: AnalysisBoardState, fen: string,
@@ -85,7 +84,8 @@ export function clearPositionArrows(state: AnalysisBoardState, fen: string): Ana
 }
 
 export function serializeAnalysisBoard(state: AnalysisBoardState): string {
-  return JSON.stringify({ version: 1, ...state });
+  // Only display preferences survive; drawn annotations belong to the open analysis session.
+  return JSON.stringify({ version: 1, gameId: state.gameId, flipped: state.flipped, color: state.color });
 }
 
 export function restoreAnalysisBoard(gameId: string, raw: string): AnalysisBoardState | null {
@@ -93,20 +93,8 @@ export function restoreAnalysisBoard(gameId: string, raw: string): AnalysisBoard
   try {
     const value: unknown = JSON.parse(raw);
     if (!object(value) || value.version !== 1 || value.gameId !== gameId
-      || typeof value.flipped !== 'boolean' || !color(value.color) || !object(value.positions)
-      || Object.keys(value.positions).length > 500) return null;
-    const positions: Record<string, PositionAnnotations> = {};
-    for (const [fen, entry] of Object.entries(value.positions)) {
-      if (fen.length < 10 || fen.length > 128 || !object(entry)
-        || !Array.isArray(entry.arrows) || entry.arrows.length > 64
-        || !Array.isArray(entry.marks) || entry.marks.length > 64) return null;
-      if (!entry.arrows.every((arrow: unknown) => object(arrow)
-        && square(arrow.from) && square(arrow.to) && color(arrow.color))
-        || !entry.marks.every((mark: unknown) => object(mark)
-          && square(mark.square) && color(mark.color))) return null;
-      positions[fen] = { arrows: entry.arrows as BoardArrow[], marks: entry.marks as BoardMark[] };
-    }
-    return { gameId, flipped: value.flipped, color: value.color, positions };
+      || typeof value.flipped !== 'boolean' || !color(value.color)) return null;
+    return { gameId, flipped: value.flipped, color: value.color, positions: {} };
   } catch { return null; }
 }
 
@@ -115,7 +103,4 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 function color(value: unknown): value is AnnotationColor {
   return typeof value === 'string' && Object.hasOwn(annotationColors, value);
-}
-function square(value: unknown): value is Square {
-  return typeof value === 'string' && squarePattern.test(value);
 }

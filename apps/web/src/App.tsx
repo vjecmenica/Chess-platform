@@ -26,9 +26,9 @@ import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces
 import { confirmMoveWithRetry } from './move-confirmation';
 import { watchGameUpdates } from './game-update-stream';
 import { resultDisplay } from './result-display';
-import { analysisStorageKey, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
-  lastMainPosition, mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, promoteVariation, restoreAnalysis,
-  selectBranch, selectMain, serializeAnalysis, setMoveNote,
+import { clearStoredAnalysisTrees, createAnalysisTree, cursorFen, cursorSide, deleteVariation,
+  lastMainPosition, mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, promoteVariation,
+  selectBranch, selectMain, setMoveNote,
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
 import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { simplePgnTimeControl } from './move-times';
@@ -154,7 +154,6 @@ export function App() {
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [analysisWarning, setAnalysisWarning] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
@@ -364,29 +363,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (game?.status !== 'finished' || analysis?.gameId === game.id) return;
-    if (imported?.game.id === game.id) {
-      setAnalysis(createAnalysisTree(game));
-      return;
-    }
-    try {
-      const raw = window.localStorage.getItem(analysisStorageKey(game.id));
-      const restored = raw === null ? null : restoreAnalysis(game, raw);
-      setAnalysis(restored ?? createAnalysisTree(game));
-      setAnalysisWarning(raw !== null && restored === null
-        ? 'Older or invalid local analysis was reset. The saved game is unchanged.' : null);
-    } catch {
-      setAnalysis(createAnalysisTree(game));
-      setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.');
-    }
-  }, [game?.id, game?.status, analysis?.gameId, imported?.game.id]);
+    try { clearStoredAnalysisTrees(window.localStorage); }
+    catch { /* Temporary analysis also works when browser storage is unavailable. */ }
+  }, []);
 
   useEffect(() => {
-    if (game?.status !== 'finished' || analysis?.gameId !== game.id) return;
-    if (imported?.game.id === game.id) return;
-    try { window.localStorage.setItem(analysisStorageKey(game.id), serializeAnalysis(analysis)); }
-    catch { setAnalysisWarning('Browser storage is unavailable; analysis may not survive a refresh.'); }
-  }, [game?.id, game?.status, analysis, imported?.game.id]);
+    if (game?.status !== 'finished' || analysis?.gameId === game.id) return;
+    setAnalysis(createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {}));
+  }, [game?.id, game?.status, analysis?.gameId, imported]);
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysisBoard?.gameId === game.id) return;
@@ -442,7 +426,7 @@ export function App() {
     setImported(next);
     gameRef.current = next.game;
     setGame(next.game);
-    setAnalysis({ ...createAnalysisTree(next.game), notes: next.notes });
+    setAnalysis(createAnalysisTree(next.game, next.notes));
     setAnalysisBoard(createAnalysisBoard(next.game.id));
     setAnalysisOpen(true);
 
@@ -915,7 +899,7 @@ export function App() {
   const openExplorerGame = useCallback((parsed: Parameters<typeof importParsedPgn>[0], id: string, ply: number) => {
     const next = importParsedPgn(parsed, 'explorer-' + id);
     showImportedGame(next);
-    setAnalysis({ ...createAnalysisTree(next.game), notes: next.notes, cursor: { kind: 'main', ply } });
+    setAnalysis({ ...createAnalysisTree(next.game, next.notes), cursor: { kind: 'main', ply } });
   }, [showImportedGame]);
 
   function selectMove(cursor: AnalysisCursor) {
@@ -1399,7 +1383,6 @@ export function App() {
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
                       aria-label="Final position">End</button>
                   </div>
-                  {analysisWarning !== null && <p className="info" role="status">{analysisWarning}</p>}
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <div className="analysis-pane">
@@ -1425,9 +1408,12 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
-                  sessionOnly={imported !== null}
                   onToggleAnalysis={() => {
-                    if (analysisOpen && analysis !== null) setSelectedReplayPly(mainAncestorPly(analysis));
+                    if (analysisOpen && analysis !== null) {
+                      setSelectedReplayPly(mainAncestorPly(analysis));
+                      setAnalysisBoard(previous => previous ? { ...previous, positions: {} } : previous);
+                      setAnalysis(createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {}));
+                    }
                     else if (analysis !== null && selectedReplayPly !== null)
                       setAnalysis(selectMain(analysis, game, selectedReplayPly));
                     if (!analysisOpen)

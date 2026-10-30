@@ -19,9 +19,9 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
     {data && (data.moves.length === 0 ? <p>No indexed games found for this position.</p>
       : <div className="masters-moves" role="list" aria-label="Opening candidate moves">
         <div className="book-columns" aria-hidden="true"><span>Move</span><span>Played %</span><span>Games</span><span>White / Draw / Black</span></div>
-        {data.moves.map(move => <div className="masters-move" role="listitem" key={move.uci}>
-          <button type="button" onClick={() => onExplore(move.uci)}
-            title={`Explore ${move.san} as a local analysis variation`}>{move.san}</button>
+        {data.moves.map(move => <div role="listitem" key={move.uci}>
+          <button type="button" className="masters-move" onClick={() => onExplore(move.uci)}
+            title={`Explore ${move.san} as a local analysis variation`}><span className="book-san">{move.san}</span>
           <span>{playedPercentage(data.moves, move.games).toFixed(1)}%</span>
           <span aria-label={`${move.games.toLocaleString()} games`}>{move.games.toLocaleString()}</span>
           <span className="book-outcomes" role="img"
@@ -35,7 +35,7 @@ export function ExplorerContent({ result, onExplore, onRetry }: {
             <span className="book-outcome-values" aria-hidden="true">
               {[move.white, move.draws, move.black].map((count, index) => <span key={index}>
                 {Math.round(count * 100 / move.games)}%</span>)}
-            </span></span>
+            </span></span></button>
         </div>)}</div>)}
     <small>Source: licensed TWIC games · statistics and limited game replay.</small>
   </section>;
