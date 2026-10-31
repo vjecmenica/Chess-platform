@@ -20,7 +20,8 @@
     "db:migrate": "npm run db:migrate --workspace=@chess/server",
     "start:server": "npm run start --workspace=@chess/server",
     "preview:web": "npm run preview --workspace=@chess/web",
-    "explorer:import": "npm run explorer:import --workspace=@chess/server --"
+    "explorer:import": "npm run explorer:import --workspace=@chess/server --",
+    "explorer:diagnose": "tsx apps/server/src/explorer-diagnostic-cli.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
