@@ -1,5 +1,15 @@
-import { parsePgn } from '@chess/domain';
-import { explorerMainLine, prepareExplorerGame, streamPgnGames } from './explorer-pgn.js';
+import { validatePgn } from '@chess/domain';
+import { explorerMainLine, streamPgnGames } from './explorer-pgn.js';
+
+export interface DiagnosticProgress { records: number; elapsedSeconds: number; recordsPerSecond: number }
+export function classifyExplorerSource(text: string): 'valid' | 'nonstandard_variant' | 'unfinished_result' | 'no_moves' {
+  if (text.includes('\0')) throw new Error('Oversized or damaged PGN.');
+  const clean = explorerMainLine(text);
+  const variant = /^\[Variant\s+"([^"]*)"\]/m.exec(clean)?.[1];
+  if (variant && !['standard', 'chess', 'normal'].includes(variant.toLowerCase())) return 'nonstandard_variant';
+  const parsed = validatePgn(clean);
+  return parsed.result === '*' ? 'unfinished_result' : parsed.moveCount === 0 ? 'no_moves' : 'valid';
+}
 
 const features = ['brace_comments', 'semicolon_comments', 'recursive_variations', 'nested_variations',
   'nags', 'symbolic_annotations', 'clock_directives', 'eval_directives'] as const;
@@ -66,10 +76,18 @@ export function diagnosticFailure(cause: unknown): { category: string; message: 
   return { category: 'other_preparation_error', message: 'Record failed importer preparation; private error details suppressed.' };
 }
 
-export async function diagnoseExplorerFile(file: string, options: { samples?: number; maxPlies?: number } = {}) {
+export async function diagnoseExplorerFile(file: string, options: { samples?: number; maxPlies?: number;
+  limit?: number; onProgress?: (progress: DiagnosticProgress) => void;
+  progressIntervalMs?: number; now?: () => number } = {}) {
   const sampleLimit = options.samples ?? 3, maxPlies = options.maxPlies ?? 24;
   if (!Number.isInteger(sampleLimit) || sampleLimit < 0 || sampleLimit > 20) throw new Error('Samples must be between 0 and 20.');
   if (!Number.isInteger(maxPlies) || maxPlies < 1 || maxPlies > 80) throw new Error('Opening depth must be between 1 and 80 plies.');
+  if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 10_000_000))
+    throw new Error('Limit must be between 1 and 10,000,000 records.');
+  const interval = options.progressIntervalMs ?? 5000;
+  if (!Number.isFinite(interval) || interval < 100 || interval > 60000) throw new Error('Invalid progress interval.');
+  const now = options.now ?? (() => performance.now());
+  const started = now(); let lastProgress = started;
   const totals = { records: 0, valid: 0, excluded: 0, invalid: 0, featureInspectable: 0, featureUnavailable: 0 };
   const invalid: Record<string, FailureCount> = {}, excluded: Record<string, Count> = {};
   const syntax = Object.fromEntries(features.map(name => [name, counter()])) as Record<Feature, Count>;
@@ -77,6 +95,14 @@ export async function diagnoseExplorerFile(file: string, options: { samples?: nu
   const add = (count: Count, ordinal: number) => {
     count.count++; if (count.samples.length < sampleLimit) count.samples.push(ordinal);
   };
+  const progress = (time: number) => {
+    const elapsedSeconds = Math.max(0, (time - started) / 1000);
+    options.onProgress?.({ records: totals.records, elapsedSeconds,
+      recordsPerSecond: elapsedSeconds ? totals.records / elapsedSeconds : 0 });
+    lastProgress = time;
+  };
+  progress(started);
+  let limitReached = false;
   for await (const text of streamPgnGames(file)) {
     const ordinal = ++totals.records;
     if (text.includes('\0')) totals.featureUnavailable++;
@@ -91,13 +117,9 @@ export async function diagnoseExplorerFile(file: string, options: { samples?: nu
       }
     }
     try {
-      if (prepareExplorerGame(text, maxPlies)) totals.valid++;
+      const reason = classifyExplorerSource(text);
+      if (reason === 'valid') totals.valid++;
       else {
-        // Recheck only excluded records to explain the existing null result, without deduplication.
-        const clean = explorerMainLine(text);
-        const variant = /^\[Variant\s+"([^"]*)"\]/m.exec(clean)?.[1];
-        const parsed = variant && !['standard', 'chess', 'normal'].includes(variant.toLowerCase()) ? null : parsePgn(clean);
-        const reason = parsed === null ? 'nonstandard_variant' : parsed.result === '*' ? 'unfinished_result' : 'no_moves';
         totals.excluded++; add(excluded[reason] ??= counter(), ordinal);
       }
     } catch (cause) {
@@ -105,13 +127,18 @@ export async function diagnoseExplorerFile(file: string, options: { samples?: nu
       const failure = diagnosticFailure(cause);
       add(invalid[failure.category] ??= { ...counter(), message: failure.message }, ordinal);
     }
+    const time = now();
+    if (time - lastProgress >= interval) progress(time);
+    if (totals.records === options.limit) { limitReached = true; break; }
   }
+  progress(now());
   for (const group of [invalid, excluded, syntax, overlaps]) for (const count of Object.values(group)) {
     const denominator = group === syntax || group === overlaps ? totals.featureInspectable : totals.records;
     count.percent = denominator ? Math.round(count.count / denominator * 10000) / 100 : 0;
   }
-  return { formatVersion: 1, sampleLimit, maxPlies, totals,
-    percentages: { denominator: 'all source records, before database deduplication',
+  return { formatVersion: 2, sampleLimit, maxPlies, totals,
+    coverage: { scope: limitReached ? 'prefix' : 'complete_file', limit: options.limit ?? null, limitReached },
+    percentages: { denominator: limitReached ? 'examined prefix only, before database deduplication' : 'all source records, before database deduplication',
       valid: totals.records ? totals.valid / totals.records * 100 : 0,
       excluded: totals.records ? totals.excluded / totals.records * 100 : 0,
       invalid: totals.records ? totals.invalid / totals.records * 100 : 0 },

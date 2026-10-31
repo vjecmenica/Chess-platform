@@ -82,7 +82,7 @@ function mainlineText(text: string): { clean: string; annotations: ParsedPgn['an
     annotations: [...notes].map(([at, note]) => ({ ply: at, ...note })) };
 }
 
-export function parsePgn(text: string): ParsedPgn {
+function readPgn(text: string) {
   if (text.trim().length === 0) throw new Error('Enter PGN text or choose a .pgn file.');
   if (text.length > 1_000_000) throw new Error('PGN files must be smaller than 1 MB.');
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
@@ -121,15 +121,28 @@ export function parsePgn(text: string): ParsedPgn {
     throw new Error(illegalMove ? `Illegal PGN move: ${illegalMove}.`
       : 'Invalid PGN syntax or illegal move. Check the move text.');
   }
-  const history = chess.history({ verbose: true });
-  if (history.length !== mainline.plyCount)
+  // Custom starts are rejected above. The final fullmove number and side therefore
+  // give the exact ply count without undoing/replaying every move for verbose history.
+  const plyCount = (chess.moveNumber() - 1) * 2 + (chess.turn() === 'b' ? 1 : 0);
+  if (plyCount !== mainline.plyCount)
     throw new Error('Invalid PGN syntax or illegal move. Check the move text.');
-  if (history.length > 1_000) throw new Error('PGN import is limited to 1,000 half-moves.');
+  if (plyCount > 1_000) throw new Error('PGN import is limited to 1,000 half-moves.');
   if (chess.isCheckmate() && marker !== (chess.turn() === 'w' ? '0-1' : '1-0'))
     throw new Error('The PGN result conflicts with checkmate on the board.');
   if (chess.isStalemate() && marker !== '1/2-1/2')
     throw new Error('The PGN result conflicts with stalemate on the board.');
-  const moves: MoveRecord[] = history.map((move, ply) => ({
+  return { chess, headers, marker: marker as ParsedPgn['result'], mainline, plyCount };
+}
+
+/** Same strict validation as parsePgn, without constructing replay/FEN history. */
+export function validatePgn(text: string): { result: ParsedPgn['result']; moveCount: number } {
+  const { marker, plyCount } = readPgn(text);
+  return { result: marker, moveCount: plyCount };
+}
+
+export function parsePgn(text: string): ParsedPgn {
+  const { chess, headers, marker, mainline } = readPgn(text);
+  const moves: MoveRecord[] = chess.history({ verbose: true }).map((move, ply) => ({
     ply: ply + 1, side: move.color === 'w' ? 'white' : 'black',
     from: move.from, to: move.to,
     ...(move.promotion ? { promotion: move.promotion as 'q' | 'r' | 'b' | 'n' } : {}),

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { diagnoseExplorerFile, diagnosticFailure, pgnFeatures } from '../src/explorer-diagnostic.js';
+import { classifyExplorerSource, diagnoseExplorerFile, diagnosticFailure, pgnFeatures, type DiagnosticProgress } from '../src/explorer-diagnostic.js';
+import { prepareExplorerGame } from '../src/explorer-pgn.js';
 
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true }); });
@@ -16,6 +17,33 @@ async function fixture(records: string[]) {
 const game = (body: string, tags = '[Result "1-0"]') => `[Event "Synthetic private example"]\n${tags}\n\n${body}`;
 
 describe('read-only explorer source diagnostics', () => {
+  it('limits the prefix, preserves ordinals and emits initial, periodic and final progress', async () => {
+    const file = await fixture([game('1.e4 {prose} e5 1-0'), game('1.e4 *', '[Result "*"]'), game('1.e5 1-0')]);
+    const progress: DiagnosticProgress[] = []; let clock = 0;
+    const report = await diagnoseExplorerFile(file, { limit: 2, now: () => (clock += 3000),
+      onProgress: value => progress.push(value) });
+    expect(report.totals).toMatchObject({ records: 2, valid: 1, excluded: 1, invalid: 0 });
+    expect(report.coverage).toEqual({ scope: 'prefix', limit: 2, limitReached: true });
+    expect(report.percentages).toMatchObject({ valid: 50, excluded: 50, denominator: 'examined prefix only, before database deduplication' });
+    expect(report.excluded.unfinished_result?.samples).toEqual([2]);
+    expect(progress.map(p => p.records)).toEqual([0, 2, 2]);
+    expect(progress[1]).toMatchObject({ elapsedSeconds: 6, recordsPerSecond: 1 / 3 });
+    expect((await diagnoseExplorerFile(file, { limit: 4 })).coverage.scope).toBe('complete_file');
+    await expect(diagnoseExplorerFile(file, { limit: 0 })).rejects.toThrow('Limit');
+    await expect(diagnoseExplorerFile(file, { limit: 10_000_001 })).rejects.toThrow('Limit');
+  });
+
+  it('keeps strict importer decisions, including malformed unfinished games, without constructing indexes', () => {
+    for (const text of [game('1.e4 e5 1-0'), game('1.e4 *', '[Result "*"]'), game('1-0'),
+      game('1.e5 *', '[Result "*"]'), game('1.e4 1-0', '[Result "0-1"]'),
+      game('1.e4 1-0', '[Variant "Atomic"]'), game('1.e4 ) 1-0'),
+      game('1.f3 e5 2.g4 Qh4# 1-0'), game('1.e4 1-0', '[FEN "unusable"]')]) {
+      const outcome = (run: () => unknown) => {
+        try { return run() ? 'valid' : 'excluded'; } catch (error) { return diagnosticFailure(error).category; }
+      };
+      expect(outcome(() => classifyExplorerSource(text) === 'valid')).toBe(outcome(() => prepareExplorerGame(text, 24)));
+    }
+  });
   it('recognizes syntax outside tags/comments and directives only within comments', () => {
     expect([...pgnFeatures(game('1. e4 e5 1-0', '[Site "!? ($5) {; [%eval 9]} \\"quoted\\""]'))]).toEqual([]);
     const plain = pgnFeatures(game('1. e4 {prose: !? ($22); eval +5 and clk 12} e5 1-0'));
@@ -71,7 +99,13 @@ describe('read-only explorer source diagnostics', () => {
     const cli = fileURLToPath(new URL('../src/explorer-diagnostic-cli.ts', import.meta.url));
     const args = ['--import', 'tsx', cli];
     const env = { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' };
-    const output = execFileSync(process.execPath, [...args, '--file', file, '--samples', '2'], { env, encoding: 'utf8' });
+    const processResult = spawnSync(process.execPath, [...args, '--file', file, '--samples', '2', '--limit', '1'], { env, encoding: 'utf8' });
+    expect(processResult.status).toBe(0);
+    const output = processResult.stdout;
+    expect(processResult.stderr).toContain('Examined 0 records');
+    expect(processResult.stderr).toContain('Examined 1 records');
+    expect(processResult.stderr).toContain('records/s');
+    expect(processResult.stderr).not.toContain(file);
     expect(JSON.parse(output).totals).toMatchObject({ records: 1, valid: 1, invalid: 0 });
     expect(output).not.toContain(file);
     expect(output).not.toContain('Synthetic private');
