@@ -289,7 +289,7 @@ describe('browser Stockfish controller', () => {
       lines: [{ rank: 1, score: { kind: 'cp', value: 32 } },
         { rank: 2, score: { kind: 'mate', value: -3 } }] } });
     if (completed?.kind !== 'done') throw new Error('Expected completed search.');
-    expect(candidateLines(completed.evaluation)).toEqual([
+    expect(candidateLines(completed.evaluation).map(({ rank, score, san }) => ({ rank, score, san }))).toEqual([
       { rank: 1, score: '-0.32', san: ['e5', 'Nf3'] },
       { rank: 2, score: 'Mate +3', san: ['c5', 'Nf3'] },
     ]);

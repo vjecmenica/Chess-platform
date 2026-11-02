@@ -37,6 +37,8 @@ import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { simplePgnTimeControl } from './move-times';
 import { canExportGame, downloadGamePgn } from './pgn-export';
 import { MoveTree } from './MoveTree';
+import { PromotionPicker, promotionIsCurrent, type PromotionRequest } from './PromotionPicker';
+import { applyEngineVariation } from './engine-variation';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
 import { createResizePreview } from './board-resize';
@@ -163,7 +165,7 @@ export function App() {
   const [gameError, setGameError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
-  const [promotion, setPromotion] = useState<{ from: Square; to: Square; mode: 'analysis' | 'live' | 'premove' } | null>(null);
+  const [promotion, setPromotion] = useState<PromotionRequest | null>(null);
   const [premoves, setPremoves] = useState<Premove[]>([]);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
   const [arrowPreview, setArrowPreview] = useState<BoardArrow | null>(null);
@@ -174,7 +176,6 @@ export function App() {
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
   const [selectedTimeControl, setSelectedTimeControl] = useState<TimeControlId>(defaultTimeControl);
-  const promotionFocus = useRef<HTMLButtonElement | null>(null);
   const resignFocus = useRef<HTMLButtonElement | null>(null);
   const challengeFetch = useRef<Promise<void> | null>(null);
   const gameFetch = useRef<Promise<boolean> | null>(null);
@@ -224,7 +225,6 @@ export function App() {
     premoveAttemptedVersion.current = null;
   }
 
-  useEffect(() => { if (promotion !== null) promotionFocus.current?.focus(); }, [promotion]);
   useEffect(() => {
     if (pgnError === null) return;
     pgnErrorRef.current?.focus({ preventScroll: true });
@@ -747,7 +747,8 @@ export function App() {
       return;
     }
     if (move.kind === 'promotion') {
-      setPromotion({ from: move.from, to: move.to, mode: input.mode }); return;
+      setPromotion({ from: move.from, to: move.to, mode: input.mode, side: input.sideToMove,
+        gameId: input.current.id, fen: input.positionFen }); return;
     }
     if (input.mode === 'premove') queuePremove(move.from, move.to);
     else if (input.mode === 'analysis' && analysis !== null)
@@ -934,6 +935,7 @@ export function App() {
 
 
   function selectMove(cursor: AnalysisCursor) {
+    setPromotion(null);
     if (cursor.kind === 'branch') {
       if (analysis !== null) setAnalysis(selectBranch(analysis, cursor.id));
     } else if (analysisOpen && analysis !== null && game !== null) {
@@ -983,6 +985,12 @@ export function App() {
   const displayedFen = game === null ? null :
     analysisOpen && analysis !== null ? cursorFen(analysis, game)
       : replaying || liveBrowsingHistory ? replayFen(game, displayedPly) : game.position.fen;
+  useEffect(() => {
+    if (promotion && !promotionIsCurrent(promotion, game?.id, displayedFen, analysisOpen, game?.status === 'active')) {
+      setPromotion(null); setSelected(null);
+      if (promotion.mode === 'premove') cancelPremoves();
+    }
+  }, [promotion, game?.id, game?.status, displayedFen, analysisOpen]);
   const orientation = game === null ? 'white' : boardOrientation(game.yourSeat,
     analysisOpen && analysisBoard?.gameId === game.id && analysisBoard.flipped);
   const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, orientation);
@@ -1026,6 +1034,7 @@ export function App() {
   useEffect(() => {
     if (game?.status !== 'active' && game?.status !== 'finished') return;
     const navigate = (event: KeyboardEvent) => {
+      if (promotion !== null) return;
       const direction = moveNavigationDirection(event);
       if (direction === null) return;
       if (analysisOpen && analysis !== null) {
@@ -1047,7 +1056,7 @@ export function App() {
     };
     window.addEventListener('keydown', navigate);
     return () => window.removeEventListener('keydown', navigate);
-  }, [game, analysis, analysisOpen, displayedPly, selectedReplayPly]);
+  }, [game, analysis, analysisOpen, displayedPly, selectedReplayPly, promotion]);
 
   useLayoutEffect(() => {
     const frame = boardFrameRef.current;
@@ -1349,6 +1358,23 @@ export function App() {
                   }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
+              {promotion !== null && <PromotionPicker request={promotion}
+                anchor={boardRef.current?.querySelector<HTMLElement>(`[data-square="${promotion.to}"]`) ?? null}
+                onCancel={() => { if (promotion.mode === 'premove') cancelPremoves(); setPromotion(null); }}
+                onChoose={piece => {
+                  const current = gameRef.current;
+                  const tree = analysisRef.current;
+                  setPromotion(null); setSelected(null);
+                  if (!current || !promotionIsCurrent(promotion, current.id,
+                    analysisOpen && tree ? cursorFen(tree, current) : current.position.fen, analysisOpen, current.status === 'active')) return;
+                  if (promotion.mode === 'premove') queuePremove(promotion.from, promotion.to, piece);
+                  else if (promotion.mode === 'analysis' && tree) submitAnalysisMove(tree, current, promotion.from, promotion.to, piece);
+                  else if (current.position.sideToMove === current.yourSeat) {
+                    updatePremoves([]);
+                    void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
+                      from: promotion.from, to: promotion.to, promotion: piece });
+                  }
+                }} />}
               <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
                 advantage={material} placement="bottom">
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
@@ -1381,6 +1407,12 @@ export function App() {
                   setAnalysis(current => current === null ? null : selectMain(current, game, ply));
                   setSelected(null);
                 }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                orientation={orientation} onExploreLine={(rootFen, moves) => {
+                  const current = gameRef.current, tree = analysisRef.current;
+                  if (!analysisOpenRef.current || !current || !tree || promotion !== null) return;
+                  const next = applyEngineVariation(tree, current, rootFen, moves);
+                  if (next) { setAnalysis(next); setSelected(null); setAnalysisError(null); }
+                }}
                 onBestMoveChange={setEngineMove}
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
             <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
@@ -1520,27 +1552,6 @@ export function App() {
                         onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
                   </>}
                 </div>
-                {promotion !== null && <div className="promotion-choice" role="dialog" aria-label="Choose a promotion piece">
-                  <p>Promote your pawn to:</p>
-                  <div>{([['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']] as const).map(([piece, name]) =>
-                    <button key={piece} ref={piece === 'q' ? promotionFocus : undefined} type="button" onClick={() => {
-                      const current = gameRef.current;
-                      setPromotion(null);
-                      setSelected(null);
-                      if (promotion.mode === 'premove') queuePremove(promotion.from, promotion.to, piece);
-                      else if (analysisOpen && analysis !== null && current)
-                        submitAnalysisMove(analysis, current, promotion.from, promotion.to, piece);
-                      else if (current) {
-                        updatePremoves([]);
-                        void submitMove({ requestId: crypto.randomUUID(), expectedVersion: current.version,
-                          from: promotion.from, to: promotion.to, promotion: piece });
-                      }
-                    }}>{name}</button>)}</div>
-                  <button type="button" className="secondary" onClick={() => {
-                    if (promotion.mode === 'premove') cancelPremoves();
-                    setPromotion(null);
-                  }}>Cancel</button>
-                </div>}
                 {pending !== null && !submitting && <div className="retry">
                   <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>
                   <button type="button" className="primary" onClick={() => void submitMove(pending, true)}>Retry move</button>

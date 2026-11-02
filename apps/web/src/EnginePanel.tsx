@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { GameReadResponse } from '@chess/contracts';
+import type { GameReadResponse, GameSide } from '@chess/contracts';
+import { EngineVariation } from './EngineVariation';
+import { engineVariation } from './engine-variation';
 import { EngineCache, EngineController,
-  evaluationLabel, searchProfile, variationSan, type EngineEvaluation,
+  evaluationLabel, searchProfile, type EngineEvaluation,
   type EngineLine, type EngineState, type MultiPvCount, type SearchLimits } from './engine-analysis';
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
@@ -50,7 +52,7 @@ export function interactiveLimits(depth: number | null, timeMs: number | null): 
 }
 
 export function candidateLines(evaluation: EngineEvaluation):
-  { rank: number; score: string; san: string[] }[] {
+  ReturnType<typeof candidateLine>[] {
   const lines = evaluation.lines ?? [{ rank: 1, score: evaluation.score,
     variation: evaluation.variation }];
   return lines.map(line => candidateLine(evaluation.fen, line, evaluation.bestMove));
@@ -62,10 +64,11 @@ export function EngineScoreBadge({ score, whiteToMove }: { score: string; whiteT
 }
 
 function candidateLine(fen: string, line: EngineLine, bestMove: string | null = null) {
+  const moves = engineVariation(fen, line.variation.length === 0 && line.rank === 1 && bestMove !== null
+    ? [bestMove] : line.variation);
   return { rank: line.rank, score: evaluationLabel({ fen, depth: 0, score: line.score,
     bestMove, variation: line.variation }),
-  san: variationSan(fen, line.variation.length === 0 && line.rank === 1 && bestMove !== null
-    ? [bestMove] : line.variation) };
+  san: moves.map(move => move.san), moves };
 }
 
 export function engineLineRows<T extends { rank: number }>(lines: readonly T[], count: MultiPvCount):
@@ -193,13 +196,15 @@ export function currentEngineEvaluation(state: EngineState, fen: string): Engine
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, reviewHost, sessionOnly = false }: {
+  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, onExploreLine, orientation = 'white', reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
   readonly onEvaluationPendingChange?: (fen: string | null) => void;
   readonly onBestMoveChange?: (move: EngineBestMove | null) => void;
+  readonly onExploreLine?: (rootFen: string, moves: readonly string[]) => void;
+  readonly orientation?: GameSide;
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
 }) {
@@ -452,9 +457,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
           <span className="engine-rank">{rank}.</span>
           <EngineScoreBadge score={line.score} whiteToMove={fen.split(' ')[1] === 'w'} />
-          <span className="engine-line">{line.san.length === 0 ? 'No legal move' : <>
-            <strong className="engine-first-move">{line.san[0]}</strong>
-            {line.san.length > 1 ? ` ${line.san.slice(1).join(' ')}` : ''}</>}</span>
+          <EngineVariation key={`${game.id}:${fen}`} fen={fen} moves={line.moves} orientation={orientation} onExplore={onExploreLine} />
         </div> : <div className="engine-candidate engine-candidate-pending" key={rank}
           aria-label={`Line ${rank}, waiting for Stockfish`}>
           <span className="engine-rank">{rank}.</span><span className="engine-score">—</span>

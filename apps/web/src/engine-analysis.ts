@@ -1,4 +1,4 @@
-import { createPositionFromFen } from '@chess/domain';
+import { engineVariation } from './engine-variation';
 import { liteEngine } from './engine-builds';
 
 // Keep the existing Lite review cache; other builds receive distinct namespaces.
@@ -78,17 +78,7 @@ export function parseSearchInfo(line: string): SearchInfo | null {
 }
 
 export function variationSan(fen: string, moves: readonly string[]): string[] {
-  const position = createPositionFromFen(fen);
-  const result: string[] = [];
-  for (const uci of moves.slice(0, 12)) {
-    if (!uciMove.test(uci)) break;
-    const side = position.getPosition().sideToMove;
-    const moved = position.submitMove({ side, from: uci.slice(0, 2), to: uci.slice(2, 4),
-      ...(uci.length === 5 ? { promotion: uci[4] as 'q' | 'r' | 'b' | 'n' } : {}) });
-    if (!moved.accepted) break;
-    result.push(moved.move.san);
-  }
-  return result;
+  return engineVariation(fen, moves).map(move => move.san);
 }
 
 export function evaluationLabel(evaluation: EngineEvaluation): string {

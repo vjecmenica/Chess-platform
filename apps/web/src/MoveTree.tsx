@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { cursorKey } from './analysis-model';
@@ -23,21 +23,17 @@ interface OpenMenu { move: MoveView; x: number; y: number; trigger: HTMLElement 
 
 export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
   onPromote, onNote, review, bookMoves }: MoveTreeProps) {
-  const view = buildMoveTree(game, tree, selected);
+  const selectionKey = cursorKey(selected);
+  const view = useMemo(() => buildMoveTree(game, tree, selected), [game, tree, selectionKey]);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nagQuery, setNagQuery] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
-  const touchMenuTimer = useRef<number | null>(null);
-  const suppressTouchSelection = useRef<HTMLElement | null>(null);
-  const filteredNagGroups = filterNagGroups(nagQuery);
+  const filteredNagGroups = useMemo(() => filterNagGroups(nagQuery), [nagQuery]);
 
-  useEffect(() => { if (tree === null) { setMenu(null); cancelTouchMenu(); } }, [tree?.gameId]);
-  useEffect(() => () => {
-    if (touchMenuTimer.current !== null) window.clearTimeout(touchMenuTimer.current);
-  }, []);
+  useEffect(() => { setMenu(null); }, [tree?.gameId]);
 
   useEffect(() => {
     if (menu === null) return;
@@ -71,66 +67,16 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     setMenu(null);
   }
 
-  function cancelTouchMenu() {
-    if (touchMenuTimer.current !== null) window.clearTimeout(touchMenuTimer.current);
-    touchMenuTimer.current = null;
-  }
-
-  function suppressNextTouchClick(trigger: HTMLElement) {
-    suppressTouchSelection.current = trigger;
-    window.setTimeout(() => { if (suppressTouchSelection.current === trigger)
-      suppressTouchSelection.current = null; }, 700);
-  }
-
+  const actions = useRef({ onSelect, openMenu }); actions.current = { onSelect, openMenu };
+  const selectEntry = useCallback((cursor: AnalysisCursor) => actions.current.onSelect(cursor), []);
+  const menuEntry = useCallback((move: MoveView, x: number, y: number, trigger: HTMLElement) =>
+    actions.current.openMenu(move, x, y, trigger), []);
   function moveButton(move: MoveView, compact = false, lineStart = false) {
-    const nag = nagDetails(move.note?.nag);
-    const reviewed = move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined;
-    const badge = reviewed && reviewBadge(reviewed.label);
-    const book = tree !== null && bookMoves?.has(`${game.id}:${cursorKey(move.cursor)}`);
-    const number = compact && (move.ply % 2 === 1 || lineStart)
-      ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
-    if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
-    return <span key={cursorKey(move.cursor)}
-      className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
-      <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
-        aria-label={[move.notation,
-          ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
-          ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
-            ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : []),
-          ...(book ? ['Book move, confirmed by the opening explorer'] : [])].join(', ')}
-        aria-description={move.note?.comment}
-        aria-keyshortcuts={tree === null ? undefined : 'Shift+F10'}
-        onContextMenu={event => { if (tree !== null) { event.preventDefault();
-          if (touchMenuTimer.current !== null) suppressNextTouchClick(event.currentTarget);
-          cancelTouchMenu();
-          openMenu(move, event.clientX, event.clientY, event.currentTarget); } }}
-        onTouchStart={event => { if (tree === null) return;
-          const trigger = event.currentTarget;
-          cancelTouchMenu();
-          touchMenuTimer.current = window.setTimeout(() => {
-            touchMenuTimer.current = null;
-            suppressNextTouchClick(trigger);
-            const rect = trigger.getBoundingClientRect();
-            openMenu(move, rect.left, rect.bottom, trigger);
-          }, 550);
-        }}
-        onTouchMove={cancelTouchMenu} onTouchEnd={cancelTouchMenu} onTouchCancel={cancelTouchMenu}
-        onKeyDown={event => { if (tree !== null && (event.key === 'ContextMenu'
-          || event.key === 'F10' && event.shiftKey)) {
-          event.preventDefault();
-          const rect = event.currentTarget.getBoundingClientRect();
-          openMenu(move, rect.left, rect.bottom, event.currentTarget);
-        } }}
-        onClick={event => { if (suppressTouchSelection.current === event.currentTarget) {
-          suppressTouchSelection.current = null; return;
-        }
-          onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
-          {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
-            aria-hidden="true">{badge}</span>}
-      {book && <span className="book-badge">Book</span>}</span>
-      {move.note?.comment && <span className="move-comment">
-        {move.note.comment}</span>}</button>
-    </span>;
+    return <MoveEntry key={cursorKey(move.cursor)} move={move} compact={compact} lineStart={lineStart}
+      interactive={interactive} editable={tree !== null}
+      reviewed={move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined}
+      book={tree !== null && !!bookMoves?.has(`${game.id}:${cursorKey(move.cursor)}`)}
+      onSelect={selectEntry} onMenu={menuEntry} />;
   }
 
   function variations(move: MoveView, depth: number) {
@@ -231,3 +177,75 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     </div>}
   </nav>;
 }
+
+interface EntryProps { move: MoveView; compact: boolean; lineStart: boolean; interactive: boolean; editable: boolean;
+  reviewed: GameReview['moves'][number] | undefined; book: boolean;
+  onSelect: (cursor: AnalysisCursor) => void;
+  onMenu: (move: MoveView, x: number, y: number, trigger: HTMLElement) => void }
+const MoveEntry = memo(function MoveEntry({ move, compact, lineStart, interactive, editable, reviewed, book, onSelect, onMenu }: EntryProps) {
+  const touchMenuTimer = useRef<number | null>(null);
+  const suppressTouchSelection = useRef<HTMLElement | null>(null);
+  useEffect(() => () => { cancelTouchMenu(); }, []);
+  function cancelTouchMenu() {
+    if (touchMenuTimer.current !== null) window.clearTimeout(touchMenuTimer.current);
+    touchMenuTimer.current = null;
+  }
+
+  function suppressNextTouchClick(trigger: HTMLElement) {
+    suppressTouchSelection.current = trigger;
+    window.setTimeout(() => { if (suppressTouchSelection.current === trigger)
+      suppressTouchSelection.current = null; }, 700);
+  }
+
+  const nag = nagDetails(move.note?.nag);
+  const badge = reviewed && reviewBadge(reviewed.label);
+  const number = compact && (move.ply % 2 === 1 || lineStart)
+    ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
+  if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
+  return <span key={cursorKey(move.cursor)}
+    className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
+    <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
+      aria-label={[move.notation,
+        ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
+        ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
+          ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : []),
+        ...(book ? ['Book move, confirmed by the opening explorer'] : [])].join(', ')}
+      aria-description={move.note?.comment}
+      aria-keyshortcuts={!editable ? undefined : 'Shift+F10'}
+      onContextMenu={event => { if (editable) { event.preventDefault();
+        if (touchMenuTimer.current !== null) suppressNextTouchClick(event.currentTarget);
+        cancelTouchMenu();
+        onMenu(move, event.clientX, event.clientY, event.currentTarget); } }}
+      onTouchStart={event => { if (!editable) return;
+        const trigger = event.currentTarget;
+        cancelTouchMenu();
+        touchMenuTimer.current = window.setTimeout(() => {
+          touchMenuTimer.current = null;
+          suppressNextTouchClick(trigger);
+          const rect = trigger.getBoundingClientRect();
+          onMenu(move, rect.left, rect.bottom, trigger);
+        }, 550);
+      }}
+      onTouchMove={cancelTouchMenu} onTouchEnd={cancelTouchMenu} onTouchCancel={cancelTouchMenu}
+      onKeyDown={event => { if (editable && (event.key === 'ContextMenu'
+        || event.key === 'F10' && event.shiftKey)) {
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        onMenu(move, rect.left, rect.bottom, event.currentTarget);
+      } }}
+      onClick={event => { if (suppressTouchSelection.current === event.currentTarget) {
+        suppressTouchSelection.current = null; return;
+      }
+        onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
+        {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
+          aria-hidden="true">{badge}</span>}
+    {book && <span className="book-badge">Book</span>}</span>
+    {move.note?.comment && <span className="move-comment">
+      {move.note.comment}</span>}</button>
+  </span>;
+}, (a, b) => a.interactive === b.interactive && a.editable === b.editable && a.compact === b.compact
+  && a.lineStart === b.lineStart && a.reviewed === b.reviewed && a.book === b.book
+  && a.onSelect === b.onSelect && a.onMenu === b.onMenu
+  && cursorKey(a.move.cursor) === cursorKey(b.move.cursor) && a.move.san === b.move.san
+  && a.move.ply === b.move.ply && a.move.selected === b.move.selected && a.move.onPath === b.move.onPath
+  && a.move.note === b.move.note);

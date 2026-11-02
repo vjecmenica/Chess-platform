@@ -22,10 +22,12 @@ export function moveNotation(ply: number, san: string): string {
 
 export function buildMoveTree(game: GameReadResponse, tree: AnalysisTree | null,
   selected: AnalysisCursor): MoveTreeView {
+  const byId = new Map(tree?.nodes.map(item => [item.id, item]));
   const branches = new Map<string, VariationNode[]>();
   for (const item of tree?.nodes ?? []) {
     const key = cursorKey(item.parent);
-    branches.set(key, [...(branches.get(key) ?? []), item]);
+    const siblings = branches.get(key);
+    if (siblings) siblings.push(item); else branches.set(key, [item]);
   }
   const path = new Set<string>();
   if (tree !== null && selected.kind === 'branch') {
@@ -33,7 +35,7 @@ export function buildMoveTree(game: GameReadResponse, tree: AnalysisTree | null,
     while (cursor.kind === 'branch') {
       const id: number = cursor.id;
       path.add(cursorKey(cursor));
-      const parent: AnalysisCursor | undefined = tree.nodes.find(item => item.id === id)?.parent;
+      const parent: AnalysisCursor | undefined = byId.get(id)?.parent;
       if (!parent) break;
       cursor = parent;
     }
@@ -63,10 +65,10 @@ export function buildMoveTree(game: GameReadResponse, tree: AnalysisTree | null,
       const current = cursor;
       const parent: AnalysisCursor = current.kind === 'main'
         ? { kind: 'main', ply: current.ply - 1 }
-        : tree!.nodes.find(item => item.id === current.id)!.parent;
+        : byId.get(current.id)!.parent;
       const siblings = children(parent);
       const san = current.kind === 'main' ? game.history[current.ply - 1]!.san
-        : tree!.nodes.find(item => item.id === current.id)!.san;
+        : byId.get(current.id)!.san;
       moves.push({ cursor: current, ply, san, notation: moveNotation(ply, san),
         note: tree?.notes[cursorKey(current)],
         selected: cursorKey(current) === cursorKey(selected), onPath: path.has(cursorKey(current)),

@@ -16,10 +16,30 @@ function pieceCounts(fen: string, side: GameSide): Record<CapturedPiece, number>
   return counts;
 }
 
+type Captures = Record<GameSide, Record<CapturedPiece, number>>;
+const captureHistory = new WeakMap<GameReadResponse['history'], readonly Captures[]>();
+function addCapture(taken: Captures, before: string, after: string, side: GameSide) {
+  const opponent = side === 'white' ? 'black' : 'white';
+  const oldPieces = pieceCounts(before, opponent), newPieces = pieceCounts(after, opponent);
+  for (const type of captureOrder) taken[side][type] += Math.max(0, oldPieces[type] - newPieces[type]);
+}
+// Immutable history identities bound cache lifetime to the loaded game; cursor changes do not replay it.
+function capturePrefixes(history: GameReadResponse['history']): readonly Captures[] {
+  const cached = captureHistory.get(history);
+  if (cached) return cached;
+  const prefixes: Captures[] = [{ white: { q: 0, r: 0, b: 0, n: 0, p: 0 }, black: { q: 0, r: 0, b: 0, n: 0, p: 0 } }];
+  for (const move of history) {
+    const previous = prefixes.at(-1)!;
+    const next = { white: { ...previous.white }, black: { ...previous.black } };
+    addCapture(next, move.beforeFen, move.afterFen, move.side); prefixes.push(next);
+  }
+  captureHistory.set(history, prefixes);
+  return prefixes;
+}
+
 export function capturedPieces(game: GameReadResponse, displayedPly: number,
   tree: AnalysisTree | null): Readonly<Record<GameSide, readonly CapturedPiece[]>> {
-  const taken = { white: { q: 0, r: 0, b: 0, n: 0, p: 0 },
-    black: { q: 0, r: 0, b: 0, n: 0, p: 0 } };
+  const prefixes = capturePrefixes(game.history);
   const branches = [] as AnalysisTree['nodes'][number][];
   let cursor: AnalysisCursor | null = tree?.cursor ?? null;
   while (cursor?.kind === 'branch') {
@@ -30,17 +50,12 @@ export function capturedPieces(game: GameReadResponse, displayedPly: number,
     cursor = branch.parent;
   }
   const mainPly = Math.min(cursor?.kind === 'main' ? cursor.ply : displayedPly, game.history.length);
-  const addCapture = (before: string, after: string, side: GameSide) => {
-    const opponent = side === 'white' ? 'black' : 'white';
-    const oldPieces = pieceCounts(before, opponent);
-    const newPieces = pieceCounts(after, opponent);
-    for (const type of captureOrder) taken[side][type] += Math.max(0, oldPieces[type] - newPieces[type]);
-  };
-  for (const move of game.history.slice(0, mainPly)) addCapture(move.beforeFen, move.afterFen, move.side);
+  const saved = prefixes[mainPly]!;
+  const taken = { white: { ...saved.white }, black: { ...saved.black } };
   let before = mainPly === 0 ? game.history[0]?.beforeFen ?? game.position.fen
     : game.history[mainPly - 1]!.afterFen;
   for (const branch of branches) {
-    addCapture(before, branch.fen, before.split(' ')[1] === 'w' ? 'white' : 'black');
+    addCapture(taken, before, branch.fen, before.split(' ')[1] === 'w' ? 'white' : 'black');
     before = branch.fen;
   }
   const white: CapturedPiece[] = [], black: CapturedPiece[] = [];

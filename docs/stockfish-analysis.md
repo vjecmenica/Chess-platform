@@ -9,6 +9,13 @@ other-position output clears the arrow. Domain validation covers promotion,
 castling and en passant. This arrow is transient and separate from user markings:
 flipping rotates it, annotation edits do not remove it, and it is never serialized.
 
+Individual PV moves are keyboard-accessible buttons. Hover or focus shows a local
+miniature board after that exact move occurrence, oriented like the main board.
+Hovering never edits the tree. Clicking validates and applies the complete prefix
+from the currently displayed root, reusing recorded/existing analysis moves when
+possible. Stale roots and illegal prefixes are rejected atomically; created
+continuations remain temporary analysis, not saved game moves.
+
 Analysis opens interactive **Stockfish 19 Full** by default, with depth 25 and a
 15-second limit (first reached wins). Settings offers **Stockfish 19 Lite** as a
 lower-download/memory option. The engine choice and requested thread count are
