@@ -6,6 +6,7 @@ import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameChat } from './GameChat';
+import { GameInfo, liveGameStatus } from './GameInfo';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
 import { MastersPanel } from './MastersPanel';
@@ -1116,6 +1117,8 @@ export function App() {
     event.stopPropagation();
   }
 
+  const showGameNavigation = analysisOpen || imported === null && challenge?.status === 'accepted';
+  const liveStatus = game ? liveGameStatus(game, liveBrowsingHistory) : null;
   if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <main className="challenge-page">
     <AnalysisNavigation imported accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
@@ -1124,10 +1127,11 @@ export function App() {
 
   return (
     <>
-    {analysisOpen && <AnalysisNavigation imported={imported !== null} accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
+    {showGameNavigation && <AnalysisNavigation imported={imported !== null} section={analysisOpen ? 'analysis' : 'play'}
+      accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
-      {!analysisOpen && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
+      {!showGameNavigation && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
         {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
         {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
         <AccountMenu csrfToken={session?.csrfToken} />
@@ -1455,18 +1459,7 @@ export function App() {
                     resizeGesture.current = null;
                     setAnnotationFrom(null);
                     setSelected(null); setPromotion(null); setAnalysisError(null);
-                  }} /> : <p className="turn" role="status">{game.status === 'pending_adjudication'
-                  ? game.pending?.kind === 'resignation'
-                    ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. Play and clocks are stopped while the result awaits a verified mating decision.`
-                    : game.timeoutAdjudication === 'unresolved'
-                      ? 'A clock flagged. Further adjudication is needed.'
-                      : 'A clock flagged. Checking the result.'
-                  : game.clocks?.phase === 'awaiting_first_move'
-                    ? 'Waiting for White’s first move.'
-                  : game.status === 'waiting' ? 'Waiting for both guests to be ready.'
-                    : liveBrowsingHistory ? `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move. Viewing an earlier position.`
-                    : canMove ? `Your turn (${game.yourSeat}).`
-                      : `${game.position.sideToMove === 'white' ? 'White' : 'Black'} to move${game.position.sideToMove === game.yourSeat ? '.' : ' — waiting for your opponent.'}`}</p>}
+                  }} /> : liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
                 {imported !== null && !game.id.startsWith('blank-') && <details className="pgn-details">
                   <summary>PGN details</summary>
                   <dl>{Object.entries(imported.headers).map(([key, value]) =>
@@ -1555,7 +1548,7 @@ export function App() {
             </div>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-              playerNames={game.playerNames} analysisOpen={analysisOpen} />}
+              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />}
             {analysisOpen && <>
               <div className="computer-analysis-card" ref={setReviewHost} />
             </>}

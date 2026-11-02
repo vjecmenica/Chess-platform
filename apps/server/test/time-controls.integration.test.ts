@@ -49,6 +49,10 @@ describe('selected challenge clocks in PostgreSQL', () => {
     expect((await accept()).statusCode).toBe(200);
     expect((await pool.query('SELECT time_control FROM chess.challenges WHERE id = $1', [gameId])).rows[0].time_control).toBe(id);
     const read = async (server = app) => (await server.inject({ url: `/games/${gameId}`, headers: white })).json();
+    const acceptedAt = (await pool.query<{ accepted_at: Date }>('SELECT accepted_at FROM chess.challenges WHERE id=$1', [gameId]))
+      .rows[0]!.accepted_at.toISOString();
+    const siteInfo = { variant: 'standard', startedAt: acceptedAt, acceptedAt };
+    expect(await read()).toMatchObject({ siteInfo });
     expect(await read()).toMatchObject({ timeControl: preset, clocks: {
       phase: 'awaiting_first_move', remainingMs: { white: preset.initialMs, black: preset.initialMs } } });
     const move = (headers: typeof white, version: number, from: string, to: string, requestId = randomUUID()) =>
@@ -65,7 +69,7 @@ describe('selected challenge clocks in PostgreSQL', () => {
     expect((await move(black, 1, 'e7', 'e5', moveId)).json()).toEqual(played.json());
     time.value += 300;
     expect((await move(white, 2, 'g1', 'f3')).statusCode).toBe(200);
-    const expected = { timeControl: preset, clocks: { remainingMs: {
+    const expected = { siteInfo, timeControl: preset, clocks: { remainingMs: {
       white: preset.initialMs - 300 + preset.incrementMs,
       black: preset.initialMs - 200 + preset.incrementMs } }, history: [
       { remainingMsAfterMove: preset.initialMs },

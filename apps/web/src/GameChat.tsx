@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
@@ -6,7 +6,7 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
   type ChatPermission } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean }
+  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode }
 
 export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
   playerNames?: GamePlayerNames | undefined }) {
@@ -47,8 +47,9 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false }: Props) {
-  const [activePanel, setActivePanel] = useState<'chat' | 'notes'>('chat');
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info }: Props) {
+  const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
+  const [unreadChat, setUnreadChat] = useState(false);
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
   // Send acknowledgements can arrive before older opponent messages are fetched.
@@ -68,6 +69,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
   });
+  const view = useRef({ activePanel, hidden });
+  view.current = { activePanel, hidden };
   const list = useRef<HTMLOListElement>(null);
   const following = useRef(true);
   const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
@@ -77,12 +80,14 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const requested = useRef(false);
 
   const receive = useCallback((incoming: readonly GameChatMessage[]) => {
+    if ((view.current.hidden || view.current.activePanel !== 'chat') && incoming.some(item => item.side !== side
+      && !messagesRef.current.some(previous => previous.id === item.id))) setUnreadChat(true);
     const next = mergeChatMessages(messagesRef.current, incoming);
     const changed = next.at(-1)?.id !== messagesRef.current.at(-1)?.id;
     messagesRef.current = next;
     setMessages(next);
     if (changed && !following.current) setNewMessages(true);
-  }, []);
+  }, [side]);
   const refresh = useCallback(async () => {
     requested.current = true;
     if (reading.current) return;
@@ -119,7 +124,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
   useLayoutEffect(() => {
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, hidden]);
+  }, [messages, hidden, activePanel]);
+  useEffect(() => { if (!hidden && activePanel === 'chat') setUnreadChat(false); }, [hidden, activePanel]);
 
   function toggleHidden() {
     setHidden(value => {
@@ -155,16 +161,20 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game conversation and private notes">
-    <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat</button>
+  const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
+    <button type="button" aria-pressed={activePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
+    <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat
+      {unreadChat && <span className="chat-unread" aria-label="New messages">●</span>}</button>
     <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
   return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}
-    aria-label="Game conversation and private notes">
+    aria-label="Game information, chat and private notes">
     <div className="game-chat-header">{tabs}
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
+    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={hidden || activePanel !== 'info'}>
+      {info ?? <p>Game information unavailable.</p>}</div>
     <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
       active={!hidden && activePanel === 'notes'} /></div>
     <div className="game-chat-tab" hidden={hidden || activePanel !== 'chat'}>

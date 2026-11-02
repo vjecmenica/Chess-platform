@@ -70,9 +70,16 @@ export interface GameState {
 }
 
 export type GamePlayerNames = Readonly<Record<GameSide, string | null>>;
+export interface SiteGameInfo {
+  readonly variant: 'standard';
+  /** Acceptance starts current games; older readiness games have no durable actual start time. */
+  readonly startedAt: string | null;
+  readonly acceptedAt: string | null;
+}
 export interface GameReadResponse extends GameState {
   /** Authorized site-game reads only; null means the seat has not been explicitly linked. */
   readonly playerNames?: GamePlayerNames;
+  readonly siteInfo?: SiteGameInfo;
   readonly history: readonly SavedMove[];
 }
 

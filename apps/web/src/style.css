@@ -398,6 +398,16 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-candidate:has(.engine-score-badge) { align-items: center; }
 .game-chat-header .analysis-view-tabs { border-bottom: 0; gap: 0; min-width: 0; }
 .game-chat-header .analysis-view-tabs button { font-size: var(--text-body); padding: 6px 9px; }
+.chat-unread { margin-left: 4px; color: #0867a5; font-size: .65em; }
+.game-info-tab { flex: 1; min-height: 0; overflow: auto; }
+.game-info-tab:focus-visible { outline: 2px solid #a47a37; outline-offset: 2px; }
+.game-info dl { margin: 2px 0; font-size: var(--text-compact); }
+.game-info dl > div { display: grid; grid-template-columns: minmax(70px, .9fr) minmax(0, 1.6fr);
+  gap: 8px; padding: 4px 0; border-bottom: 1px solid #e9e2d7; }
+.game-info dl > div:last-child { border-bottom: 0; }
+.game-info dt { font-weight: 600; color: #756451; font-size: var(--text-meta); }
+.game-info dd { margin: 0; overflow-wrap: anywhere; }
+.game-info dd small { font-size: var(--text-meta); color: #756451; }
 .analysis-open { display: inline-block; padding: 8px 14px; text-decoration: none; border: 1px solid; border-radius: 8px;
   font-size: var(--text-compact); font-weight: 600; line-height: 1.35; }
 .explorer-game[href] { color: #3b2c22; text-decoration: none; padding: 9px 13px;

@@ -63,11 +63,14 @@ describe('confirmed game state', () => {
 
   it('preserves seat names through acknowledgements and accepts refreshed names at the same move version', () => {
     const playerNames = { white: 'linked_white', black: null };
-    const initial = { ...game(), playerNames };
+    const siteInfo = { variant: 'standard' as const, startedAt: '2026-11-02T13:18:36.000Z', acceptedAt: '2026-11-02T13:18:36.000Z' };
+    const initial = { ...game(), playerNames, siteInfo };
     const moved = applyAcceptedMove(initial, accepted)!;
     expect(moved.playerNames).toEqual(playerNames);
+    expect(moved.siteInfo).toEqual(siteInfo);
     const action = applyAcceptedAction(moved, { accepted: true, game: { ...accepted.game, version: 2 } });
     expect(action?.playerNames).toEqual(playerNames);
+    expect(action?.siteInfo).toEqual(siteInfo);
     const refreshed = mergeConfirmedGame(moved, { ...moved, playerNames: { white: 'linked_white', black: 'linked_black' } });
     expect(refreshed.playerNames?.black).toBe('linked_black');
     const otherGame = { ...game(), id: 'another-game', playerNames: { white: null, black: null } };

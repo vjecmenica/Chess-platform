@@ -50,7 +50,8 @@ it('waits for server permission without flashing a read-only notice, including f
   const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
   const html = renderToStaticMarkup(createElement(GameChat, props));
   expect(html).toContain('Loading chat');
-  expect(html).toContain('aria-label="Game conversation and private notes"');
+  expect(html).toContain('aria-label="Game information, chat and private notes"');
+  expect(html).toMatch(/>Info<\/button>[\s\S]*>Chat<\/button>[\s\S]*>Notes<\/button>/);
   expect(html).toMatch(/aria-pressed="true"[^>]*>Chat/);
   expect(html).toMatch(/aria-pressed="false"[^>]*>Notes/);
   expect(html).toContain('Private notes');

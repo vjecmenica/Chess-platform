@@ -26,6 +26,7 @@ interface GameRow {
   time_control: TimeControlId;
   creator_guest_id: string;
   acceptor_guest_id: string;
+  accepted_at: Date | null;
   starting_fen: string;
   fen: string;
   side_to_move: Side;
@@ -84,7 +85,7 @@ function seat(row: GameRow, guestId: string): Side | null {
 
 async function loadGame(client: pg.PoolClient, id: string): Promise<GameRow | null> {
   const { rows } = await client.query<GameRow>(
-    `SELECT g.*, c.creator_guest_id, c.acceptor_guest_id, c.time_control
+    `SELECT g.*, c.creator_guest_id, c.acceptor_guest_id, c.time_control, c.accepted_at
       FROM chess.games g JOIN chess.challenges c ON c.id = g.id
       WHERE g.id = $1 FOR UPDATE OF g`, [id],
   );
@@ -253,8 +254,16 @@ async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
     throw new Error('Saved clock history does not match game history.');
   }
   return { ...gameState(row, game, yourSeat, atMs),
+    siteInfo: siteGameInfo(row.accepted_at, row.clock_mode, row.clock_start_mode),
     playerNames: { white: players.white, black: players.black },
     history: history.map((move, index) => savedMove(move, rows[index]!.remaining_ms_after_move)) };
+}
+
+export function siteGameInfo(acceptedAt: Date | null, mode: GameRow['clock_mode'], startMode: ClockState['startMode']):
+  NonNullable<GameReadResponse['siteInfo']> {
+  const accepted = acceptedAt?.toISOString() ?? null;
+  return { variant: 'standard', acceptedAt: accepted,
+    startedAt: mode === 'five_plus_three' && startMode !== 'readiness' ? accepted : null };
 }
 
 async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {

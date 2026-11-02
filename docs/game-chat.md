@@ -61,12 +61,23 @@ resolved. Definite rejections allow editing again. Reads and sends time out afte
 render as text, never HTML.
 
 The desktop rail stays beside the board. On narrower screens it becomes a
-section below the board/moves. Chat/Notes tabs share the header in live play and
-Analysis. The Hide/Show button is the only collapse control.
+section below the board/moves. Info/Chat/Notes share the header in live play and
+Analysis, with Chat selected initially. Incoming opponent messages mark Chat when
+another tab is selected or the panel is hidden; they never switch away from notes.
+The Hide/Show button is the only collapse control.
 Hiding is local to the browser, game, and seat and survives refresh; it does not
 delete history or notify the opponent.
 The list follows new messages only while the reader is near its bottom. Otherwise,
 a New messages control lets the reader jump down explicitly.
+
+Info uses participant-authorized game reads. `siteInfo` exposes Standard as the
+currently supported variant and the existing challenge acceptance timestamp.
+Current first-move-start games become active on acceptance, so that timestamp is
+also their start. Older readiness and untimed games display “Challenge accepted”:
+the later Ready transition has no durable original start timestamp. Challenge
+creation and the game-record creation time are not substituted for game start.
+Dates are shown in local time with a year and UTC offset. Site games are unrated;
+Info does not invent player ratings or rating changes. No migration is required.
 
 Current limits: only recent history is exposed; there are no attachments, exports,
 moderation, public rooms, account messaging, or delivery/read receipts. Messages

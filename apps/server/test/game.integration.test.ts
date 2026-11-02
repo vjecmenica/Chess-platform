@@ -70,6 +70,9 @@ describe('earlier untimed guest games against PostgreSQL', () => {
     expect((await read(id, outsider)).statusCode).toBe(403);
     const initial = await read(id, white);
     expect(initial.statusCode).toBe(200);
+    expect(initial.json().siteInfo).toEqual({ variant: 'standard', startedAt: null,
+      acceptedAt: (await pool.query<{ accepted_at: Date }>('SELECT accepted_at FROM chess.challenges WHERE id=$1', [id]))
+        .rows[0]!.accepted_at.toISOString() });
     expect(initial.json()).toMatchObject({ id, version: 0, status: 'active', yourSeat: 'white',
       position: { fen: STANDARD_STARTING_FEN, sideToMove: 'white' }, history: [], result: null,
       clocks: null, clockStatus: 'not_integrated', rated: false,
