@@ -45,6 +45,18 @@ function finish(worker: FakeWorker, pv = 'e2e4 e7e5 g1f3') {
 }
 
 describe('browser Stockfish controller', () => {
+  it('keeps a cached position visible when a previous position is still loading the worker', () => {
+    const { engine, workers, states, cache } = setup();
+    cache.put({ fen: afterE4, depth: 14, bestMove: 'e7e5', score: { kind: 'cp', value: 20 }, variation: ['e7e5'] });
+    engine.start(start);
+    const worker = workers[0]!;
+    engine.setPosition(afterE4);
+    expect(states.at(-1)).toMatchObject({ kind: 'done', cached: true, evaluation: { fen: afterE4 } });
+    (worker as EngineWorker).onprogress?.(100);
+    ready(worker);
+    expect(states.at(-1)).toMatchObject({ kind: 'done', cached: true, evaluation: { fen: afterE4 } });
+    expect(worker.commands.some(command => command.startsWith('go'))).toBe(false);
+  });
   it('keeps interactive settings collapsed beside the engine toggle', () => {
     const game = { id: 'test', status: 'finished', history: [], timeControl: null, position: { fen: start,
       sideToMove: 'white' }, result: { outcome: 'draw', reason: 'agreement' } } as GameReadResponse;

@@ -1,6 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
+import { MoveSelection } from './move-selection';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
@@ -21,10 +22,12 @@ interface MoveTreeProps {
 
 interface OpenMenu { move: MoveView; x: number; y: number; trigger: HTMLElement }
 
-export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
+export const MoveTree = memo(function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
   onPromote, onNote, review, bookMoves }: MoveTreeProps) {
-  const selectionKey = cursorKey(selected);
-  const view = useMemo(() => buildMoveTree(game, tree, selected), [game, tree, selectionKey]);
+  const [selection] = useState(() => new MoveSelection(selected));
+  useLayoutEffect(() => selection.update(selected), [selection, selected]);
+  const view = useMemo(() => buildMoveTree(game, tree, { kind: 'main', ply: 0 }),
+    [game, tree?.nodes, tree?.notes, tree?.promoted]);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState('');
@@ -71,11 +74,74 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
   const selectEntry = useCallback((cursor: AnalysisCursor) => actions.current.onSelect(cursor), []);
   const menuEntry = useCallback((move: MoveView, x: number, y: number, trigger: HTMLElement) =>
     actions.current.openMenu(move, x, y, trigger), []);
+
+  return <nav className={`moves${tree !== null ? ' analysis-moves'
+    : interactive ? ' saved-replay-moves' : ' live-moves'}`}
+    aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
+    <h3>Moves</h3>
+    {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
+      selection={selection} interactive={interactive} editable={tree !== null} review={review} bookMoves={bookMoves}
+      selectEntry={selectEntry} menuEntry={menuEntry} />}
+    {menu !== null && tree !== null && <div className="analysis-menu" ref={menuRef} role="dialog"
+      aria-label={`Options for ${menu.move.notation}`}
+      style={{ left: Math.max(8, menu.x), top: Math.max(8, menu.y) }}>
+      <strong>{menu.move.notation}</strong>
+      {editing ? <div className="comment-editor">
+        <label htmlFor="analysis-comment">Comment</label>
+        <textarea id="analysis-comment" value={comment} maxLength={2000}
+          onChange={event => setComment(event.target.value)} />
+        <div className="menu-actions"><button type="button" className="primary" onClick={() => {
+          onNote?.(menu.move.cursor, { comment: comment.trim() || undefined }); closeMenu();
+        }}>Save comment</button><button type="button" onClick={() => setEditing(false)}>Back</button></div>
+      </div> : <>
+        <button type="button" onClick={() => setEditing(true)}>
+          {menu.move.note?.comment ? 'Edit comment' : 'Add comment'}</button>
+        {menu.move.cursor.kind === 'branch' && <>
+          <button type="button" onClick={() => { if (menu.move.cursor.kind === 'branch')
+            onPromote?.(menu.move.cursor.id); closeMenu(); }}>
+            Promote variation to main line</button>
+          {confirmDelete ? <div className="menu-actions"><span>Delete this continuation?</span>
+            <button type="button" className="danger" onClick={() => {
+              if (menu.move.cursor.kind === 'branch') onDelete(menu.move.cursor.id);
+              closeMenu();
+            }}>Confirm delete</button><button type="button" onClick={() => setConfirmDelete(false)}>Cancel</button></div>
+            : <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>Delete continuation</button>}
+        </>}
+        <div className="nag-options"><strong>Annotation</strong>
+          <button type="button" onClick={() => {
+            onNote?.(menu.move.cursor, { nag: undefined }); closeMenu();
+          }}>Clear annotation</button>
+          <label htmlFor="nag-search">Search annotations</label>
+          <input id="nag-search" type="search" value={nagQuery}
+            placeholder="Search NAG or description"
+            onChange={event => setNagQuery(event.target.value)} />
+          {filteredNagGroups.map(group => <section key={group.label} aria-label={group.label}>
+            <h4>{group.label}</h4><div className="nag-grid">{group.options.map(option =>
+              <button key={option.value} type="button"
+                aria-label={`${option.description}, ${option.glyph}, PGN $${option.value}`}
+                aria-pressed={menu.move.note?.nag === option.value}
+                onClick={() => { onNote?.(menu.move.cursor, { nag: option.value }); closeMenu(); }}>
+                <span className="nag-glyph">{option.glyph}</span>
+                <span className="nag-description">{option.description}</span></button>)}</div>
+          </section>)}
+          {filteredNagGroups.length === 0 && <p>No matching annotations.</p>}
+        </div>
+      </>}
+    </div>}
+  </nav>;
+});
+
+const MoveLines = memo(function MoveLines({ view, gameId, selection, interactive, editable, review, bookMoves, selectEntry, menuEntry }: {
+  view: ReturnType<typeof buildMoveTree>; gameId: string; selection: MoveSelection;
+  interactive: boolean; editable: boolean; review: GameReview | null | undefined; bookMoves: ReadonlySet<string> | undefined;
+  selectEntry: (cursor: AnalysisCursor) => void;
+  menuEntry: (move: MoveView, x: number, y: number, trigger: HTMLElement) => void;
+}) {
   function moveButton(move: MoveView, compact = false, lineStart = false) {
-    return <MoveEntry key={cursorKey(move.cursor)} move={move} compact={compact} lineStart={lineStart}
-      interactive={interactive} editable={tree !== null}
+    return <MoveEntry key={cursorKey(move.cursor)} move={move} selection={selection} compact={compact} lineStart={lineStart}
+      interactive={interactive} editable={editable}
       reviewed={move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined}
-      book={tree !== null && !!bookMoves?.has(`${game.id}:${cursorKey(move.cursor)}`)}
+      book={editable && !!bookMoves?.has(`${gameId}:${cursorKey(move.cursor)}`)}
       onSelect={selectEntry} onMenu={menuEntry} />;
   }
 
@@ -124,65 +190,14 @@ export function MoveTree({ game, tree, selected, interactive, onSelect, onDelete
     </li>)}</ol>;
   }
 
-  return <nav className={`moves${tree !== null ? ' analysis-moves'
-    : interactive ? ' saved-replay-moves' : ' live-moves'}`}
-    aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
-    <h3>Moves</h3>
-    {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : renderLine(view.main, 0, true)}
-    {menu !== null && tree !== null && <div className="analysis-menu" ref={menuRef} role="dialog"
-      aria-label={`Options for ${menu.move.notation}`}
-      style={{ left: Math.max(8, menu.x), top: Math.max(8, menu.y) }}>
-      <strong>{menu.move.notation}</strong>
-      {editing ? <div className="comment-editor">
-        <label htmlFor="analysis-comment">Comment</label>
-        <textarea id="analysis-comment" value={comment} maxLength={2000}
-          onChange={event => setComment(event.target.value)} />
-        <div className="menu-actions"><button type="button" className="primary" onClick={() => {
-          onNote?.(menu.move.cursor, { comment: comment.trim() || undefined }); closeMenu();
-        }}>Save comment</button><button type="button" onClick={() => setEditing(false)}>Back</button></div>
-      </div> : <>
-        <button type="button" onClick={() => setEditing(true)}>
-          {menu.move.note?.comment ? 'Edit comment' : 'Add comment'}</button>
-        {menu.move.cursor.kind === 'branch' && <>
-          <button type="button" onClick={() => { if (menu.move.cursor.kind === 'branch')
-            onPromote?.(menu.move.cursor.id); closeMenu(); }}>
-            Promote variation to main line</button>
-          {confirmDelete ? <div className="menu-actions"><span>Delete this continuation?</span>
-            <button type="button" className="danger" onClick={() => {
-              if (menu.move.cursor.kind === 'branch') onDelete(menu.move.cursor.id);
-              closeMenu();
-            }}>Confirm delete</button><button type="button" onClick={() => setConfirmDelete(false)}>Cancel</button></div>
-            : <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>Delete continuation</button>}
-        </>}
-        <div className="nag-options"><strong>Annotation</strong>
-          <button type="button" onClick={() => {
-            onNote?.(menu.move.cursor, { nag: undefined }); closeMenu();
-          }}>Clear annotation</button>
-          <label htmlFor="nag-search">Search annotations</label>
-          <input id="nag-search" type="search" value={nagQuery}
-            placeholder="Search NAG or description"
-            onChange={event => setNagQuery(event.target.value)} />
-          {filteredNagGroups.map(group => <section key={group.label} aria-label={group.label}>
-            <h4>{group.label}</h4><div className="nag-grid">{group.options.map(option =>
-              <button key={option.value} type="button"
-                aria-label={`${option.description}, ${option.glyph}, PGN $${option.value}`}
-                aria-pressed={menu.move.note?.nag === option.value}
-                onClick={() => { onNote?.(menu.move.cursor, { nag: option.value }); closeMenu(); }}>
-                <span className="nag-glyph">{option.glyph}</span>
-                <span className="nag-description">{option.description}</span></button>)}</div>
-          </section>)}
-          {filteredNagGroups.length === 0 && <p>No matching annotations.</p>}
-        </div>
-      </>}
-    </div>}
-  </nav>;
-}
+  return renderLine(view.main, 0, true);
+});
 
-interface EntryProps { move: MoveView; compact: boolean; lineStart: boolean; interactive: boolean; editable: boolean;
+interface EntryProps { move: MoveView; selection: MoveSelection; compact: boolean; lineStart: boolean; interactive: boolean; editable: boolean;
   reviewed: GameReview['moves'][number] | undefined; book: boolean;
   onSelect: (cursor: AnalysisCursor) => void;
   onMenu: (move: MoveView, x: number, y: number, trigger: HTMLElement) => void }
-const MoveEntry = memo(function MoveEntry({ move, compact, lineStart, interactive, editable, reviewed, book, onSelect, onMenu }: EntryProps) {
+const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart, interactive, editable, reviewed, book, onSelect, onMenu }: EntryProps) {
   const touchMenuTimer = useRef<number | null>(null);
   const suppressTouchSelection = useRef<HTMLElement | null>(null);
   useEffect(() => () => { cancelTouchMenu(); }, []);
@@ -197,14 +212,18 @@ const MoveEntry = memo(function MoveEntry({ move, compact, lineStart, interactiv
       suppressTouchSelection.current = null; }, 700);
   }
 
+  const key = cursorKey(move.cursor);
+  const subscribe = useCallback((listener: () => void) => selection.subscribe(key, listener), [selection, key]);
+  const snapshot = useCallback(() => selection.snapshot(key), [selection, key]);
+  const flags = useSyncExternalStore(subscribe, snapshot, snapshot);
   const nag = nagDetails(move.note?.nag);
   const badge = reviewed && reviewBadge(reviewed.label);
   const number = compact && (move.ply % 2 === 1 || lineStart)
     ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
   if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
   return <span key={cursorKey(move.cursor)}
-    className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'} ${move.onPath ? 'on-path' : ''}`}>
-    <button type="button" className="move-link" aria-current={move.selected ? 'step' : undefined}
+    className={`move-entry ${move.cursor.kind === 'main' ? 'saved-move' : 'local-move'}`}>
+    <button type="button" className="move-link" aria-current={(flags & 1) ? 'step' : undefined}
       aria-label={[move.notation,
         ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
         ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
@@ -243,9 +262,9 @@ const MoveEntry = memo(function MoveEntry({ move, compact, lineStart, interactiv
     {move.note?.comment && <span className="move-comment">
       {move.note.comment}</span>}</button>
   </span>;
-}, (a, b) => a.interactive === b.interactive && a.editable === b.editable && a.compact === b.compact
+}, (a, b) => a.selection === b.selection && a.interactive === b.interactive && a.editable === b.editable && a.compact === b.compact
   && a.lineStart === b.lineStart && a.reviewed === b.reviewed && a.book === b.book
   && a.onSelect === b.onSelect && a.onMenu === b.onMenu
   && cursorKey(a.move.cursor) === cursorKey(b.move.cursor) && a.move.san === b.move.san
-  && a.move.ply === b.move.ply && a.move.selected === b.move.selected && a.move.onPath === b.move.onPath
+  && a.move.ply === b.move.ply
   && a.move.note === b.move.note);

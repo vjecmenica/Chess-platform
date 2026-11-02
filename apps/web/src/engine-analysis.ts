@@ -251,7 +251,8 @@ export class EngineController {
       const worker = this.makeWorker();
       this.worker = worker;
       worker.onmessage = event => { if (this.worker === worker) this.handleMessage(String(event.data)); };
-      worker.onprogress = progress => { if (this.worker === worker && !this.ready)
+      worker.onprogress = progress => { if (this.worker === worker && !this.ready
+        && (!this.requestedFen || !this.cache.get(this.requestedFen, this.lineCount, searchProfile(this.limits))))
         this.onState({ kind: 'loading', progress }); };
       worker.onerror = () => { if (this.worker === worker) this.fail('Stockfish could not load in this browser.'); };
       worker.postMessage('uci');

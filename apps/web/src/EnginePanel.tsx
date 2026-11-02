@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse, GameSide } from '@chess/contracts';
 import { EngineVariation } from './EngineVariation';
-import { engineVariation } from './engine-variation';
+import { engineVariation, createEngineVariationReader } from './engine-variation';
+import { createEngineStatePublisher } from './engine-ui-updates';
 import { EngineCache, EngineController,
   evaluationLabel, searchProfile, type EngineEvaluation,
   type EngineLine, type EngineState, type MultiPvCount, type SearchLimits } from './engine-analysis';
@@ -51,11 +52,11 @@ export function interactiveLimits(depth: number | null, timeMs: number | null): 
     : { mode: 'bounded', depth, timeMs };
 }
 
-export function candidateLines(evaluation: EngineEvaluation):
+export function candidateLines(evaluation: EngineEvaluation, readVariation = engineVariation):
   ReturnType<typeof candidateLine>[] {
   const lines = evaluation.lines ?? [{ rank: 1, score: evaluation.score,
     variation: evaluation.variation }];
-  return lines.map(line => candidateLine(evaluation.fen, line, evaluation.bestMove));
+  return lines.map(line => candidateLine(evaluation.fen, line, evaluation.bestMove, readVariation));
 }
 
 export function EngineScoreBadge({ score, whiteToMove }: { score: string; whiteToMove?: boolean }) {
@@ -63,8 +64,8 @@ export function EngineScoreBadge({ score, whiteToMove }: { score: string; whiteT
   return <span className="engine-score engine-score-badge" data-side={blackAhead ? 'black' : 'white'}>{score}</span>;
 }
 
-function candidateLine(fen: string, line: EngineLine, bestMove: string | null = null) {
-  const moves = engineVariation(fen, line.variation.length === 0 && line.rank === 1 && bestMove !== null
+function candidateLine(fen: string, line: EngineLine, bestMove: string | null = null, readVariation = engineVariation) {
+  const moves = readVariation(fen, line.variation.length === 0 && line.rank === 1 && bestMove !== null
     ? [bestMove] : line.variation);
   return { rank: line.rank, score: evaluationLabel({ fen, depth: 0, score: line.score,
     bestMove, variation: line.variation }),
@@ -223,6 +224,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const { depth, timeMs, unlimitedDepth, unlimitedTime } = searchSettings.current;
   const continuous = unlimitedDepth && unlimitedTime;
   const [state, setState] = useState<EngineState>({ kind: 'off' });
+  const [readVariation] = useState(() => createEngineVariationReader());
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const [reviewTab, setReviewTab] = useState<'computer' | 'times'>('computer');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -270,16 +272,17 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     cache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
       engineCacheIdentity(variant, threads), description);
     onEvaluationChange(null);
+    const output = createEngineStatePublisher(setState);
     controller.current = new EngineController(
       () => createBrowserEngineWorker(variant.url), next => {
         if (next.kind === 'error' && variant.id !== liteEngine.id) {
-          setState({ kind: 'loading' }); setFallback(true); onEvaluationChange(null);
-        } else setState(next);
+          output.push({ kind: 'loading' }); setFallback(true); onEvaluationChange(null);
+        } else output.push(next);
       }, cache.current, variant.multithreaded ? { threads } : {});
     controller.current.setLineCount(lineCount);
     const stopInteractive = scheduleInteractiveEngine(controller.current, fen, limits, enabled);
     return () => {
-      stopInteractive(); controller.current = null;
+      stopInteractive(); output.cancel(); controller.current = null;
       cache.current = null;
     };
   }, [variant.id, threads]);
@@ -342,8 +345,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   useEffect(() => () => onBestMoveChange?.(null), [onBestMoveChange]);
   // Reuse SAN conversion when review progress or parent callbacks render this panel.
   const lines = useMemo(() => state.kind === 'searching' && state.fen === fen && state.lines
-    ? state.lines.map(line => candidateLine(fen, line))
-    : evaluation === null ? [] : candidateLines(evaluation), [state, fen, evaluation]);
+    ? state.lines.map(line => candidateLine(fen, line, null, readVariation))
+    : evaluation === null ? [] : candidateLines(evaluation, readVariation), [state, fen, evaluation, readVariation]);
 
   useEffect(() => { if (evaluation !== null) onEvaluationChange(evaluation); },
     [evaluation, onEvaluationChange]);
@@ -453,7 +456,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       {engineLineRows(lines, lineCount).map((line, index) => {
         const rank = index + 1;
         return line ? <div className="engine-candidate" key={rank}
-          title={line.san.join(' ') || 'No legal move'}
           aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
           <span className="engine-rank">{rank}.</span>
           <EngineScoreBadge score={line.score} whiteToMove={fen.split(' ')[1] === 'w'} />

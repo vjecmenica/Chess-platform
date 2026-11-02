@@ -38,6 +38,7 @@ import { simplePgnTimeControl } from './move-times';
 import { canExportGame, downloadGamePgn } from './pgn-export';
 import { MoveTree } from './MoveTree';
 import { PromotionPicker, promotionIsCurrent, type PromotionRequest } from './PromotionPicker';
+import { readBoardSizePreference, saveBoardSizePreference } from './board-size-preference';
 import { applyEngineVariation } from './engine-variation';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
@@ -155,7 +156,10 @@ export function App() {
   const [engineMove, setEngineMove] = useState<EngineBestMove | null>(null);
   const [evaluationPendingFen, setEvaluationPendingFen] = useState<string | null>(null);
   const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
-  const [boardSize, setBoardSize] = useState<number | null>(null);
+  const [boardSize, setBoardSize] = useState<number | null>(() => {
+    if (initialAnalysisEntry?.kind === 'site' && initialAnalysisEntry.boardSize !== undefined) return initialAnalysisEntry.boardSize;
+    try { return readBoardSizePreference(window.localStorage); } catch { return null; }
+  });
   const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
   const [playerWorkspace, setPlayerWorkspace] = useState({ top: 22, height: 480 });
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
@@ -378,7 +382,7 @@ export function App() {
     const tree = createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {});
     if (initialAnalysisEntry?.kind === 'site' && initialAnalysisEntry.id === game.id) {
       setAnalysis(selectMain(tree, game, initialAnalysisEntry.ply ?? game.history.length));
-      setAnalysisOpen(true); setBoardSize(null);
+      setAnalysisOpen(true);
     } else setAnalysis(tree);
   }, [game?.id, game?.status, analysis?.gameId, imported]);
 
@@ -432,7 +436,7 @@ export function App() {
   }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
 
   const showImportedGame = useCallback((next: ImportedGame) => {
-    setBoardSize(null);
+    try { setBoardSize(readBoardSizePreference(window.localStorage)); } catch { setBoardSize(null); }
     setImported(next);
     gameRef.current = next.game;
     setGame(next.game);
@@ -466,10 +470,10 @@ export function App() {
   useEffect(() => {
     if (!analysisOpen || !analysis || !game || !initialAnalysisEntry) return;
     const ply = mainAncestorPly(analysis);
-    const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply)
+    const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply, boardSize ?? boardRowHeight)
       : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
     window.history.replaceState(null, '', url);
-  }, [analysisOpen, analysis?.cursor, game?.id]);
+  }, [analysisOpen, analysis?.cursor, game?.id, boardSize, boardRowHeight]);
 
   function openPgn(text: string) {
     try { showImportedGame(importPgn(text, `import-${crypto.randomUUID()}`)); }
@@ -934,7 +938,12 @@ export function App() {
   }, [submitAnalysisMove]);
 
 
-  function selectMove(cursor: AnalysisCursor) {
+  const promoteMove = useCallback((id: number) => setAnalysis(current => current === null ? null : promoteVariation(current, id)), []);
+  const noteMove = useCallback((cursor: AnalysisCursor, note: MoveNote) => setAnalysis(current =>
+    current === null ? null : setMoveNote(current, cursor, note)), []);
+  const selectMove = useCallback((cursor: AnalysisCursor) => {
+    const analysis = analysisRef.current, game = gameRef.current;
+    const analysisOpen = analysisOpenRef.current;
     setPromotion(null);
     if (cursor.kind === 'branch') {
       if (analysis !== null) setAnalysis(selectBranch(analysis, cursor.id));
@@ -944,15 +953,12 @@ export function App() {
     setSelected(null);
     setAnnotationFrom(null);
     setAnalysisError(null);
-  }
+  }, []);
 
-  function removeVariation(id: number) {
-    if (analysis !== null) {
-      setAnalysis(deleteVariation(analysis, id));
-      setSelected(null);
-      setAnalysisError(null);
-    }
-  }
+  const removeVariation = useCallback((id: number) => {
+    setAnalysis(current => current === null ? null : deleteVariation(current, id));
+    setSelected(null); setAnalysisError(null);
+  }, []);
 
   useEffect(() => {
     const queue = premovesRef.current;
@@ -1114,6 +1120,11 @@ export function App() {
     if (moves && resizeMoveScroll.current !== null) moves.scrollTop = resizeMoveScroll.current;
     resizeMoveScroll.current = null;
   }, [boardSize]);
+
+  function commitBoardSize(size: number) {
+    setBoardSize(size);
+    try { saveBoardSizePreference(window.localStorage, size); } catch { /* Storage is optional. */ }
+  }
 
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
@@ -1332,7 +1343,7 @@ export function App() {
                       layout.style.setProperty('--board-column-size', `${size + 34}px`);
                       layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
                       layout.style.setProperty('--board-row-height', `${size}px`);
-                    }, size => { setBoardSize(size); setBoardRowHeight(size); }, limit);
+                    }, size => { commitBoardSize(size); setBoardRowHeight(size); }, limit);
                     event.currentTarget.setPointerCapture(event.pointerId);
                   }}
                   onPointerMove={event => {
@@ -1353,7 +1364,7 @@ export function App() {
                     if (delta === null) return;
                     event.preventDefault(); event.stopPropagation();
                     resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
-                    setBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
+                    commitBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
                       delta, delta, resizeLimit()));
                   }} onClick={event => event.stopPropagation()} />
                 </div>
@@ -1464,9 +1475,7 @@ export function App() {
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}
-                  onPromote={id => setAnalysis(current => current === null ? null : promoteVariation(current, id))}
-                  onNote={(cursor: AnalysisCursor, note: MoveNote) => setAnalysis(current =>
-                    current === null ? null : setMoveNote(current, cursor, note))} />
+                  onPromote={promoteMove} onNote={noteMove} />
                 </div>
 
               </div>
@@ -1481,7 +1490,7 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
-                  analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length) : undefined}
+                  analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) {
                       setSelectedReplayPly(mainAncestorPly(analysis));
@@ -1491,7 +1500,7 @@ export function App() {
                     else if (analysis !== null && selectedReplayPly !== null)
                       setAnalysis(selectMain(analysis, game, selectedReplayPly));
                     if (!analysisOpen)
-                      setBoardSize(null);
+                      setBoardSize(boardFrameRef.current?.getBoundingClientRect().width ?? boardSize);
                     setAnalysisOpen(!analysisOpen);
 
                     setGameReview(null);

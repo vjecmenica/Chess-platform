@@ -4,6 +4,29 @@ import { cursorFen, playAnalysisMove, type AnalysisTree } from './analysis-model
 
 export interface VariationMove { san: string; uci: string; fen: string }
 
+/** A small, per-panel cache of legally validated prefixes, cleared when the root changes. */
+export function createEngineVariationReader(maximum = 192) {
+  let root = '';
+  const prefixes = new Map<string, VariationMove>();
+  return (fen: string, moves: readonly string[]): VariationMove[] => {
+    if (root !== fen) { root = fen; prefixes.clear(); }
+    const result: VariationMove[] = [];
+    let before = fen, key = '';
+    for (const uci of moves.slice(0, 12)) {
+      key += ` ${uci}`;
+      let next = prefixes.get(key);
+      if (!next) {
+        next = engineVariation(before, [uci])[0];
+        if (!next) break;
+        prefixes.set(key, next);
+        if (prefixes.size > maximum) prefixes.delete(prefixes.keys().next().value!);
+      }
+      result.push(next); before = next.fen;
+    }
+    return result;
+  };
+}
+
 /** Keep occurrence order: repeated positions do not identify a move within a PV. */
 export function engineVariation(fen: string, moves: readonly string[]): VariationMove[] {
   const result: VariationMove[] = [];

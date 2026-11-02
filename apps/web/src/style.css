@@ -482,6 +482,8 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .move-text { display: flex; align-items: center; }
 .move-cell > .move-entry, .move-cell .move-link, .move-cell > .move-text { width: auto; }
 .move-cell > .move-entry { align-items: stretch; }
+.move-pair-row .move-cell > .move-entry, .move-pair-row .move-cell .move-link { width: 100%; }
+.move-pair-row .move-link { border-radius: 0; }
 .move-content { min-width: 0; overflow-wrap: anywhere; }
 .move-entry { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; flex-wrap: wrap; }
 .moves .variation-list { margin: 2px 0 7px 18px; padding-left: 10px; border-left: 2px solid #cbd9c8; }
