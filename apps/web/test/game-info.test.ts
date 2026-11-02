@@ -18,12 +18,14 @@ it('shows actual seat names, honest rating placeholders, time control and suppor
   expect(html).toContain('<dt>White</dt><dd><strong>walnut</strong>');
   expect(html).toContain('<dt>Black</dt><dd><strong>Guest</strong>');
   expect(html.match(/Rating unavailable/g)).toHaveLength(2);
-  expect(html).toContain('<dt>Rated</dt><dd>Unrated</dd>');
+  expect(html.match(/>Unrated</g)).toHaveLength(1);
+  expect(html).toContain('<dt>Rated status</dt><dd>Unrated</dd>');
   expect(html).toContain('<dt>Variant</dt><dd>Standard</dd>');
-  expect(html).toContain('<dt>Time control</dt><dd>3+2</dd>');
+  expect(html).toContain('<dt>Time control</dt>');
+  expect(html).toContain('>3+2</span>'); expect(html).toContain('>Blitz</small>');
   expect(html).toContain(`<time dateTime="${at}">`);
   expect(html).not.toMatch(/Chess960|rating change|\+8/);
-  expect(render({ ...game, clockStatus: 'not_integrated' })).toContain('<dd>Untimed</dd>');
+  expect(render({ ...game, clockStatus: 'not_integrated' })).toContain('>Untimed</span>');
 });
 it('labels the real start or acceptance explicitly and formats date/time with the viewer timezone and UTC offset', () => {
   expect(gameInfoTimestamp(siteInfo, 'UTC')).toMatchObject({ at, label: 'Started (local time)' });
@@ -45,9 +47,9 @@ it('handles live, waiting, pending, finished and aborted games without implying 
   }
   for (const winner of ['white', 'black'] as const) {
     const html = render({ ...game, status: 'finished', result: { outcome: 'win', winner, reason: 'resignation' } });
-    expect(html).toContain(`${winner === 'white' ? '1-0' : '0-1'} · ${winner === 'white' ? 'White' : 'Black'} won by resignation.`);
+    expect(html).toContain(`<strong>${winner === 'white' ? '1-0' : '0-1'}</strong> · ${winner === 'white' ? 'White' : 'Black'} won by resignation.`);
   }
-  expect(render({ ...game, status: 'finished', result: { outcome: 'draw', reason: 'agreement' } })).toContain('½–½ · Draw by agreement.');
+  expect(render({ ...game, status: 'finished', result: { outcome: 'draw', reason: 'agreement' } })).toContain('<strong>½–½</strong> · Draw by agreement.');
   expect(render({ ...game, status: 'aborted', result: { outcome: 'aborted', reason: 'first_move_deadline', missedSide: 'black' } }))
     .toContain('Black did not make a first move in time. No win or loss was recorded.');
 });

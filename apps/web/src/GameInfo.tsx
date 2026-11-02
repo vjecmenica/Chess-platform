@@ -1,7 +1,7 @@
 import type { GameReadResponse, GameState, SiteGameInfo } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { resultDisplay } from './result-display';
-import { timeControlLabel } from './TimeControlSelect';
+import { InfoTimeControl } from './TimeControlIcon';
 
 const variantLabels: Record<SiteGameInfo['variant'], string> = { standard: 'Standard' };
 
@@ -27,27 +27,24 @@ export function liveGameStatus(game: GameState, browsingHistory: boolean): strin
 export function GameInfo({ game }: { game: GameReadResponse }) {
   const timestamp = gameInfoTimestamp(game.siteInfo);
   const result = game.status === 'finished' || game.status === 'aborted' ? resultDisplay(game.result) : null;
-  const status = result ? `${result.score} · ${result.explanation}`
-    : game.status === 'waiting' ? 'Waiting for players to be ready'
+  const status = game.status === 'waiting' ? 'Waiting for players to be ready'
       : game.status === 'active' ? 'In progress'
         : game.status === 'aborted' ? 'Aborted · No win or loss recorded'
           : game.status === 'pending_adjudication' ? 'Result is being adjudicated' : 'Result unavailable';
-  const control = game.clockStatus === 'not_integrated' ? 'Untimed'
-    : game.timeControl === null ? 'Unavailable'
-      : 'source' in game.timeControl ? game.timeControl.raw
-        : timeControlLabel(game.timeControl.initialMs, game.timeControl.incrementMs);
   return <section className="game-info" aria-label="Game information">
     <dl>
-      {(['white', 'black'] as const).map(side => <div key={side}>
+      {(['white', 'black'] as const).map(side => <div className="game-info-player" key={side}>
         <dt>{side === 'white' ? 'White' : 'Black'}</dt>
-        <dd><strong>{sitePlayerName(game.playerNames, side)}</strong>{' '}<small aria-label="Rating unavailable">Unrated</small></dd>
+        <dd><strong>{sitePlayerName(game.playerNames, side)}</strong>{' '}<small><span aria-hidden="true">—</span>
+          <span className="visually-hidden">Rating unavailable</span></small></dd>
       </div>)}
-      <div><dt>{result || game.status === 'finished' || game.status === 'aborted' ? 'Result' : 'Status'}</dt><dd>{status}</dd></div>
-      <div><dt>{timestamp?.label ?? 'Start time'}</dt><dd>{timestamp
+      <div className="game-info-outcome"><dt>{result || game.status === 'finished' || game.status === 'aborted' ? 'Result' : 'Status'}</dt>
+        <dd>{result ? <><strong>{result.score}</strong>{' · '}{result.explanation}</> : status}</dd></div>
+      <div className="game-info-date"><dt>{timestamp?.label ?? 'Start time'}</dt><dd>{timestamp
         ? <time dateTime={timestamp.at}>{timestamp.text}</time> : 'Unavailable'}</dd></div>
-      <div><dt>Time control</dt><dd>{control}</dd></div>
-      <div><dt>Rated</dt><dd>{game.rated === false ? 'Unrated' : 'Unavailable'}</dd></div>
-      <div><dt>Variant</dt><dd>{game.siteInfo ? variantLabels[game.siteInfo.variant] : 'Unavailable'}</dd></div>
+      <div><dt>Time control</dt><dd><InfoTimeControl game={game} /></dd></div>
+      <div className="game-info-mode"><dt>Rated status</dt><dd>{game.rated === false ? 'Unrated' : 'Unavailable'}</dd></div>
+      <div className="game-info-mode"><dt>Variant</dt><dd>{game.siteInfo ? variantLabels[game.siteInfo.variant] : 'Unavailable'}</dd></div>
     </dl>
   </section>;
 }

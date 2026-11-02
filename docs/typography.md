@@ -30,6 +30,19 @@ tokens; do not enlarge them as a side effect of changing card text. Large home-p
 hero text also retains its separate display treatment. Keep detailed tables and
 engine output scrollable only where their content actually needs it.
 
+Info/Chat/Notes, Moves/Opening Book and Computer Analysis/Move times share
+`.analysis-view-tabs`: use `--tab-height`, `--tab-padding`, and `--tab-gap` rather
+than panel-specific button dimensions. Their active underline and text use wood
+neutrals, with the same inset keyboard-focus outline. Game Info uses 16px player
+names and result scores, 14px values and 13px labels. Missing player ratings use
+an accessible dash; the game's Unrated status is stated once.
+
+Time-control symbols are original 20px inline SVGs accompanied by category text.
+Their display categories follow the explicit preset assignments in the product
+specification, not an inferred rating pool. Unknown/custom controls have no guessed
+category. Simple PGN controls can match a supported preset but retain their raw tag
+and PGN source label; multi-stage controls remain raw metadata.
+
 ## Button hierarchy
 
 Buttons default to a quiet cream surface with a wood-neutral border. Use the explicit

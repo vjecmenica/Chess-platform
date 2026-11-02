@@ -6,6 +6,9 @@
   --text-caption: .75rem;
   --text-heading: 1.25rem;
   --text-muted: #526157;
+  --tab-height: 36px;
+  --tab-padding: 6px 10px;
+  --tab-gap: 4px;
   --evaluation-white: #eee9d9;
   --evaluation-black: #333b36;
   font-size: 100%;
@@ -396,18 +399,30 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-score-badge[data-side="white"] { background: var(--evaluation-white, #eee9d9); color: #28231f; }
 .engine-score-badge[data-side="black"] { background: var(--evaluation-black, #333b36); color: #fffdf8; border-color: #333b36; }
 .engine-candidate:has(.engine-score-badge) { align-items: center; }
-.game-chat-header .analysis-view-tabs { border-bottom: 0; gap: 0; min-width: 0; }
-.game-chat-header .analysis-view-tabs button { font-size: var(--text-body); padding: 6px 9px; }
+.game-chat-header .analysis-view-tabs { border-bottom: 0; min-width: 0; }
 .chat-unread { margin-left: 4px; color: #0867a5; font-size: .65em; }
 .game-info-tab { flex: 1; min-height: 0; overflow: auto; }
 .game-info-tab:focus-visible { outline: 2px solid #a47a37; outline-offset: 2px; }
-.game-info dl { margin: 2px 0; font-size: var(--text-compact); }
-.game-info dl > div { display: grid; grid-template-columns: minmax(70px, .9fr) minmax(0, 1.6fr);
-  gap: 8px; padding: 4px 0; border-bottom: 1px solid #e9e2d7; }
-.game-info dl > div:last-child { border-bottom: 0; }
-.game-info dt { font-weight: 600; color: #756451; font-size: var(--text-meta); }
-.game-info dd { margin: 0; overflow-wrap: anywhere; }
-.game-info dd small { font-size: var(--text-meta); color: #756451; }
+.game-info { padding: 0 2px 4px; color: var(--wood-ink, #382b22); }
+.game-info dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px;
+  margin: 0; font-size: var(--text-compact); line-height: 1.45; }
+.game-info dl > div { grid-column: 1 / -1; display: grid; grid-template-columns: 80px minmax(0, 1fr);
+  align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid #e9e2d7; }
+.game-info dt { font-weight: 500; color: var(--wood-muted, #756451); font-size: var(--text-meta); }
+.game-info dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.game-info dd small { font-size: var(--text-meta); color: var(--wood-muted, #756451); }
+.game-info .game-info-player { grid-template-columns: 40px minmax(0, 1fr); }
+.game-info-player strong { font-size: var(--text-body); line-height: 1.4; font-weight: 650; }
+.game-info-player small { margin-left: 4px; white-space: nowrap; }
+.game-info .game-info-outcome { grid-template-columns: 44px minmax(0, 1fr); padding: 7px 8px; margin: 4px 0;
+  border: 0; border-radius: 5px; background: #f5efe4; }
+.game-info-outcome strong { font-size: var(--text-body); font-weight: 700; }
+.game-info .game-info-date { display: block; }
+.game-info-date dd { margin-top: 3px; font-variant-numeric: tabular-nums; }
+.game-info .game-info-mode { grid-column: auto; display: block; border-bottom: 0; padding-top: 8px; }
+.game-info-mode dd { margin-top: 3px; font-weight: 600; }
+.game-info-time-control { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.time-control-icon { flex: 0 0 20px; width: 20px; height: 20px; color: #795435; vertical-align: middle; }
 .analysis-open { display: inline-block; padding: 8px 14px; text-decoration: none; border: 1px solid; border-radius: 8px;
   font-size: var(--text-compact); font-weight: 600; line-height: 1.35; }
 .explorer-game[href] { color: #3b2c22; text-decoration: none; padding: 9px 13px;
@@ -787,12 +802,12 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-results { gap: 6px; }
 .analysis-workspace .review-graph { height: 112px; }
 .analysis-workspace .review-summary { max-width: 1000px; width: 100%; }
-.analysis-view-tabs { display: flex; gap: 4px; border-bottom: 1px solid #dedbd2; }
-.analysis-view-tabs button { min-height: 34px; padding: 5px 12px; border: 0; border-bottom: 2px solid transparent;
-  border-radius: 5px; background: transparent; color: #5b665d; font: inherit;
-  font-size: var(--text-compact); cursor: pointer; }
-.analysis-view-tabs button:hover:not(:disabled) { color: #213c30; background: #f2eee5; }
-.analysis-view-tabs button[aria-pressed="true"] { color: #213c30; border-bottom-color: #875d35; font-weight: 700; }
+.analysis-view-tabs { display: flex; gap: var(--tab-gap); border-bottom: 1px solid #dedbd2; }
+.analysis-view-tabs button { min-height: var(--tab-height); padding: var(--tab-padding); border: 0; border-bottom: 2px solid transparent;
+  border-radius: 5px; background: transparent; color: var(--wood-muted, #756451); font: inherit;
+  font-size: var(--text-compact); line-height: 1.35; cursor: pointer; }
+.analysis-view-tabs button:hover:not(:disabled) { color: var(--wood-ink, #382b22); background: #f2eee5; }
+.analysis-view-tabs button[aria-pressed="true"] { color: var(--wood-ink, #382b22); border-bottom-color: #875d35; font-weight: 700; }
 .analysis-view-tabs button:focus-visible, .move-time-column:focus-visible { outline: 3px solid #a66422; outline-offset: -3px; }
 .analysis-view-tabs button:disabled { opacity: .5; cursor: default; }
 .review-content > [role="region"] { min-width: 0; }
@@ -956,10 +971,10 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .game-chat-content { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .game-chat-content[hidden] { display: none; }
 .game-chat-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px;
-  flex: 0 0 auto; font-size: var(--text-meta); color: #756451; padding-bottom: 8px; }
+  flex: 0 0 auto; font-size: var(--text-meta); color: #756451; padding-bottom: 10px; }
 .game-chat-header > button { grid-column: 2; grid-row: 1; }
 .game-chat[data-hidden="true"] .game-chat-header { padding-bottom: 0; }
-.game-layout .game-chat button { min-height: 32px; margin: 0; padding: 5px 9px; }
+.game-layout :where(.game-chat button) { min-height: 32px; margin: 0; padding: 5px 9px; }
 .game-chat-messages { list-style: none; margin: 0; padding: 4px 0; overflow: auto;
   min-height: 100px; height: 220px; flex: 1 1 auto; overscroll-behavior: contain; }
 .game-chat-messages:focus-visible { outline: 2px solid #a47a37; outline-offset: 2px; }
