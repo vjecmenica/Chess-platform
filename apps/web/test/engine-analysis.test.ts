@@ -6,7 +6,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, searchCommand,
   searchProfile, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
-import { candidateLines, currentEngineEvaluation, EnginePanel, EngineToggle, engineLineRows, interactiveLimits } from '../src/EnginePanel';
+import { candidateLines, currentEngineEvaluation, EnginePanel, EngineToggle, EngineCurrentScore, engineLineRows, interactiveLimits } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -344,7 +344,7 @@ describe('browser Stockfish controller', () => {
 
 it('renders an accessible engine switch and a labelled score without using a button title', () => {
   const render = (enabled: boolean, score: string | null) => renderToStaticMarkup(createElement(EngineToggle,
-    { enabled, score, onToggle: () => {} }));
+    { enabled, onToggle: () => {} })) + renderToStaticMarkup(createElement(EngineCurrentScore, { enabled, score }));
   expect(render(true, '+0.37')).toContain('role="switch" aria-checked="true"');
   expect(render(true, '+0.37')).toContain('Current position, White perspective +0.37');
   expect(render(true, 'Mate -3')).toContain('>Mate -3</strong>');

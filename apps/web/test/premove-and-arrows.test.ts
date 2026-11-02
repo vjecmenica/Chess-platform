@@ -6,13 +6,76 @@ import { createPositionFromFen } from '@chess/domain';
 import { arrowPath, BoardArrows } from '../src/BoardArrows';
 import { isLeftPointerPress, keepsPremovesOnLeftPress } from '../src/board-interaction';
 import { arrowCenter, toggleArrow } from '../src/board-arrows';
-import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
+import { addPremove, appendValidPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from '../src/premove-model';
 
 const whiteWaiting = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
 const blackWaiting = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 describe('client-side premoves', () => {
+  it.each([
+    ['c2', 'c5'], ['c2', 'd4'], ['b1', 'b4'], ['c1', 'c3'], ['a1', 'b3'], ['d1', 'e3'], ['e1', 'e3'],
+  ] as const)('rejects impossible intrinsic movement from %s to %s before queuing', (from, to) => {
+    expect(premoveChoice(whiteWaiting, 'white', [], from, to)).toEqual({ kind: 'invalid' });
+    expect(appendValidPremove(whiteWaiting, 'white', [], { id: 'impossible', from, to })).toBeNull();
+  });
+  it('validates pawn direction, starting-rank doubles and earlier queued positions for both sides', () => {
+    const queue = appendValidPremove(whiteWaiting, 'white', [], { id: 'one', from: 'c2', to: 'c4' })!;
+    expect(queue).toHaveLength(1);
+    expect(premoveChoice(whiteWaiting, 'white', queue, 'c4', 'c5').kind).toBe('move');
+    for (const to of ['c3', 'c6', 'd6'] as const)
+      expect(premoveChoice(whiteWaiting, 'white', queue, 'c4', to).kind).toBe('invalid');
+    expect(premoveChoice(blackWaiting, 'black', [], 'c7', 'c5').kind).toBe('move');
+    expect(premoveChoice(blackWaiting, 'black', [], 'c7', 'c4').kind).toBe('invalid');
+    const black = [{ id: 'one', from: 'c7' as const, to: 'c5' as const }];
+    expect(premoveChoice(blackWaiting, 'black', black, 'c5', 'c6').kind).toBe('invalid');
+    expect(premoveChoice(blackWaiting, 'black', black, 'c5', 'c3').kind).toBe('invalid');
+  });
+  it('retains empty-square captures and en passant plans that become legal after the opponent moves', () => {
+    const fen = '4k3/3p4/8/4P3/8/8/8/4K3 b - - 0 1';
+    const queue = appendValidPremove(fen, 'white', [], { id: 'ep', from: 'e5', to: 'd6' })!;
+    expect(queue).toHaveLength(1); expect(nextPremove(fen, 'white', queue)).toBeNull();
+    const position = createPositionFromFen(fen);
+    expect(position.submitMove({ side: 'black', from: 'd7', to: 'd5' }).accepted).toBe(true);
+    expect(nextPremove(position.getPosition().fen, 'white', queue)).toEqual(queue[0]);
+    const ordinaryCapture = projectedPieces('4k3/8/8/8/8/8/Pp6/7K b - - 0 1', 'white',
+      [{ id: 'capture', from: 'a2', to: 'b3' }]);
+    expect(ordinaryCapture.get('b2')).toBe('p');
+    expect(ordinaryCapture.get('b3')).toBe('P');
+  });
+  it('allows an opponent reply to unblock a sliding route or release a pin, then uses real legality', () => {
+    for (const [fen, from, to, replyFrom, replyTo] of [
+      ['4k3/8/8/8/8/n7/8/R3K3 b - - 0 1', 'a1', 'a5', 'a3', 'b5'],
+      ['4r1k1/8/8/8/8/8/4R3/4K3 b - - 0 1', 'e2', 'f2', 'e8', 'a8'],
+    ] as const) {
+      const queue = appendValidPremove(fen, 'white', [], { id: 'speculative', from, to })!;
+      expect(queue).toHaveLength(1);
+      const position = createPositionFromFen(fen);
+      expect(position.submitMove({ side: 'black', from: replyFrom, to: replyTo }).accepted).toBe(true);
+      expect(nextPremove(position.getPosition().fen, 'white', queue)).toEqual(queue[0]);
+    }
+  });
+  it('requires a valid promotion, projects the chosen piece, and rejects stale or corrupt plans', () => {
+    const fen = '4k3/P7/8/8/8/8/8/4K3 b - - 0 1';
+    expect(appendValidPremove(fen, 'white', [], { id: 'missing', from: 'a7', to: 'a8' })).toBeNull();
+    const knight = appendValidPremove(fen, 'white', [], { id: 'knight', from: 'a7', to: 'a8', promotion: 'n' })!;
+    expect(projectedPieces(fen, 'white', knight).get('a8')).toBe('N');
+    expect(premoveChoice(fen, 'white', knight, 'a8', 'c7').kind).toBe('move');
+    expect(premoveChoice(fen, 'white', knight, 'a8', 'a6').kind).toBe('invalid');
+    expect(appendValidPremove(whiteWaiting, 'white', [], { id: 'wrong', from: 'g1', to: 'f3', promotion: 'q' })).toBeNull();
+    expect(appendValidPremove(whiteWaiting, 'white', [{ id: 'bad', from: 'c2', to: 'c5' }],
+      { id: 'next', from: 'g1', to: 'f3' })).toBeNull();
+    expect(appendValidPremove('4k3/8/8/8/8/8/8/4K3 b - - 0 1', 'white', [], knight[0]!)).toBeNull();
+  });
+  it('normalizes castling while keeping rights lost by earlier queued king or rook moves lost', () => {
+    const fen = 'r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1';
+    expect(appendValidPremove(fen, 'white', [], { id: 'castle', from: 'e1', to: 'h1' })?.[0]?.to).toBe('g1');
+    expect(premoveChoice(fen.replace('KQkq', '-'), 'white', [], 'e1', 'g1').kind).toBe('invalid');
+    const movedRook: Premove[] = [{ id: 'one', from: 'h1', to: 'h2' }, { id: 'two', from: 'h2', to: 'h1' }];
+    expect(premoveChoice(fen, 'white', movedRook, 'e1', 'g1').kind).toBe('invalid');
+    const movedKing: Premove[] = [{ id: 'one', from: 'e1', to: 'f1' }, { id: 'two', from: 'f1', to: 'e1' }];
+    expect(premoveChoice(fen, 'white', movedKing, 'e1', 'c1').kind).toBe('invalid');
+  });
   it('queues consecutive plans without changing the confirmed position', () => {
     const first = premoveChoice(whiteWaiting, 'white', [], 'e2', 'e4');
     expect(first).toEqual({ kind: 'move', from: 'e2', to: 'e4' });

@@ -53,6 +53,24 @@ In newly accepted casual games, each side has a separate 30-second deadline for 
 
 At flag fall, the clock calls `flagTimeout` once with the side to move and the effective deadline. A sound proof that the opponent cannot mate ends the game as `timeout_no_mating_possibility`; a verified legal mate line ends it as a timeout win. In a casual guest game, every other flag becomes an opponent win under the explicit policy, even when mating possibility is unresolved. The board and history do not change. A precomputed line may be registered with the clock before the deadline; the domain verifies it and the live clock path never searches for one. The separate strict domain mode can still hold an unresolved flag pending for a verified mate line; search exhaustion is not a proof. A repeated flag or ruling cannot create a second result.
 
+## Client premove admission
+
+Premoves are private client-side plans until the player can move. Clicks, drags
+and promotion choices share a final admission guard. It rejects impossible piece
+geometry, backward/overlong pawn moves, double pawn steps away from the starting
+rank, own-occupied destinations, invalid promotions and castling without retained
+rights and the original rook. Earlier queued moves project piece locations,
+promotions and lost castling rights before another plan is checked. For example,
+c2–c5 is rejected, c2–c4 can be queued, and that pawn cannot then double from c4.
+
+This deliberately does not prove a legal sequence of opponent replies. Blockers,
+capture availability, attacked squares and king safety can change on the opponent's
+turn, so queue-time validation permits speculative sliding moves, empty diagonal
+pawn captures and en passant plans. It does not require present-position legality
+or search possible replies. When execution becomes possible, the domain checks
+the actual position and promotion; an illegal head discards the remaining queue.
+The server still validates and orders every submitted move normally.
+
 ## Work remaining for timed play
 
 The requested repetition thresholds and claim procedure are implemented for guest games. The [online claim and clock decision](adjudication-design.md#incorrect-claims-online) describes the current behavior:

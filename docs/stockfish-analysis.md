@@ -1,5 +1,14 @@
 # Browser Stockfish builds and operation
 
+The current-position panel is titled **Analysis**. Its switch sits beside Depth
+and the continuous-analysis shortcut; full-game **Computer Analysis** remains a
+separate workload. While the interactive engine is enabled, a light-blue board
+arrow follows its latest legal first-PV move for the displayed FEN. Completed or
+cached output for that same position is usable; stopped, unavailable, missing or
+other-position output clears the arrow. Domain validation covers promotion,
+castling and en passant. This arrow is transient and separate from user markings:
+flipping rotates it, annotation edits do not remove it, and it is never serialized.
+
 Analysis opens interactive **Stockfish 19 Full** by default, with depth 25 and a
 15-second limit (first reached wins). Settings offers **Stockfish 19 Lite** as a
 lower-download/memory option. The engine choice and requested thread count are

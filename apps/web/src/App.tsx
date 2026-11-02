@@ -18,12 +18,13 @@ import { boardMove, isLeftPointerPress, keepsPremovesOnLeftPress,
 import { boardCoordinates, capturedPieces, highlightedMove, materialAdvantage } from './board-display';
 import { PlayerMaterialPanel } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
-import { BoardArrows } from './BoardArrows';
+import { BoardArrows, EngineBestMoveArrow } from './BoardArrows';
+import type { EngineBestMove } from './engine-board';
 import { analysisBoardStorageKey, annotationColors, boardOrientation,
   applyAnnotationGesture, clearPositionAnnotations, clearPositionArrows, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
   serializeAnalysisBoard,
   type AnalysisBoardState } from './analysis-board';
-import { addPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
+import { appendValidPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
 import { watchGameUpdates } from './game-update-stream';
@@ -149,6 +150,7 @@ export function App() {
   const [reviewHost, setReviewHost] = useState<HTMLDivElement | null>(null);
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
+  const [engineMove, setEngineMove] = useState<EngineBestMove | null>(null);
   const [evaluationPendingFen, setEvaluationPendingFen] = useState<string | null>(null);
   const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(null);
@@ -758,9 +760,13 @@ export function App() {
   }
 
   function queuePremove(from: Square, to: Square, promotionPiece?: 'q' | 'r' | 'b' | 'n') {
+    const current = gameRef.current;
+    if (current === null || current.status !== 'active' || analysisOpen || pendingRef.current !== null
+      || pendingActionRef.current !== null || posting.current
+      || isViewingLiveHistory(current.status, selectedReplayPly, current.history.length)) return;
     const move: Premove = { id: crypto.randomUUID(), from, to,
       ...(promotionPiece === undefined ? {} : { promotion: promotionPiece }) };
-    updatePremoves(queue => addPremove(queue, move));
+    updatePremoves(queue => appendValidPremove(current.position.fen, current.yourSeat, queue, move) ?? []);
     premoveAttemptedVersion.current = null;
   }
 
@@ -1294,6 +1300,8 @@ export function App() {
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
                         aria-hidden="true" draggable={false} />}
                     </button>})}
+                  {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
+                    && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
                   <BoardArrows arrows={visibleArrows} orientation={orientation} />
                 </div>
                 <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
@@ -1373,6 +1381,7 @@ export function App() {
                   setAnalysis(current => current === null ? null : selectMain(current, game, ply));
                   setSelected(null);
                 }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                onBestMoveChange={setEngineMove}
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
             <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
               book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}

@@ -1,6 +1,7 @@
 import type { GameSide } from '@chess/contracts';
 import { annotationColors } from './analysis-board';
 import { arrowCenter, type BoardArrow } from './board-arrows';
+import type { EngineBestMove } from './engine-board';
 
 export function arrowPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
   const length = Math.hypot(to.x - from.x, to.y - from.y);
@@ -27,5 +28,12 @@ export function BoardArrows({ arrows, orientation }: {
       return <path key={`${arrow.from}-${arrow.to}-${index}`} d={arrowPath(start, end)} stroke="none"
         fill={arrow.color === undefined ? undefined : annotationColors[arrow.color].fill} />;
     })}
+  </svg>;
+}
+
+export function EngineBestMoveArrow({ move, orientation }: { move: EngineBestMove; orientation: GameSide }) {
+  return <svg className="board-arrows engine-best-move" viewBox="0 0 800 800" aria-hidden="true" focusable="false"
+    data-from={move.from} data-to={move.to}>
+    <path d={arrowPath(arrowCenter(move.from, orientation), arrowCenter(move.to, orientation))} stroke="none" />
   </svg>;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController,
@@ -13,6 +13,7 @@ import { createInteractiveSettings, depthSlider, timeSlider, updateDepthSlider, 
 import { MoveTimes } from './MoveTimes';
 import { moveTimes } from './move-times';
 import { createBrowserEngineWorker } from './browser-engine-worker';
+import { engineBestMove, type EngineBestMove } from './engine-board';
 import { browserEngineThreadCapabilities, engineThreadFailure, effectiveThreads, engineCacheIdentity, engineDescription, liteEngine, maximumEngineThreads,
   readEnginePreference, resolveEngine, saveEnginePreference, type EnginePreference } from './engine-builds';
 
@@ -171,19 +172,19 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
   </div>;
 }
 
-export function EngineToggle({ enabled, score, onToggle }: {
-  enabled: boolean; score: string | null; onToggle: () => void;
+export function EngineToggle({ enabled, onToggle }: {
+  enabled: boolean; onToggle: () => void;
 }) {
-  return <div className="engine-toggle-status">
-    <button type="button" className="engine-toggle" role="switch" aria-checked={enabled}
+  return <button type="button" className="engine-toggle" role="switch" aria-checked={enabled}
       aria-label="Interactive engine" aria-description="Turn current-position evaluation on or off. Computer Analysis runs independently."
       onClick={onToggle}>
       <span className="engine-toggle-track" aria-hidden="true"><span>{enabled ? '✓' : ''}</span></span>
-    </button>
-    <strong className="engine-current-score" aria-label={score === null
+    </button>;
+}
+export function EngineCurrentScore({ enabled, score }: { enabled: boolean; score: string | null }) {
+  return <strong className="engine-current-score" aria-label={score === null
       ? enabled ? 'Current position evaluation pending' : 'Interactive engine off'
-      : `Current position, White perspective ${score}`}>{score ?? '—'}</strong>
-  </div>;
+      : `Current position, White perspective ${score}`}>{score ?? '—'}</strong>;
 }
 
 export function currentEngineEvaluation(state: EngineState, fen: string): EngineEvaluation | null {
@@ -192,12 +193,13 @@ export function currentEngineEvaluation(state: EngineState, fen: string): Engine
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, onEvaluationPendingChange, reviewHost, sessionOnly = false }: {
+  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
   readonly onEvaluationPendingChange?: (fen: string | null) => void;
+  readonly onBestMoveChange?: (move: EngineBestMove | null) => void;
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
 }) {
@@ -329,6 +331,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }
 
   const evaluation = currentEngineEvaluation(state, fen);
+  const bestMove = useMemo(() => engineBestMove(state, fen, game.id, enabled), [state, fen, game.id, enabled]);
+  useLayoutEffect(() => { onBestMoveChange?.(bestMove); },
+    [bestMove?.gameId, bestMove?.fen, bestMove?.from, bestMove?.to, onBestMoveChange]);
+  useEffect(() => () => onBestMoveChange?.(null), [onBestMoveChange]);
   // Reuse SAN conversion when review progress or parent callbacks render this panel.
   const lines = useMemo(() => state.kind === 'searching' && state.fen === fen && state.lines
     ? state.lines.map(line => candidateLine(fen, line))
@@ -343,13 +349,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
-      <EngineToggle enabled={enabled && state.kind !== 'error'}
-        score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null}
-        onToggle={() => {
-          if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
-          else { controller.current?.start(fen); setEnabled(true); }
-        }} />
-      <strong className="engine-panel-title">Engine Evaluation</strong>
+      <strong className="engine-panel-title">Analysis</strong>
+      <EngineCurrentScore enabled={enabled && state.kind !== 'error'}
+        score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null} />
       <button type="button" className="engine-settings-button" ref={settingsButtonRef}
         aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
         onClick={() => setSettingsOpen(value => !value)}>
@@ -367,7 +369,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           setSettingsOpen(false); settingsButtonRef.current?.focus();
         }}>Close</button></div>
       <label className="engine-line-setting">Engine
-        <select aria-label="Analysis engine" aria-description="Applies to Engine Evaluation and Computer Analysis."
+        <select aria-label="Analysis engine" aria-description="Applies to Analysis and Computer Analysis."
           value={preference.choice} onChange={event => {
           changeEngine({ ...preference, choice: event.target.value === 'lite' ? 'lite' : 'full' });
         }}><option value="full">Stockfish 19 Full</option><option value="lite">Stockfish 19 Lite</option></select>
@@ -417,6 +419,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       title={`${description}, GPLv3. Runs in this browser.`}>Engine license and source</a>
     </div>}
     <div className="engine-depth-row">
+      <EngineToggle enabled={enabled && state.kind !== 'error'} onToggle={() => {
+        if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
+        else { controller.current?.start(fen); setEnabled(true); }
+      }} />
       <small className="engine-depth">Depth {evaluation?.depth ?? '—'}{state.kind === 'done' && state.cached ? ' · cached' : ''}</small>
       <button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous}
         aria-description="Analyze without a depth or time limit. Activate again to restore the previous bounded limits."
