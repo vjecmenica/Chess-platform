@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import type { GameChatMessage } from '@chess/contracts';
-import { chatComposerState, chatResponse, mergeChatMessages, nearChatBottom } from '../src/game-chat';
+import { chatComposerState, chatEnterSubmits, chatResponse, mergeChatMessages, nearChatBottom } from '../src/game-chat';
 import { ChatComposer, ChatMessage, GameChat } from '../src/GameChat';
 
 function message(id: string): GameChatMessage {
@@ -54,7 +54,7 @@ it('waits for server permission without flashing a read-only notice, including f
   expect(html).toMatch(/aria-pressed="true"[^>]*>Chat/);
   expect(html).toMatch(/aria-pressed="false"[^>]*>Notes/);
   expect(html).toContain('Private notes');
-  expect(html).toContain('<h2 id="chat-heading-game">Game chat</h2>');
+  expect(html).not.toContain('>Game chat</h2>');
   expect(html).toContain('aria-expanded="true" aria-controls="chat-content-game">Hide</button>');
   expect(html).not.toMatch(/<details|<summary|Hide chat|Show chat/);
   expect(html).not.toContain('Chat is read-only');
@@ -97,7 +97,7 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     const html = renderToStaticMarkup(createElement(GameChat, props));
     expect(getItem).toHaveBeenCalledWith('game-chat-hidden:game:white');
     expect(html).toContain('data-hidden="true"');
-    expect(html).toMatch(/game-chat-header"><h2[^>]*>Game chat<\/h2>[\s\S]*?>Show<\/button>/);
+    expect(html).toMatch(/game-chat-header">[\s\S]*?>Chat<\/button>[\s\S]*?>Notes<\/button>[\s\S]*?>Show<\/button>/);
     expect(html).toContain('aria-expanded="false" aria-controls="chat-content-game">Show</button>');
     expect(html).toContain('id="chat-content-game" hidden=""');
     expect(html).not.toContain('<form');
@@ -107,6 +107,31 @@ it('uses the existing game-and-seat hidden preference and keeps Show available w
     expect(opponent).toContain('data-hidden="false"');
     expect(opponent).toContain('role="log"');
   } finally { vi.unstubAllGlobals(); }
+});
+it('submits Enter only outside IME composition, repeated keydown and pending/permission states', () => {
+  const event = { key: 'Enter', isComposing: false, keyCode: 13, repeat: false };
+  expect(chatEnterSubmits(event, false, true)).toBe(true);
+  for (const change of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { key: 'a' }])
+    expect(chatEnterSubmits({ ...event, ...change }, false, true)).toBe(false);
+  expect(chatEnterSubmits(event, true, true)).toBe(false);
+  expect(chatEnterSubmits(event, false, false)).toBe(false);
+});
+it('offers explicit preset buttons but no Send button, and makes uncertain delivery retryable from the input', () => {
+  const props = { gameId: 'game', state: 'allowed' as const, text: 'GG', sending: false,
+    retrying: false, onSend: () => {}, onText: () => {} };
+  const render = (changes = {}) => renderToStaticMarkup(createElement(ChatComposer, { ...props, ...changes }));
+  const ready = render();
+  expect(ready).not.toMatch(/type="submit"|>Send<\/button>|placeholder=/);
+  for (const preset of ['GG', 'WP', 'TY', 'GTG', 'BYE']) expect(ready).toContain(`aria-label="Send ${preset}"`);
+  const retry = render({ retrying: true });
+  expect(retry).toContain('readOnly=""');
+  expect(retry).toContain('Press Enter in the input to retry the same message.');
+  expect(retry).toMatch(/<input[^>]*value="GG"/);
+  expect(retry.match(/disabled=""/g)).toHaveLength(5);
+  const pending = render({ sending: true });
+  expect(pending).toContain('Sending…');
+  expect(pending).toContain('readOnly=""');
+  expect(pending.match(/disabled=""/g)).toHaveLength(5);
 });
 it('distinguishes definite rejections from uncertain delivery so retries keep their identity', async () => {
   await expect(chatResponse(new Response(JSON.stringify({ error: 'chat_rate_limited' }), { status: 429 })))

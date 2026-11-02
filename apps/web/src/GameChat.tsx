@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
-import { chatComposerState, chatMessageLimit, chatResponse, mergeChatMessages, nearChatBottom,
+import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, chatResponse, mergeChatMessages, nearChatBottom,
   type ChatPermission } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
@@ -21,15 +21,29 @@ export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage
 
 export function ChatComposer({ gameId, state, text, sending, retrying, onSend, onText }: {
   gameId: string; state: ReturnType<typeof chatComposerState>; text: string; sending: boolean; retrying: boolean;
-  onSend: () => void; onText: (text: string) => void;
+  onSend: (preset?: string) => void; onText: (text: string) => void;
 }) {
+  const composing = useRef(false);
   if (state === 'loading') return null;
   if (state === 'read_only') return <p className="game-chat-read-only">Chat is read-only</p>;
-  return <form aria-busy={state === 'refreshing'} onSubmit={event => { event.preventDefault(); onSend(); }}>
+  return <form aria-busy={sending || state === 'refreshing'} onSubmit={event => event.preventDefault()}>
     <label className="visually-hidden" htmlFor={`chat-${gameId}`}>Chat message</label>
     <input id={`chat-${gameId}`} value={text} maxLength={chatMessageLimit} autoComplete="off"
-      disabled={sending || state !== 'allowed'} onChange={event => onText(event.target.value)} />
-    <button className="primary" type="submit" disabled={sending || state !== 'allowed' || !text.trim()}>{sending ? 'Sending…' : retrying ? 'Retry send' : 'Send'}</button>
+      aria-describedby={`chat-send-status-${gameId}`} readOnly={retrying || sending}
+      disabled={state !== 'allowed'} onChange={event => onText(event.target.value)}
+      onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
+      onKeyDown={event => {
+        if (chatEnterSubmits(event.nativeEvent, composing.current, state === 'allowed' && !sending && Boolean(text.trim()))) {
+          event.preventDefault(); onSend();
+        }
+      }} />
+    <small id={`chat-send-status-${gameId}`} className={sending || retrying ? 'game-chat-send-status' : 'visually-hidden'} role="status">
+      {sending ? 'Sending…' : retrying ? 'Delivery uncertain. Press Enter in the input to retry the same message.' : 'Press Enter to send.'}</small>
+    <div className="game-chat-presets" role="group" aria-label="Quick chat messages">
+      {chatPresets.map(preset => <button className="secondary" type="button" key={preset}
+        disabled={sending || retrying || state !== 'allowed'} aria-label={`Send ${preset}`}
+        onClick={() => onSend(preset)}>{preset}</button>)}
+    </div>
   </form>;
 }
 
@@ -44,6 +58,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const [sending, setSending] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [permission, setPermission] = useState<ChatPermission | null>(null);
   const statusRef = useRef(gameStatus);
   statusRef.current = gameStatus;
@@ -55,7 +70,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   });
   const list = useRef<HTMLOListElement>(null);
   const following = useRef(true);
-  const pending = useRef<{ requestId: string; text: string } | null>(null);
+  const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
   const posting = useRef(false);
   const mounted = useRef(false);
   const reading = useRef(false);
@@ -112,14 +127,14 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       return !value;
     });
   }
-  async function send() {
-    if (posting.current || composerState !== 'allowed') return;
-    const body = pending.current ?? { requestId: crypto.randomUUID(), text: text.trim() };
+  async function send(preset?: string) {
+    if (posting.current || composerState !== 'allowed' || preset !== undefined && pending.current !== null) return;
+    const body = pending.current ?? { requestId: crypto.randomUUID(), text: preset ?? text.trim(), preset: preset !== undefined };
     if (!body.text) return;
     pending.current = body;
     posting.current = true;
     setSending(true);
-    setError(null);
+    setSendError(null);
     try {
       const sent = await chatResponse<GameChatMessage>(await fetch(`/api/games/${gameId}/chat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken,
@@ -128,12 +143,12 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       pending.current = null;
       if (!mounted.current) return;
       receive([sent]);
-      setText('');
+      if (!body.preset) setText('');
       void refresh();
     } catch (cause) {
       if (typeof cause === 'object' && cause !== null && 'definitive' in cause && cause.definitive) pending.current = null;
-      if (mounted.current) setError(cause instanceof Error && 'definitive' in cause
-        ? cause.message : 'Message delivery is uncertain. Retry to confirm.');
+      if (mounted.current) setSendError(cause instanceof Error && 'definitive' in cause
+        ? cause.message : 'Message delivery is uncertain. Press Enter to retry.');
     } finally {
       posting.current = false;
       if (mounted.current) setSending(false);
@@ -145,14 +160,13 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
   return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}
-    aria-label={analysisOpen ? 'Game conversation and private notes' : undefined}
-    aria-labelledby={analysisOpen ? undefined : `chat-heading-${gameId}`}>
-    <div className="game-chat-header">{analysisOpen ? tabs : <h2 id={`chat-heading-${gameId}`}>Game chat</h2>}
+    aria-label="Game conversation and private notes">
+    <div className="game-chat-header">{tabs}
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
-    {!analysisOpen && tabs}
-    <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken} /></div>
+    <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
+      active={!hidden && activePanel === 'notes'} /></div>
     <div className="game-chat-tab" hidden={hidden || activePanel !== 'chat'}>
       <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
         aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
@@ -169,8 +183,9 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       }}>New messages ↓</button>}
       {error && <div className="game-chat-error"><p role="alert">{error}</p>
         <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
-      <ChatComposer gameId={gameId} state={composerState} text={text} sending={sending} retrying={pending.current !== null}
-        onSend={() => { void send(); }} onText={value => { pending.current = null; setText(value); }} />
+      {sendError && <small className="game-chat-error" role="alert">{sendError}</small>}
+      <ChatComposer gameId={gameId} state={composerState} text={pending.current?.text ?? text} sending={sending} retrying={pending.current !== null}
+        onSend={preset => { void send(preset); }} onText={value => { if (!pending.current) setText(value); }} />
     </div>
     </div>
   </aside>;

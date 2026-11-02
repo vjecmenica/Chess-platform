@@ -2,6 +2,12 @@ import type { GameChatMessage, GameState } from '@chess/contracts';
 
 export const chatMessageLimit = 500;
 export const chatHistoryLimit = 100;
+export const chatPresets = ['GG', 'WP', 'TY', 'GTG', 'BYE'] as const;
+
+export function chatEnterSubmits(event: { key: string; isComposing: boolean; keyCode: number; repeat: boolean },
+  composing: boolean, allowed: boolean) {
+  return allowed && event.key === 'Enter' && !event.isComposing && !composing && event.keyCode !== 229 && !event.repeat;
+}
 
 export interface ChatPermission { status: GameState['status']; canSend: boolean }
 export function chatComposerState(permission: ChatPermission | null, status: GameState['status']) {

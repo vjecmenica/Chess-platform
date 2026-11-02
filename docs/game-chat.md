@@ -52,12 +52,17 @@ themselves do not fetch chat or the game.
 
 Send acknowledgements are deduplicated against history. The history cursor advances
 only from history responses, so a newer own-message acknowledgement cannot skip an
-older opponent message. Uncertain send failures retain the retry key; editing the
-draft starts a new request. Reads and sends time out after ten seconds. Messages
+older opponent message. Enter sends a nonempty message outside IME composition;
+repeated keydown and pending requests cannot send duplicates. Optional GG/WP/TY/GTG/BYE
+buttons use the same endpoint and safeguards and preserve a separately typed draft.
+Uncertain send failures retain the retry key and text: the input stays focused and
+read-only until Enter confirms that same message. Presets are disabled until it is
+resolved. Definite rejections allow editing again. Reads and sends time out after ten seconds. Messages
 render as text, never HTML.
 
 The desktop rail stays beside the board. On narrower screens it becomes a
-section below the board/moves. The Hide/Show button is the only collapse control.
+section below the board/moves. Chat/Notes tabs share the header in live play and
+Analysis. The Hide/Show button is the only collapse control.
 Hiding is local to the browser, game, and seat and survives refresh; it does not
 delete history or notify the opponent.
 The list follows new messages only while the reader is near its bottom. Otherwise,
