@@ -1,10 +1,50 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { normalizedPositionKey, STANDARD_STARTING_FEN } from '@chess/domain';
-import { prepareExplorerGame, streamPgnGames } from '../src/explorer-pgn.js';
+import { explorerMainLine, prepareExplorerGame, streamPgnGames } from '../src/explorer-pgn.js';
+import { classifyExplorerSource } from '../src/explorer-diagnostic.js';
 
 const fixture = fileURLToPath(new URL('./fixtures/opening-book.pgn', import.meta.url));
 describe('offline opening PGN preparation', () => {
+  it('normalizes exact zero-castling spellings while preserving full legal play, tags, results and identity', () => {
+    for (const body of [
+      '1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.0-0 Nf6 5.d3 0-0 1/2-1/2',
+      '1.d4 d5 2.Nc3 Nc6 3.Bf4 Bf5 4.Qd2 Qd7 5.0-0-0 0-0-0 1/2-1/2',
+    ]) {
+      const source = '[Event "Synthetic 0-0"]\n[Custom "Keep 0-0-0"]\n[Result "1/2-1/2"]\n\n' + body;
+      const canonical = source.replace(body, body.replaceAll('0-0-0', 'O-O-O').replaceAll('0-0', 'O-O'));
+      const recovered = prepareExplorerGame(source, 24)!;
+      const expected = prepareExplorerGame(canonical, 24)!;
+      expect(recovered.originalPgn).toBe(source);
+      expect(recovered.tags).toEqual(expected.tags);
+      expect(recovered.tags.Custom).toBe('Keep 0-0-0');
+      expect(recovered.fingerprint).toBe(expected.fingerprint);
+      expect(recovered.positions).toEqual(expected.positions);
+      expect(recovered.moves).toEqual(expected.moves);
+      expect(recovered.positions.at(-1)?.ply).toBe(10);
+      expect(recovered.result).toBe('1/2-1/2');
+      expect(classifyExplorerSource(source)).toBe('valid');
+    }
+    expect(explorerMainLine('[Result "1-0"]\n\n8...0-0+ 9.0-0-0# 1-0')).toContain('8...O-O+ 9.O-O-O# 1-0');
+    expect(explorerMainLine('[Result "1-0"]\n\n1.e4 score0-0 0-0word 1-0')).toContain('score0-0 0-0word');
+  });
+
+  it('still rejects illegal castling, bad suffixes, absent/multiple results and mismatching headers', () => {
+    for (const source of [
+      '[Result "1-0"]\n\n1.0-0 1-0',
+      '[Result "1-0"]\n\n1.e4 e5',
+      '[Result "1-0"]\n\n1.e4 e5 1-0\nUncommented synthetic footer\n----------------',
+      '[Result "1-0"]\n\n1.e4 e5 1-0 2.Nf3 Nc6',
+      '[Result "1-0"]\n\n1.e4 e5 0-1',
+      '[Result "1-0"]\n\n1.e4 e5 (unclosed 0-0 1-0',
+      '[Result "1-0"]\n\n1.e4 e5 1-0\n[[Event "Damaged next tag"]',
+      '[Result "1-0"]\n\n1.Ng1f3 Nf6 1-0',
+      '[Result "1/2-1/2"]\n\n1.e4 e5 2.Nf3 Nc6 1/2-1/2 3.Bc4 Bc5 4.0-0 Nf6 1/2-1/2',
+    ]) {
+      expect(() => prepareExplorerGame(source, 24)).toThrow();
+      expect(() => classifyExplorerSource(source)).toThrow();
+    }
+  });
   it('streams independent games, reuses legal replay, strips annotations, and merges transpositions', async () => {
     const games: string[] = [];
     for await (const game of streamPgnGames(fixture)) games.push(game);

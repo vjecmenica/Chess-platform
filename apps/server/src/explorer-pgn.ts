@@ -63,7 +63,18 @@ export function explorerMainLine(text: string): string {
     if (!variation) clean += char;
   }
   if (braces || variation) throw new Error('Unterminated PGN annotation.');
-  return `${headers}\n\n${clean.replace(/\$\d+/g, '').replace(/[!?]+/g, '')}`;
+  const mainLine = clean.replace(/\$\d+/g, '').replace(/[!?]+/g, '');
+  const markers = [...mainLine.matchAll(/(?:^|\s)(1-0|0-1|1\/2-1\/2|\*)(?=\s|$)/g)];
+  if (markers.length !== 1 || !/(?:^|\s)(1-0|0-1|1\/2-1\/2|\*)\s*$/.test(mainLine))
+    return `${headers}\n\n${mainLine}`;
+  const normalized = mainLine
+    // A spelling compatibility rule, not permissive move parsing. Change only a
+    // complete zero-castling token; headers and result markers remain untouched.
+    // The caller still strictly validates every move, result, and starting position.
+    .replace(/(^|\s)(\d+\.{1,3})?0-0(-0)?([+#]?)(?=\s|$)/g,
+      (_token, space: string, number: string | undefined, long: string | undefined, suffix: string) =>
+        space + (number ?? '') + (long ? 'O-O-O' : 'O-O') + suffix);
+  return `${headers}\n\n${normalized}`;
 }
 
 export interface ExplorerContribution { position: string; uci: string }
