@@ -1,5 +1,4 @@
 import { ExplorerGames } from './ExplorerGames';
-import type { ParsedPgn } from '@chess/domain';
 import { memo, useEffect, useId, useState, type ReactNode } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisTree } from './analysis-model';
@@ -65,9 +64,8 @@ export function ExplorerExamples({ children }: { children: ReactNode }) {
   </section>;
 }
 
-export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore, onOpenGame }: {
+export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore }: {
   game: GameReadResponse; tree: AnalysisTree; onExplore: (uci: string) => void;
-  onOpenGame: (game: ParsedPgn, id: string, ply: number) => void;
 }) {
   const fen = mastersPath(game, tree).fen;
   const [retry, setRetry] = useState(0);
@@ -86,5 +84,5 @@ export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore, 
   if (game.status !== 'finished') return null;
   return <ExplorerContent result={state?.fen === fen ? state.result : null}
     onExplore={onExplore} onRetry={() => { setState(null); setRetry(value => value + 1); }}
-    examples={<ExplorerGames key={fen} fen={fen} onOpen={onOpenGame} />} />;
+    examples={<ExplorerGames key={fen} fen={fen} />} />;
 });

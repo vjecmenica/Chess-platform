@@ -6,7 +6,7 @@ import { chatComposerState, chatMessageLimit, chatResponse, mergeChatMessages, n
   type ChatPermission } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined }
+  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean }
 
 export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
   playerNames?: GamePlayerNames | undefined }) {
@@ -33,7 +33,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames }: Props) {
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false }: Props) {
   const [activePanel, setActivePanel] = useState<'chat' | 'notes'>('chat');
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
@@ -140,15 +140,18 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  return <aside className="game-chat" data-hidden={hidden} aria-labelledby={`chat-heading-${gameId}`}>
-    <div className="game-chat-header"><h2 id={`chat-heading-${gameId}`}>Game chat</h2>
+  const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game conversation and private notes">
+    <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat</button>
+    <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
+  </div>;
+  return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}
+    aria-label={analysisOpen ? 'Game conversation and private notes' : undefined}
+    aria-labelledby={analysisOpen ? undefined : `chat-heading-${gameId}`}>
+    <div className="game-chat-header">{analysisOpen ? tabs : <h2 id={`chat-heading-${gameId}`}>Game chat</h2>}
       <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
         aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
     <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
-    <div className="analysis-view-tabs" role="group" aria-label="Game conversation and private notes">
-      <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat</button>
-      <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
-    </div>
+    {!analysisOpen && tabs}
     <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken} /></div>
     <div className="game-chat-tab" hidden={hidden || activePanel !== 'chat'}>
       <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"

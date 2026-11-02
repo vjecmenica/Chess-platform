@@ -55,6 +55,11 @@ export function candidateLines(evaluation: EngineEvaluation):
   return lines.map(line => candidateLine(evaluation.fen, line, evaluation.bestMove));
 }
 
+export function EngineScoreBadge({ score, whiteToMove }: { score: string; whiteToMove?: boolean }) {
+  const blackAhead = score === 'Mate' ? whiteToMove === true : /^(?:Mate )?-/.test(score);
+  return <span className="engine-score engine-score-badge" data-side={blackAhead ? 'black' : 'white'}>{score}</span>;
+}
+
 function candidateLine(fen: string, line: EngineLine, bestMove: string | null = null) {
   return { rank: line.rank, score: evaluationLabel({ fen, depth: 0, score: line.score,
     bestMove, variation: line.variation }),
@@ -440,7 +445,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           title={line.san.join(' ') || 'No legal move'}
           aria-label={`Line ${rank}, White perspective ${line.score}, ${line.san.join(' ') || 'no legal move'}`}>
           <span className="engine-rank">{rank}.</span>
-          <span className="engine-score">{line.score}</span>
+          <EngineScoreBadge score={line.score} whiteToMove={fen.split(' ')[1] === 'w'} />
           <span className="engine-line">{line.san.length === 0 ? 'No legal move' : <>
             <strong className="engine-first-move">{line.san[0]}</strong>
             {line.san.length > 1 ? ` ${line.san.slice(1).join(' ')}` : ''}</>}</span>

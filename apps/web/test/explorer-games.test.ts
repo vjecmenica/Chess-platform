@@ -14,7 +14,7 @@ describe('Explorer game replay presentation', () => {
       result: '1-0', game_date: null, event: 'Synthetic event', site: null, round: '3',
       eco: 'A04', opening: 'Reti', time_control: null, ply: 0, uci: 'g1f3' };
     const html = renderToStaticMarkup(createElement(ExplorerGameList, { data: { games: [game], page: 0, hasMore: false, totalPages: 1 },
-      page: 0, loadingId: null, onSelect: () => {}, onPage: () => {} }));
+      page: 0, fen: STANDARD_STARTING_FEN, onPage: () => {} }));
     expect(html).toContain('Alpha'); expect(html).not.toContain('2400'); expect(html).toContain('Unknown Black');
     expect(html).toContain('Date unavailable'); expect(html).toContain('Synthetic event');
     expect(html).toMatch(/Alpha.*Unknown Black.*explorer-game-result.*1-0.*Date unavailable<\/span>/);
@@ -26,18 +26,14 @@ describe('Explorer game replay presentation', () => {
     expect(html).toContain('Page 1/1');
     expect(html).toContain('Up to 50 example games');
     expect(html).not.toMatch(/download|export|\.pgn/i);
-    const selected: string[] = [];
-    const list = ExplorerGameList({ data: { games: [game], page: 0, hasMore: false, totalPages: 1 },
-      page: 0, loadingId: null, onSelect: id => selected.push(id), onPage: () => {} });
-    const card = list.props.children[0].props.children[0];
-    expect(card.type).toBe('button');
-    card.props.onClick();
-    expect(selected).toEqual(['5']);
-    const loading = renderToStaticMarkup(createElement(ExplorerGameList, {
-      data: { games: [game], page: 0, hasMore: false, totalPages: 1 }, page: 0,
-      loadingId: '5', onSelect: () => {}, onPage: () => {} }));
-    expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain('role="status">Opening game…');
+    const match = /href="([^"]+)"/.exec(html)!;
+    const url = new URL(match[1]!.replaceAll('&amp;', '&'), 'http://localhost');
+    expect(url.pathname).toBe('/analysis/explorer/5');
+    expect(url.searchParams.get('fen')).toBe(STANDARD_STARTING_FEN);
+    expect(url.searchParams.get('ply')).toBe('0');
+    expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+    expect(html).toContain('new tab');
+    expect(html).not.toContain('class="secondary explorer-game" type="button"');
   });
   it('reuses the imported-game adapter for complete session-local replay and analysis navigation', () => {
     const parsed = parsePgn('[White "Alpha"]\n[WhiteElo "2410"]\n[TimeControl "40/7200:3600"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0');

@@ -1,3 +1,4 @@
+import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis } from './analysis-links';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
@@ -124,6 +125,8 @@ const actionPaths: Record<GameAction, string> = {
   resign: 'resign', offer_draw: 'draw-offer', accept_draw: 'draw-accept',
   decline_draw: 'draw-decline', claim_draw: 'draw-claim',
 };
+
+const initialAnalysisEntry = analysisEntry(new URL(window.location.href));
 
 export function App() {
   const [session, setSession] = useState<GuestSessionResponse | null>(null);
@@ -369,7 +372,11 @@ export function App() {
 
   useEffect(() => {
     if (game?.status !== 'finished' || analysis?.gameId === game.id) return;
-    setAnalysis(createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {}));
+    const tree = createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {});
+    if (initialAnalysisEntry?.kind === 'site' && initialAnalysisEntry.id === game.id) {
+      setAnalysis(selectMain(tree, game, initialAnalysisEntry.ply ?? game.history.length));
+      setAnalysisOpen(true); setBoardSize(null);
+    } else setAnalysis(tree);
   }, [game?.id, game?.status, analysis?.gameId, imported]);
 
   useEffect(() => {
@@ -438,6 +445,28 @@ export function App() {
     setSelected(null);
     setPromotion(null);
   }, []);
+
+  useEffect(() => {
+    const entry = initialAnalysisEntry;
+    if (entry?.kind !== 'explorer' || session === null || imported !== null) return;
+    const controller = new AbortController();
+    void loadExplorerAnalysis(entry.id, entry.fen, AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]))
+      .then(value => {
+        if (controller.signal.aborted) return;
+        const next = importParsedPgn(value.game, 'explorer-' + entry.id);
+        showImportedGame(next);
+        setAnalysis(selectMain(createAnalysisTree(next.game, next.notes), next.game, entry.ply ?? value.ply));
+      }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Example game could not be opened.'); });
+    return () => controller.abort();
+  }, [session, imported, showImportedGame]);
+
+  useEffect(() => {
+    if (!analysisOpen || !analysis || !game || !initialAnalysisEntry) return;
+    const ply = mainAncestorPly(analysis);
+    const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply)
+      : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
+    window.history.replaceState(null, '', url);
+  }, [analysisOpen, analysis?.cursor, game?.id]);
 
   function openPgn(text: string) {
     try { showImportedGame(importPgn(text, `import-${crypto.randomUUID()}`)); }
@@ -896,11 +925,6 @@ export function App() {
       uci.slice(2, 4) as Square, uci[4] as 'q' | 'r' | 'b' | 'n' | undefined);
   }, [submitAnalysisMove]);
 
-  const openExplorerGame = useCallback((parsed: Parameters<typeof importParsedPgn>[0], id: string, ply: number) => {
-    const next = importParsedPgn(parsed, 'explorer-' + id);
-    showImportedGame(next);
-    setAnalysis({ ...createAnalysisTree(next.game, next.notes), cursor: { kind: 'main', ply } });
-  }, [showImportedGame]);
 
   function selectMove(cursor: AnalysisCursor) {
     if (cursor.kind === 'branch') {
@@ -1091,6 +1115,12 @@ export function App() {
       event.currentTarget.releasePointerCapture(event.pointerId);
     event.stopPropagation();
   }
+
+  if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <main className="challenge-page">
+    <AnalysisNavigation imported accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
+    <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
+    {error && <a href={window.location.href}>Retry</a>}
+  </main>;
 
   return (
     <>
@@ -1342,7 +1372,7 @@ export function App() {
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
             <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
               book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}
-                onOpenGame={openExplorerGame} onExplore={exploreBookMove} /> : null}>
+                onExplore={exploreBookMove} /> : null}>
             <aside className="game-sidebar" aria-label="Game controls and moves">
 
 
@@ -1406,6 +1436,7 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
+                  analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length) : undefined}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) {
                       setSelectedReplayPly(mainAncestorPly(analysis));
@@ -1524,7 +1555,7 @@ export function App() {
             </div>
             {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-              playerNames={game.playerNames} />}
+              playerNames={game.playerNames} analysisOpen={analysisOpen} />}
             {analysisOpen && <>
               <div className="computer-analysis-card" ref={setReviewHost} />
             </>}

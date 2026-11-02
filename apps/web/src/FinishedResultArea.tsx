@@ -6,10 +6,11 @@ interface FinishedResultAreaProps {
   readonly explanation: string;
   readonly analysisOpen: boolean;
   readonly onToggleAnalysis: () => void;
+  readonly analysisHref?: string | undefined;
 }
 
 export function FinishedResultArea({ score, explanation, analysisOpen,
-  onToggleAnalysis }: FinishedResultAreaProps) {
+  onToggleAnalysis, analysisHref }: FinishedResultAreaProps) {
   const [height, setHeight] = useState<number | null>(null);
   const area = useRef<HTMLDivElement | null>(null);
   const maximumHeight = useRef<number | null>(null);
@@ -32,9 +33,10 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
       <strong>{score}</strong><span>{explanation}</span>
     </div>
     <div className="finished-result-actions">
-      <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
+      {!analysisOpen && analysisHref ? <a className="primary analysis-open" href={analysisHref} target="_blank" rel="noopener noreferrer"
+        aria-label="Open game Analysis in a new tab">Analysis</a> : <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
         aria-description="Analysis edits last until Analysis closes and do not affect the game."
-        onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>
+        onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
     </div>
     <button type="button" className="result-resize-handle"
       aria-label="Resize result area" aria-description="Drag to resize result area; use arrow keys on the handle"
