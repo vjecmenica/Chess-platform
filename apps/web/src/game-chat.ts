@@ -2,7 +2,7 @@ import type { GameChatMessage, GameState } from '@chess/contracts';
 
 export const chatMessageLimit = 500;
 export const chatHistoryLimit = 100;
-export const chatPresets = ['GG', 'WP', 'TY', 'GTG', 'BYE'] as const;
+export const chatPresets = ['good game', 'well played', 'thank you', 'got to go', 'goodbye'] as const;
 
 export function chatEnterSubmits(event: { key: string; isComposing: boolean; keyCode: number; repeat: boolean },
   composing: boolean, allowed: boolean) {

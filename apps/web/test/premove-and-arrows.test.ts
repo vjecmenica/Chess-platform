@@ -13,6 +13,63 @@ const whiteWaiting = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
 const blackWaiting = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 describe('client-side premoves', () => {
+  it.each(['capture', 'leave occupied'] as const)('queues Bd3-c4 conditionally when Black may %s', reply => {
+    const fen = '4k3/8/8/3p4/2P5/3B4/8/4K3 b - - 0 1';
+    const move: Premove = { id: 'bishop', from: 'd3', to: 'c4' };
+    expect(premoveChoice(fen, 'white', [], 'd3', 'c4')).toEqual({ kind: 'move', from: 'd3', to: 'c4' });
+    const queue = appendValidPremove(fen, 'white', [], move)!;
+    expect(queue).toEqual([move]);
+    const projected = projectedPieces(fen, 'white', queue);
+    expect(projected.get('c4')).toBe('B');
+    expect(projected.has('d3')).toBe(false);
+    // Projecting a conditional destination must not capture the real White pawn.
+    const position = createPositionFromFen(fen);
+    expect(position.getPosition().fen).toBe(fen);
+    expect(position.submitMove({ side: 'black', from: 'd5', to: reply === 'capture' ? 'c4' : 'd4' }).accepted).toBe(true);
+    const confirmed = position.getPosition().fen;
+    const next = nextPremove(confirmed, 'white', queue);
+    if (reply === 'capture') {
+      expect(next).toEqual(move);
+      const result = position.submitMove({ side: 'white', from: next!.from, to: next!.to });
+      expect(result.accepted).toBe(true);
+      expect(position.getPosition().fen.split(' ')[0]).toBe('4k3/8/8/8/2B5/8/8/4K3');
+    } else {
+      expect(next).toBeNull();
+      expect(position.getPosition().fen).toBe(confirmed);
+      expect(confirmed.split(' ')[0]).toBe('4k3/8/8/8/2Pp4/3B4/8/4K3');
+    }
+  });
+
+  it('projects later queued bishop moves after a conditional friendly destination', () => {
+    const fen = '4k3/8/8/3p4/2P5/3B4/8/4K3 b - - 0 1';
+    const first = appendValidPremove(fen, 'white', [], { id: 'one', from: 'd3', to: 'c4' })!;
+    expect(first).not.toBeNull();
+    const queue = appendValidPremove(fen, 'white', first, { id: 'two', from: 'c4', to: 'd5' })!;
+    expect(queue).toHaveLength(2);
+    expect(projectedPieces(fen, 'white', queue).get('d5')).toBe('B');
+    const position = createPositionFromFen(fen);
+    expect(position.submitMove({ side: 'black', from: 'd5', to: 'c4' }).accepted).toBe(true);
+    expect(nextPremove(position.getPosition().fen, 'white', queue)).toEqual(queue[0]);
+    expect(position.submitMove({ side: 'white', from: 'd3', to: 'c4' }).accepted).toBe(true);
+    const rest = consumePremove(queue, 'one');
+    expect(position.submitMove({ side: 'black', from: 'e8', to: 'f8' }).accepted).toBe(true);
+    expect(nextPremove(position.getPosition().fen, 'white', rest)).toEqual(queue[1]);
+  });
+
+  it('keeps promotion and intrinsic movement checks on conditional targets, including uncapturable kings', () => {
+    const fen = '1N5k/Pr6/8/8/8/8/8/7K b - - 0 1';
+    expect(appendValidPremove(fen, 'white', [], { id: 'missing', from: 'a7', to: 'b8' })).toBeNull();
+    const queue = appendValidPremove(fen, 'white', [], { id: 'promote', from: 'a7', to: 'b8', promotion: 'n' })!;
+    expect(queue).toHaveLength(1);
+    expect(projectedPieces(fen, 'white', queue).get('b8')).toBe('N');
+    const position = createPositionFromFen(fen);
+    expect(position.submitMove({ side: 'black', from: 'b7', to: 'b8' }).accepted).toBe(true);
+    expect(nextPremove(position.getPosition().fen, 'white', queue)).toEqual(queue[0]);
+    expect(position.submitMove({ side: 'white', from: 'a7', to: 'b8', promotion: 'n' }).accepted).toBe(true);
+    expect(premoveChoice('4k3/8/8/3p4/2P5/3B4/8/4K3 b - - 0 1', 'white', [], 'd3', 'c5')).toEqual({ kind: 'invalid' });
+    expect(premoveChoice('4k3/8/8/3p4/2P5/3B4/8/5K2 b - - 0 1', 'white', [], 'd3', 'f1')).toEqual({ kind: 'invalid' });
+  });
+
   it.each([
     ['c2', 'c5'], ['c2', 'd4'], ['b1', 'b4'], ['c1', 'c3'], ['a1', 'b3'], ['d1', 'e3'], ['e1', 'e3'],
   ] as const)('rejects impossible intrinsic movement from %s to %s before queuing', (from, to) => {
@@ -75,6 +132,16 @@ describe('client-side premoves', () => {
     expect(premoveChoice(fen, 'white', movedRook, 'e1', 'g1').kind).toBe('invalid');
     const movedKing: Premove[] = [{ id: 'one', from: 'e1', to: 'f1' }, { id: 'two', from: 'f1', to: 'e1' }];
     expect(premoveChoice(fen, 'white', movedKing, 'e1', 'c1').kind).toBe('invalid');
+  });
+  it('does not restore castling rights after a conditional rook loss and replacement', () => {
+    const fen = '4k3/8/8/8/8/8/6BR/4K2R b K - 0 1';
+    const queue: Premove[] = [
+      { id: 'one', from: 'g2', to: 'h1' },
+      { id: 'two', from: 'h1', to: 'f3' },
+      { id: 'three', from: 'h2', to: 'h1' },
+    ];
+    expect(projectedPieces(fen, 'white', queue).get('h1')).toBe('R');
+    expect(premoveChoice(fen, 'white', queue, 'e1', 'g1')).toEqual({ kind: 'invalid' });
   });
   it('queues consecutive plans without changing the confirmed position', () => {
     const first = premoveChoice(whiteWaiting, 'white', [], 'e2', 'e4');

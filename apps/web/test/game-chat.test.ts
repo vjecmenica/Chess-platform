@@ -123,7 +123,10 @@ it('offers explicit preset buttons but no Send button, and makes uncertain deliv
   const render = (changes = {}) => renderToStaticMarkup(createElement(ChatComposer, { ...props, ...changes }));
   const ready = render();
   expect(ready).not.toMatch(/type="submit"|>Send<\/button>|placeholder=/);
-  for (const preset of ['GG', 'WP', 'TY', 'GTG', 'BYE']) expect(ready).toContain(`aria-label="Send ${preset}"`);
+  for (const preset of ['good game', 'well played', 'thank you', 'got to go', 'goodbye']) {
+    expect(ready).toContain(`aria-label="Send ${preset}"`);
+    expect(ready).toContain(`>${preset}</button>`);
+  }
   const retry = render({ retrying: true });
   expect(retry).toContain('readOnly=""');
   expect(retry).toContain('Press Enter in the input to retry the same message.');

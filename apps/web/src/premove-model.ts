@@ -26,7 +26,9 @@ function speculativeChoice(pieces: ReadonlyMap<Square, Piece>, side: GameSide, r
     if (target === `h${home}`) to = `g${home}` as Square;
     else if (target === `a${home}`) to = `c${home}` as Square;
   }
-  if (pieceBelongsTo(pieces.get(to) ?? null, side)) return { kind: 'invalid' };
+  // The opponent may capture a friendly target before this plan executes.
+  // Our king cannot be captured or vacated by an opponent reply.
+  if (pieces.get(to) === (side === 'white' ? 'K' : 'k')) return { kind: 'invalid' };
   const dx = to.charCodeAt(0) - from.charCodeAt(0), dy = Number(to[1]) - Number(from[1]);
   const x = Math.abs(dx), y = Math.abs(dy), forward = side === 'white' ? 1 : -1;
   let possible = false;
@@ -63,15 +65,22 @@ function projectedPosition(fen: string, side: GameSide, queue: readonly Premove[
     if (choice.kind === 'invalid' || !correctPromotion(choice, move)) return { pieces, rights, valid: false };
     const to = choice.to;
     const piece = pieces.get(move.from)!;
+    const home = side === 'white' ? '1' : '8';
+    // A conditional capture of an original rook cannot grant castling rights
+    // to another rook that a later queued move places on the same square.
+    if (pieces.get(to) === (side === 'white' ? 'R' : 'r')) {
+      if (to === `h${home}`) rights.delete(side === 'white' ? 'K' : 'k');
+      if (to === `a${home}`) rights.delete(side === 'white' ? 'Q' : 'q');
+    }
     pieces.delete(move.from);
     if (piece.toLowerCase() === 'p' && move.from[1] === (side === 'white' ? '5' : '4')
       && move.from[0] !== to[0] && !pieces.has(to)) {
       const captured = `${to[0]}${move.from[1]}` as Square;
       if (pieces.get(captured) === (side === 'white' ? 'p' : 'P')) pieces.delete(captured);
     }
+    // This is a conditional forecast, not a capture applied to the saved game.
     pieces.set(to, move.promotion === undefined ? piece
       : (side === 'white' ? move.promotion.toUpperCase() : move.promotion) as Piece);
-    const home = side === 'white' ? '1' : '8';
     if (piece.toLowerCase() === 'k') {
       rights.delete(side === 'white' ? 'K' : 'k'); rights.delete(side === 'white' ? 'Q' : 'q');
       if (move.from === `e${home}` && (to === `g${home}` || to === `c${home}`)) {

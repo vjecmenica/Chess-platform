@@ -53,7 +53,8 @@ themselves do not fetch chat or the game.
 Send acknowledgements are deduplicated against history. The history cursor advances
 only from history responses, so a newer own-message acknowledgement cannot skip an
 older opponent message. Enter sends a nonempty message outside IME composition;
-repeated keydown and pending requests cannot send duplicates. Optional GG/WP/TY/GTG/BYE
+repeated keydown and pending requests cannot send duplicates. Optional good game,
+well played, thank you, got to go, and goodbye presets
 buttons use the same endpoint and safeguards and preserve a separately typed draft.
 Uncertain send failures retain the retry key and text: the input stays focused and
 read-only until Enter confirms that same message. Presets are disabled until it is

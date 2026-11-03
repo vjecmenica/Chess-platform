@@ -16,8 +16,8 @@ export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boo
   // its gaps, and analysis's evaluation rail. Live ranks sit in the gap; the
   // saved frame size still includes their 14px, so the square is unchanged.
   const reserve = stacked ? 34 : chatRail
-    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 18 - 14)
-    : analysis ? 50 + 400 + 16 : 320 + 18 - 14;
+    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 32 - 14)
+    : analysis ? 50 + 400 + 16 : 320 + 32 - 14;
   return Math.max(0, workspaceWidth - reserve);
 }
 

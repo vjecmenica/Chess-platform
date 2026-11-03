@@ -58,10 +58,16 @@ At flag fall, the clock calls `flagTimeout` once with the side to move and the e
 Premoves are private client-side plans until the player can move. Clicks, drags
 and promotion choices share a final admission guard. It rejects impossible piece
 geometry, backward/overlong pawn moves, double pawn steps away from the starting
-rank, own-occupied destinations, invalid promotions and castling without retained
+rank, destinations occupied by the player's king, invalid promotions and castling without retained
 rights and the original rook. Earlier queued moves project piece locations,
 promotions and lost castling rights before another plan is checked. For example,
 c2–c5 is rejected, c2–c4 can be queued, and that pawn cannot then double from c4.
+Other friendly-occupied destinations are conditional: an opponent reply may
+capture that piece first. For Bd3–c4 with a White pawn on c4, the queue projection
+places the bishop on c4 without changing the actual position. After ...dxc4,
+Bxc4 may execute; a reply leaving the White pawn on c4 makes the head illegal
+and discards the queue. The opponent cannot capture the player's king, so that
+destination remains excluded.
 
 This deliberately does not prove a legal sequence of opponent replies. Blockers,
 capture availability, attacked squares and king safety can change on the opponent's
