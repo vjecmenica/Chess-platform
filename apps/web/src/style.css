@@ -204,11 +204,11 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .board .square:focus-visible { outline: 3px solid #ae601e; outline-offset: -3px; z-index: 1; }
 .board .square:disabled { opacity: 1; cursor: default; }
 .piece { position: relative; z-index: 1; display: block; width: 88%; height: 88%; pointer-events: none; user-select: none; }
-.square-mark { position: absolute; inset: 4px; border: 3px solid; pointer-events: none; }
+.square-mark { position: absolute; inset: 0; background: rgba(224, 65, 56, .48); pointer-events: none; }
 .board .square.drag-origin .piece { opacity: .3; }
 .board .square.premove-target { box-shadow: inset 0 0 0 3px rgba(85, 80, 141, .75); }
 .premove-ghost { position: absolute; width: 88%; height: 88%; opacity: .5; pointer-events: none; }
-.board-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+.board-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;
   fill: rgba(162, 77, 31, .8); stroke: rgba(162, 77, 31, .8); }
 .board-arrows line { stroke-width: 12; stroke-linecap: round; }
 .engine-best-move path { fill: rgba(112, 188, 238, .72); }
@@ -901,7 +901,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-average[data-accuracy-method] { grid-column: span 2; }
 .analysis-workspace .review-count { flex-direction: row; gap: 6px; }
 .analysis-workspace .game-controls { position: relative; }
-.analysis-workspace .square-mark { border-radius: 50%; background: transparent !important; }
 .analysis-workspace .replay { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .analysis-workspace .replay-position { margin: 0; }
 @media (max-width: 900px) {

@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { BoardArrows } from '../src/BoardArrows';
-import { applyAnnotationGesture, analysisBoardStorageKey, boardOrientation, clearPositionAnnotations, clearPositionArrows,
+import { applyAnnotationGesture, annotationRelease, toggleSquareMark, analysisBoardStorageKey, boardOrientation, clearPositionAnnotations,
   createAnalysisBoard, positionAnnotations, restoreAnalysisBoard, serializeAnalysisBoard,
   toggleAnalysisArrow, toggleAnalysisMark } from '../src/analysis-board';
 import { arrowCenter } from '../src/board-arrows';
@@ -13,18 +13,7 @@ const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 
 describe('browser-local analysis board controls', () => {
-  it('clears only visible arrows while retaining marks and every other position', () => {
-    const marked = toggleAnalysisMark(createAnalysisBoard('game'), start, 'd4');
-    const first = toggleAnalysisArrow(marked, start, 'e2', 'e4');
-    const other = toggleAnalysisMark(toggleAnalysisArrow(first, afterE4, 'e7', 'e5'), afterE4, 'e5');
-    const cleared = clearPositionArrows(other, start);
-    expect(positionAnnotations(cleared, start)).toEqual({ arrows: [], marks: [{ square: 'd4', color: 'orange' }] });
-    expect(cleared.positions[afterE4]).toBe(other.positions[afterE4]);
-    expect(positionAnnotations(other, start).arrows).toHaveLength(1);
-    expect(clearPositionArrows(cleared, start)).toBe(cleared);
-    expect(clearPositionArrows(cleared, 'unknown')).toBe(cleared);
-  });
-  it('toggles circles and arrows through one gesture path, cancels outside releases, and clears only this position', () => {
+  it('toggles square highlights and arrows through one gesture path, cancels outside releases, and clears only this position', () => {
     const original = { ...createAnalysisBoard('game'), color: 'blue' as const };
     const circle = applyAnnotationGesture(original, start, 'e4', 'e4');
     expect(circle.positions[start]?.marks).toEqual([{ square: 'e4', color: 'orange' }]);
@@ -99,4 +88,20 @@ describe('browser-local analysis board controls', () => {
     expect(restoreAnalysisBoard('game', JSON.stringify({ version: 1, ...invalid })))
       .toEqual(createAnalysisBoard('game')); // Old drawings are ignored, never restored.
   });
+});
+
+it('distinguishes a right click from a drag, including dragging back to the origin', () => {
+  expect(annotationRelease('d4','d4',false)).toBe('d4');
+  expect(annotationRelease('d4','f6',true)).toBe('f6');
+  expect(annotationRelease('d4','d4',true)).toBeNull();
+  expect(annotationRelease('d4',null,true)).toBeNull();
+  const marks=toggleSquareMark(toggleSquareMark([],'d4'),'e5');
+  expect(marks.map(m=>m.square)).toEqual(['d4','e5']);
+  expect(toggleSquareMark(marks,'d4').map(m=>m.square)).toEqual(['e5']);
+  const state=applyAnnotationGesture(applyAnnotationGesture(createAnalysisBoard('game'),start,'d4','d4'),start,'e2','e4');
+  const another=applyAnnotationGesture(state,afterE4,'c6','c6');
+  const cleared=clearPositionAnnotations(another,start);
+  expect(positionAnnotations(cleared,start)).toEqual({arrows:[],marks:[]});
+  expect(positionAnnotations(cleared,afterE4).marks.map(m=>m.square)).toEqual(['c6']);
+  expect(serializeAnalysisBoard(another)).not.toContain('c6');
 });

@@ -5,7 +5,7 @@ import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { engineBestMove } from '../src/engine-board';
 import { EngineController, EngineCache, type EngineEvaluation, type EngineState, type EngineWorker } from '../src/engine-analysis';
 import { BoardArrows, EngineBestMoveArrow } from '../src/BoardArrows';
-import { clearPositionArrows, createAnalysisBoard, positionAnnotations, serializeAnalysisBoard, toggleAnalysisArrow } from '../src/analysis-board';
+import { clearPositionAnnotations, createAnalysisBoard, positionAnnotations, serializeAnalysisBoard, toggleAnalysisArrow } from '../src/analysis-board';
 import { EnginePanel } from '../src/EnginePanel';
 import { importPgn } from '../src/pgn-import';
 
@@ -50,7 +50,7 @@ it('renders a separate noninteractive arrow in either orientation, unaffected by
   expect(render('white')).toContain('class="board-arrows engine-best-move"');
   expect(render('white')).toContain('aria-hidden="true" focusable="false"');
   let annotations = toggleAnalysisArrow(createAnalysisBoard('game'), fen, 'g1', 'f3');
-  annotations = clearPositionArrows(annotations, fen);
+  annotations = clearPositionAnnotations(annotations, fen);
   expect(positionAnnotations(annotations, fen).arrows).toHaveLength(0);
   expect(renderToStaticMarkup(createElement(BoardArrows, { arrows: [], orientation: 'white' }))).not.toContain('<path');
   expect(render('white')).toContain('data-from="e2" data-to="e4"');

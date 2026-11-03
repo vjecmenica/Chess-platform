@@ -9,6 +9,12 @@ export const annotationColors = {
 } as const;
 export type AnnotationColor = keyof typeof annotationColors;
 export interface BoardMark { readonly square: Square; readonly color: AnnotationColor }
+export function toggleSquareMark(marks: readonly BoardMark[], square: Square, color: AnnotationColor = 'orange'): BoardMark[] {
+  return marks.some(mark => mark.square === square) ? marks.filter(mark => mark.square !== square) : [...marks, { square, color }];
+}
+export function annotationRelease(from: Square, to: Square | null, dragged: boolean): Square | null {
+  return dragged && from === to ? null : to;
+}
 export interface PositionAnnotations {
   readonly arrows: readonly BoardArrow[];
   readonly marks: readonly BoardMark[];
@@ -66,9 +72,7 @@ export function toggleAnalysisArrow(state: AnalysisBoardState, fen: string,
 export function toggleAnalysisMark(state: AnalysisBoardState, fen: string,
   square: Square): AnalysisBoardState {
   return withPosition(state, fen, current => ({ ...current,
-    marks: current.marks.some(mark => mark.square === square)
-      ? current.marks.filter(mark => mark.square !== square)
-      : [...current.marks, { square, color: state.color }] }));
+    marks: toggleSquareMark(current.marks, square, state.color) }));
 }
 
 export function clearPositionAnnotations(state: AnalysisBoardState, fen: string): AnalysisBoardState {
@@ -76,11 +80,6 @@ export function clearPositionAnnotations(state: AnalysisBoardState, fen: string)
   const positions = { ...state.positions };
   delete positions[fen];
   return { ...state, positions };
-}
-
-export function clearPositionArrows(state: AnalysisBoardState, fen: string): AnalysisBoardState {
-  if (positionAnnotations(state, fen).arrows.length === 0) return state;
-  return withPosition(state, fen, current => ({ ...current, arrows: [] }));
 }
 
 export function serializeAnalysisBoard(state: AnalysisBoardState): string {

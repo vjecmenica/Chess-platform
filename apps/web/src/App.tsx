@@ -22,10 +22,10 @@ import { PlayerMaterialPanel } from './CapturedMaterial';
 import { toggleArrow, type BoardArrow } from './board-arrows';
 import { BoardArrows, EngineBestMoveArrow } from './BoardArrows';
 import type { EngineBestMove } from './engine-board';
-import { analysisBoardStorageKey, annotationColors, boardOrientation,
-  applyAnnotationGesture, clearPositionAnnotations, clearPositionArrows, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
+import { analysisBoardStorageKey, boardOrientation,
+  applyAnnotationGesture, annotationRelease, toggleSquareMark, clearPositionAnnotations, createAnalysisBoard, positionAnnotations, restoreAnalysisBoard,
   serializeAnalysisBoard,
-  type AnalysisBoardState } from './analysis-board';
+  type AnalysisBoardState, type BoardMark } from './analysis-board';
 import { appendValidPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
   type Premove } from './premove-model';
 import { confirmMoveWithRetry } from './move-confirmation';
@@ -173,6 +173,7 @@ export function App() {
   const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<PromotionRequest | null>(null);
   const [premoves, setPremoves] = useState<Premove[]>([]);
+  const [liveMarks, setLiveMarks] = useState<BoardMark[]>([]);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
   const [arrowPreview, setArrowPreview] = useState<BoardArrow | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
@@ -199,7 +200,7 @@ export function App() {
   analysisOpenRef.current = analysisOpen;
   const premovesRef = useRef<Premove[]>([]);
   const premoveAttemptedVersion = useRef<number | null>(null);
-  const rightPointer = useRef<{ id: number; from: Square } | null>(null);
+  const rightPointer = useRef<{ id: number; from: Square; dragged: boolean } | null>(null);
   const suppressArrowMenu = useRef(false);
   const arrowMenuReset = useRef<number | null>(null);
   const pointer = useRef<{ id: number; from: Square; piece: Piece; x: number; y: number;
@@ -246,6 +247,8 @@ export function App() {
     }
   }, [game?.id, game?.status]);
 
+  useEffect(() => { setArrows([]); setLiveMarks([]); setArrowPreview(null); }, [game?.id]);
+
   useEffect(() => {
     const clearOnLeftDown = (event: PointerEvent) => {
       if (!isLeftPointerPress(event.button, event.pointerType)) return;
@@ -253,10 +256,9 @@ export function App() {
       // A display-only flip must preserve queued premoves and drawn arrows.
       if (target?.closest('[data-board-display-control]')) return;
       if (analysisOpenRef.current) return;
-      setArrows([]);
-      setArrowPreview(null);
       const square = target?.closest('[data-square]');
       const boardSquare = square !== null && square !== undefined && !!boardRef.current?.contains(square);
+      if (boardSquare) { setArrows([]); setLiveMarks([]); setArrowPreview(null); }
       const current = gameRef.current;
       const canQueue = current?.status === 'active' && current.position.sideToMove !== current.yourSeat
         && pendingRef.current === null && pendingActionRef.current === null && !posting.current;
@@ -787,8 +789,8 @@ export function App() {
 
   function chooseSquare(square: Square) {
     if (suppressClick.current) return;
-    if (analysisOpen) editBoardAnnotations(clearPositionArrows);
-    else setArrows([]);
+    if (analysisOpen) editBoardAnnotations(clearPositionAnnotations);
+    else { setArrows([]); setLiveMarks([]); }
     setArrowPreview(null);
     const input = inputPosition();
     if (input === null) return;
@@ -846,7 +848,7 @@ export function App() {
   function beginArrow(event: React.PointerEvent<HTMLButtonElement>, square: Square) {
     if (event.button !== 2 || pointer.current !== null || suppressDragMenu.current) return;
     event.preventDefault();
-    rightPointer.current = { id: event.pointerId, from: square };
+    rightPointer.current = { id: event.pointerId, from: square, dragged: false };
     armArrowMenuSuppression();
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -855,6 +857,7 @@ export function App() {
     const active = rightPointer.current;
     if (active === null || active.id !== event.pointerId) return;
     const to = boardSquareAt(event.clientX, event.clientY);
+    if (to !== null && to !== active.from) active.dragged = true;
     setArrowPreview(to !== null && to !== active.from ? { from: active.from, to,
       ...(analysisOpen && analysisBoard !== null ? { color: 'orange' as const } : {}) } : null);
   }
@@ -865,9 +868,10 @@ export function App() {
     event.preventDefault();
     rightPointer.current = null;
     setArrowPreview(null);
-    const to = boardSquareAt(event.clientX, event.clientY);
+    const to = annotationRelease(active.from, boardSquareAt(event.clientX, event.clientY), active.dragged);
     if (to !== null) {
       if (analysisOpen) editBoardAnnotations((state, fen) => applyAnnotationGesture(state, fen, active.from, to));
+      else if (active.from === to) setLiveMarks(current => toggleSquareMark(current, to));
       else setArrows(current => toggleArrow(current, active.from, to));
     }
     armArrowMenuSuppression();
@@ -1011,7 +1015,7 @@ export function App() {
     ? positionAnnotations(analysisBoard, displayedFen) : null;
   const visibleArrows = [...(analysisOpen ? boardNotes?.arrows ?? [] : arrows),
     ...(arrowPreview === null ? [] : [arrowPreview])];
-  const marks = new Map(boardNotes?.marks.map(mark => [mark.square, mark.color]) ?? []);
+  const marks = new Map((analysisOpen ? boardNotes?.marks ?? [] : liveMarks).map(mark => [mark.square, mark.color]));
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
   const captured = useMemo(() => game === null ? null : capturedPieces(game, displayedPly,
     analysisOpen ? analysis : null), [game, displayedPly, analysisOpen, analysis]);
@@ -1276,7 +1280,7 @@ export function App() {
                 <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef}
                   onContextMenu={event => event.preventDefault()}
-                  aria-description={analysisOpen ? 'Right-drag: arrow. Right-click or Shift+F10: circle. Shift+Enter on two squares: arrow. Escape: clear marks.' : undefined}
+                  aria-description={analysisOpen ? 'Right-drag: arrow. Right-click or Shift+F10: highlight. Shift+Enter on two squares: arrow. Escape: clear marks.' : undefined}
                   aria-label={`Chess board, ${orientation} side at the bottom`}>
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
@@ -1287,7 +1291,9 @@ export function App() {
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}${marks.has(square) ? ', marked' : ''}`}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
-                      onPointerDown={event => { beginArrow(event, square); beginDrag(event, square, piece); }}
+                      onPointerDown={event => {
+                        if (event.button === 0 && analysisOpen) editBoardAnnotations(clearPositionAnnotations);
+                        beginArrow(event, square); beginDrag(event, square, piece); }}
                       onPointerMove={event => { moveArrow(event); moveDrag(event); }}
                       onPointerUp={event => { endArrow(event); endDrag(event); }}
                       onPointerCancel={event => {
@@ -1320,9 +1326,7 @@ export function App() {
                         }
                       }}
                       onClick={() => chooseSquare(square)}>
-                      {marks.has(square) && <span className="square-mark" aria-hidden="true"
-                        style={{ borderColor: annotationColors[marks.get(square)!].fill,
-                          backgroundColor: annotationColors[marks.get(square)!].wash }} />}
+                      {marks.has(square) && <span className="square-mark" aria-hidden="true" />}
                       {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
                         aria-hidden="true" draggable={false} />}
@@ -1441,7 +1445,7 @@ export function App() {
                   <div className="replay-controls">
                     <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                        else setSelectedReplayPly(0); setSelected(null); }} aria-label={analysisOpen ? 'Starting position' : 'First move'}>{analysisOpen ? 'Start' : '|‹'}</button>
+                        else setSelectedReplayPly(0); setSelected(null); }} aria-label={analysisOpen ? 'Starting position' : 'First move'}>{analysisOpen ? 'Start' : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14m13-14-7 7 7 7" /></svg>}</button>
                     <button type="button" className="secondary"
                       disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
@@ -1465,7 +1469,7 @@ export function App() {
                       onClick={() => { if (analysisOpen && analysis !== null)
                         setAnalysis(lastMainPosition(analysis, game));
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                      aria-label={analysisOpen ? 'Final position' : 'Last move'}>{analysisOpen ? 'End' : '›|'}</button>
+                      aria-label={analysisOpen ? 'Final position' : 'Last move'}>{analysisOpen ? 'End' : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M6 5l7 7-7 7" /></svg>}</button>
                   </div>
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}

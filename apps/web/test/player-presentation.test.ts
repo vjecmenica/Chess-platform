@@ -151,6 +151,6 @@ it('keeps Analysis replay labels while making live first/last controls compact a
   const source=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
   expect(source).toContain("aria-label={analysisOpen ? 'Starting position' : 'First move'}");
   expect(source).toContain("aria-label={analysisOpen ? 'Final position' : 'Last move'}");
-  expect(source).toContain("{analysisOpen ? 'Start' : '|‹'}");
-  expect(source).toContain("{analysisOpen ? 'End' : '›|'}");
+  expect(source).toContain('M5 5v14m13-14-7 7 7 7');
+  expect(source).toContain('M19 5v14M6 5l7 7-7 7');
 });
