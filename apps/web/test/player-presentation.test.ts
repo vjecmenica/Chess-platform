@@ -124,6 +124,8 @@ describe('shared game presentation', () => {
     expect(app).not.toContain('Time continues through disconnects and server outages.');
     expect(app).toContain("showStatus={!analysisOpen && game.status !== 'finished'}");
     expect(app).not.toContain('Analysis: ${');
+    expect(app).toContain('className="replay-position visually-hidden" aria-live="polite"');
+    expect(app).not.toContain("analysisOpen ? 'replay-position visually-hidden' : 'replay-position'");
   });
 
   it('keeps on-site clock content intact inside both material panels', () => {

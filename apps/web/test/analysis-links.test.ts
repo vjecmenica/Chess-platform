@@ -54,7 +54,7 @@ it('puts conversation tabs and Hide in the analysis header without a duplicate h
   expect(html).not.toContain('>Game chat</h2>');
   const header = html.slice(html.indexOf('class="game-chat-header"'), html.indexOf('class="game-chat-content"'));
   expect(header).toContain('>Chat</button>'); expect(header).toContain('>Notes</button>');
-  expect(header).toContain('>Hide</button>');
+  expect(header).toContain('aria-label="Mute chat"');
 });
 
 it.each([['+0.20', 'white'], ['-0.03', 'black'], ['+0.00', 'white'], ['0.00', 'white'], ['Mate +3', 'white'], ['Mate -2', 'black'], ['Mate', 'white']])

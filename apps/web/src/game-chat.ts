@@ -2,7 +2,24 @@ import type { GameChatMessage, GameState } from '@chess/contracts';
 
 export const chatMessageLimit = 500;
 export const chatHistoryLimit = 100;
-export const chatPresets = ['good game', 'well played', 'thank you', 'got to go', 'goodbye'] as const;
+export const chatPresets = [
+  { label: 'GG', text: 'good game' }, { label: 'WP', text: 'well played' },
+  { label: 'TY', text: 'thank you' }, { label: 'GTG', text: 'got to go' },
+  { label: 'BYE', text: 'goodbye' },
+] as const;
+
+export interface ChatMuteState { muted: boolean; unmuting: boolean; epoch: number }
+export const chatMuteKey = (gameId: string, side: GameChatMessage['side']) => `game-chat-muted:${gameId}:${side}`;
+export function initialChatMute(muted: boolean): ChatMuteState { return { muted, unmuting: false, epoch: 0 }; }
+export function toggleChatMute(state: ChatMuteState): ChatMuteState {
+  if (state.unmuting) return state;
+  return { muted: true, unmuting: state.muted, epoch: state.epoch + 1 };
+}
+export function finishChatMuteRead(state: ChatMuteState, readEpoch: number): ChatMuteState {
+  // Finish one fresh history read before enabling notifications, so missed muted
+  // messages cannot become an unread backlog after a disconnect or reload.
+  return state.unmuting && state.epoch === readEpoch ? { ...state, muted: false, unmuting: false } : state;
+}
 
 export function chatEnterSubmits(event: { key: string; isComposing: boolean; keyCode: number; repeat: boolean },
   composing: boolean, allowed: boolean) {
@@ -45,7 +62,8 @@ export async function chatResponse<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-export function unreadEntries(current: readonly GameChatMessage[], incoming: readonly GameChatMessage[], side: GameChatMessage['side'], readThrough = '0'): number {
+export function unreadEntries(current: readonly GameChatMessage[], incoming: readonly GameChatMessage[], side: GameChatMessage['side'], readThrough = '0', muted = false): number {
+ if (muted) return 0;
  const seen = new Set(current.map(item => item.id)); let count=0;
  for(const item of incoming){ if(!seen.has(item.id)&&item.side!==side&&BigInt(item.id)>BigInt(readThrough))count++; seen.add(item.id); }
  return count;

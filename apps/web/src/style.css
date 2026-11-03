@@ -640,7 +640,15 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .explorer-game-heading { line-height: 1.45; }
 .explorer-pagination { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .explorer-pagination button { min-width: 36px; font-size: 20px; padding: 3px 10px; }
-.game-chat-tab { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+.game-chat-tab { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+.game-chat-conversation { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+/* Retain the conversation's layout and drafts while removing it from input and accessibility. */
+.game-chat-conversation[data-muted="true"] { visibility: hidden; pointer-events: none; }
+.game-chat-muted-notice { position: absolute; inset: 0; padding-top: 8px; color: #756451; }
+.game-chat-muted-notice p { font-size: var(--text-compact); }
+.game-layout .chat-mute { display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 7px; }
+.chat-mute svg { width: 20px; height: 20px; }
 .game-chat-tab[hidden], .game-chat-content > [hidden] { display: none; }
 .game-notes { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 6px; }
 .game-notes-tab { display: flex; min-height: 260px; flex: 1; overflow: auto; }
@@ -1006,11 +1014,9 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .game-chat { display: flex; flex-direction: column; min-width: 0;
   border: 1px solid #dedbd2; border-radius: 8px; background: #fffdf8; padding: 10px 10px 8px; }
 .game-chat-content { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 6px 2px 0; }
-.game-chat-content[hidden] { display: none; }
 .game-chat-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px;
   flex: 0 0 auto; font-size: var(--text-meta); color: #756451; padding-bottom: 4px; }
 .game-chat-header > button { grid-column: 2; grid-row: 1; }
-.game-chat[data-hidden="true"] .game-chat-header { padding-bottom: 0; }
 .game-layout :where(.game-chat button) { min-height: 32px; margin: 0; padding: 5px 9px; }
 .game-chat-messages { list-style: none; margin: 0; padding: 4px 0; overflow: auto;
   min-height: 100px; height: 220px; flex: 1 1 auto; overscroll-behavior: contain; }
@@ -1049,7 +1055,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
     height: max(0px, calc(var(--board-row-height, 480px) - 14px));
     width: 100%; margin: 0;
     border: 1px solid #dedbd2; border-radius: 8px; background: #fffdf8; }
-  .site-game-workspace .game-chat[data-hidden="true"] { height: auto; }
   .site-game-workspace .game-chat-messages { min-height: 0; }
   .site-game-workspace .game-notes-tab { min-height: 0; }
 }

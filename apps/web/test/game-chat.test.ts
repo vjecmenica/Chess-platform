@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import type { GameChatMessage } from '@chess/contracts';
 import { chatComposerState, chatEnterSubmits, chatResponse, mergeChatMessages, nearChatBottom } from '../src/game-chat';
-import { ChatComposer, ChatMessage, GameChat } from '../src/GameChat';
+import { ChatComposer, ChatMessage, GameChat, QuickChatPresets } from '../src/GameChat';
+import { GameRematch } from '../src/GameRematch';
+import { FinishedResultArea } from '../src/FinishedResultArea';
+import type { GameReadResponse } from '@chess/contracts';
 
 function message(id: string): GameChatMessage {
   return { id, side: 'white', text: '<b>Plain text</b>', sentAt: '2026-10-24T10:00:00Z' };
@@ -56,7 +59,8 @@ it('waits for server permission without flashing a read-only notice, including f
   expect(html).toMatch(/aria-pressed="false"[^>]*>Notes/);
   expect(html).toContain('Private notes');
   expect(html).not.toContain('>Game chat</h2>');
-  expect(html).toContain('aria-expanded="true" aria-controls="chat-content-game">Hide</button>');
+  expect(html).toContain('aria-label="Mute chat"');
+  expect(html).toContain('aria-controls="chat-conversation-game"');
   expect(html).not.toMatch(/<details|<summary|Hide chat|Show chat/);
   expect(html).not.toContain('Chat is read-only');
   expect(html).not.toContain('Players only');
@@ -90,23 +94,32 @@ it('follows server permission across finalization and renders an enabled post-ga
   expect(chatComposerState(null, 'finished')).toBe('loading');
   expect(chatComposerState({ status: 'finished', canSend: false }, 'finished')).toBe('read_only');
 });
-it('uses the existing game-and-seat hidden preference and keeps Show available without chat content', () => {
-  const getItem = vi.fn((key: string) => key === 'game-chat-hidden:game:white' ? 'true' : null);
+it('scopes muting to this game and player without hiding Info or Notes or collapsing the panel', () => {
+  const getItem = vi.fn((key: string) => key === 'game-chat-muted:game:white' ? 'true' : null);
   vi.stubGlobal('localStorage', { getItem });
   try {
     const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
     const html = renderToStaticMarkup(createElement(GameChat, props));
-    expect(getItem).toHaveBeenCalledWith('game-chat-hidden:game:white');
-    expect(html).toContain('data-hidden="true"');
-    expect(html).toMatch(/game-chat-header">[\s\S]*?>Chat<\/button>[\s\S]*?>Notes<\/button>[\s\S]*?>Show<\/button>/);
-    expect(html).toContain('aria-expanded="false" aria-controls="chat-content-game">Show</button>');
-    expect(html).toContain('id="chat-content-game" hidden=""');
+    expect(getItem).toHaveBeenCalledWith('game-chat-muted:game:white');
+    expect(html).toContain('data-muted="true"');
+    expect(html).toContain('aria-label="Unmute chat"');
+    expect(html).toContain('<em>You muted the chat</em>');
+    expect(html).toContain('data-muted="true" inert="" aria-hidden="true"');
+    expect(html).not.toContain('data-hidden=');
+    expect(html).not.toContain('chat-unread');
     expect(html).not.toContain('<form');
-    // Content stays mounted under the hidden container to preserve chat and note drafts.
+    // Only the conversation is inert; both other views remain outside it.
     expect(html).toContain('role="log"');
+    const conversation = html.indexOf('class="game-chat-conversation"');
+    expect(html.indexOf('class="game-info-tab"')).toBeLessThan(conversation);
+    expect(html.indexOf('class="game-notes-tab"')).toBeLessThan(conversation);
+    expect(html.slice(0, conversation)).not.toContain('inert=');
     const opponent = renderToStaticMarkup(createElement(GameChat, { ...props, side: 'black' }));
-    expect(opponent).toContain('data-hidden="false"');
+    expect(opponent).toContain('data-muted="false"');
+    expect(opponent).not.toContain('You muted the chat');
     expect(opponent).toContain('role="log"');
+    const otherGame = renderToStaticMarkup(createElement(GameChat, { ...props, gameId: 'other' }));
+    expect(otherGame).toContain('data-muted="false"');
   } finally { vi.unstubAllGlobals(); }
 });
 it('submits Enter only outside IME composition, repeated keydown and pending/permission states', () => {
@@ -117,15 +130,35 @@ it('submits Enter only outside IME composition, repeated keydown and pending/per
   expect(chatEnterSubmits(event, true, true)).toBe(false);
   expect(chatEnterSubmits(event, false, false)).toBe(false);
 });
+it('does not inherit the removed collapse preference and keeps game actions outside muted content', () => {
+  vi.stubGlobal('localStorage', { getItem: (key: string) => key.startsWith('game-chat-hidden:') ? 'true' : null });
+  const props = { gameId: 'game', side: 'white' as const, gameStatus: 'finished' as const, csrfToken: 'token', revision: 0 };
+  try {
+    expect(renderToStaticMarkup(createElement(GameChat, props))).toContain('data-muted="false"');
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'game-chat-muted:game:white' ? 'true' : null });
+    const game = { id: 'game', status: 'finished', yourSeat: 'white', timeControl: { initialMs: 300000, incrementMs: 3000 } } as GameReadResponse;
+    const html = renderToStaticMarkup(createElement('section', null,
+      createElement(GameChat, { ...props, info: createElement('p', null, 'Saved game facts') }),
+      createElement(FinishedResultArea, { score: '1-0', explanation: 'White won.', analysisOpen: false,
+        analysisHref: '/challenge/game?analysis=1', onToggleAnalysis: () => {},
+        beforeAnalysis: createElement(GameRematch, { game, csrfToken: 'token', revision: 0 }) })));
+    const actions = html.slice(html.indexOf('</aside>'));
+    expect(html).toContain('Saved game facts');
+    expect(html).toContain('Private notes');
+    expect(actions).toContain('>Rematch</button>');
+    expect(actions).toContain('Open game Analysis in a new tab');
+    expect(actions).not.toContain('inert=');
+  } finally { vi.unstubAllGlobals(); }
+});
 it('offers explicit preset buttons but no Send button, and makes uncertain delivery retryable from the input', () => {
   const props = { gameId: 'game', state: 'allowed' as const, text: 'GG', sending: false,
     retrying: false, onSend: () => {}, onText: () => {} };
   const render = (changes = {}) => renderToStaticMarkup(createElement(ChatComposer, { ...props, ...changes }));
   const ready = render();
   expect(ready).not.toMatch(/type="submit"|>Send<\/button>|placeholder=/);
-  for (const preset of ['good game', 'well played', 'thank you', 'got to go', 'goodbye']) {
-    expect(ready).toContain(`aria-label="Send ${preset}"`);
-    expect(ready).toContain(`>${preset}</button>`);
+  for (const [label, text] of [['GG', 'good game'], ['WP', 'well played'], ['TY', 'thank you'], ['GTG', 'got to go'], ['BYE', 'goodbye']]) {
+    expect(ready).toContain(`aria-label="${label}: send ${text}"`);
+    expect(ready).toContain(`>${label}</button>`);
   }
   const retry = render({ retrying: true });
   expect(retry).toContain('readOnly=""');
@@ -136,6 +169,18 @@ it('offers explicit preset buttons but no Send button, and makes uncertain deliv
   expect(pending).toContain('Sending…');
   expect(pending).toContain('readOnly=""');
   expect(pending.match(/disabled=""/g)).toHaveLength(5);
+});
+it('sends each full phrase from its abbreviated button, without sending on focus', () => {
+  const send = vi.fn();
+  const buttons = QuickChatPresets({ disabled: false, onSend: send }).props.children;
+  expect(send).not.toHaveBeenCalled();
+  const expected = [['GG', 'good game'], ['WP', 'well played'], ['TY', 'thank you'], ['GTG', 'got to go'], ['BYE', 'goodbye']];
+  for (const [i, button] of buttons.entries()) {
+    expect(button.props.children).toBe(expected[i]![0]);
+    button.props.onClick();
+    expect(send).toHaveBeenLastCalledWith(expected[i]![1]);
+    expect(button.props.onFocus).toBeUndefined();
+  }
 });
 it('distinguishes definite rejections from uncertain delivery so retries keep their identity', async () => {
   await expect(chatResponse(new Response(JSON.stringify({ error: 'chat_rate_limited' }), { status: 429 })))

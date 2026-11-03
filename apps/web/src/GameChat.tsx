@@ -3,13 +3,22 @@ import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameS
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
 import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, chatResponse, mergeChatMessages, nearChatBottom,
-  unreadEntries, type ChatPermission } from './game-chat';
+  chatMuteKey, initialChatMute, toggleChatMute, finishChatMuteRead,
+  unreadEntries, type ChatPermission, type ChatMuteState } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
   playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode }
 
 export function ChatUnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
+}
+
+export function QuickChatPresets({ disabled, onSend }: { disabled: boolean; onSend: (text: string) => void }) {
+  return <div className="game-chat-presets" role="group" aria-label="Quick chat messages">
+    {chatPresets.map(preset => <button className="secondary" type="button" key={preset.label}
+      disabled={disabled} aria-label={`${preset.label}: send ${preset.text}`}
+      onClick={() => onSend(preset.text)}>{preset.label}</button>)}
+  </div>;
 }
 
 export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
@@ -44,11 +53,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
       }} />
     <small id={`chat-send-status-${gameId}`} className={sending || retrying ? 'game-chat-send-status' : 'visually-hidden'} role="status">
       {sending ? 'Sending…' : retrying ? 'Delivery uncertain. Press Enter in the input to retry the same message.' : 'Press Enter to send.'}</small>
-    <div className="game-chat-presets" role="group" aria-label="Quick chat messages">
-      {chatPresets.map(preset => <button className="secondary" type="button" key={preset}
-        disabled={sending || retrying || state !== 'allowed'} aria-label={`Send ${preset}`}
-        onClick={() => onSend(preset)}>{preset}</button>)}
-    </div>
+    <QuickChatPresets disabled={sending || retrying || state !== 'allowed'} onSend={onSend} />
   </form>;
 }
 
@@ -70,12 +75,14 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   statusRef.current = gameStatus;
   const composerState = chatComposerState(permission, gameStatus);
   const [newMessages, setNewMessages] = useState(false);
-  const storageKey = `game-chat-hidden:${gameId}:${side}`;
-  const [hidden, setHidden] = useState(() => {
-    try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
+  const storageKey = chatMuteKey(gameId, side);
+  const [mute, setMute] = useState(() => {
+    try { return initialChatMute(localStorage.getItem(storageKey) === 'true'); } catch { return initialChatMute(false); }
   });
-  const view = useRef({ activePanel, hidden });
-  view.current = { activePanel, hidden };
+  const muteRef = useRef(mute);
+  const [muteError, setMuteError] = useState<string | null>(null);
+  const view = useRef({ activePanel });
+  view.current = { activePanel };
   const list = useRef<HTMLOListElement>(null);
   const following = useRef(true);
   const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
@@ -87,14 +94,30 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const readKey = `game-chat-read:${gameId}:${side}`;
   const readThrough = useRef('0');
   useEffect(() => { try { const stored=localStorage.getItem(readKey); if(stored && /^\d{1,19}$/.test(stored)) readThrough.current=stored; } catch {} }, [readKey]);
+  const markRead = useCallback((id: string | undefined) => {
+    if (!id || BigInt(id) <= BigInt(readThrough.current)) return;
+    readThrough.current = id;
+    try { localStorage.setItem(readKey, id); } catch { /* Storage is optional. */ }
+  }, [readKey]);
+  const updateMute = useCallback((next: ChatMuteState) => {
+    const changed = next.muted !== muteRef.current.muted;
+    muteRef.current = next;
+    setMute(next);
+    if (changed) try { localStorage.setItem(storageKey, String(next.muted)); } catch { /* Muting still works without storage. */ }
+  }, [storageKey]);
   const receive = useCallback((incoming: readonly GameChatMessage[]) => {
-    if (view.current.hidden || view.current.activePanel !== 'chat') { const added=unreadEntries(messagesRef.current,incoming,side,readThrough.current); setUnreadChat(count=>count+added); }
+    const muted = muteRef.current.muted;
+    if (view.current.activePanel !== 'chat' || muted) {
+      const added = unreadEntries(messagesRef.current, incoming, side, readThrough.current, muted);
+      setUnreadChat(count => muted ? 0 : count + added);
+    }
     const next = mergeChatMessages(messagesRef.current, incoming);
     const changed = next.at(-1)?.id !== messagesRef.current.at(-1)?.id;
     messagesRef.current = next;
     setMessages(next);
-    if (changed && !following.current) setNewMessages(true);
-  }, [side]);
+    if (muted) markRead(next.at(-1)?.id);
+    if (!muted && changed && !following.current) setNewMessages(true);
+  }, [side, markRead]);
   const refresh = useCallback(async () => {
     requested.current = true;
     if (reading.current) return;
@@ -103,21 +126,27 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       while (requested.current && mounted.current) {
         requested.current = false;
         const statusAtRead = statusRef.current;
+        const muteEpoch = muteRef.current.epoch;
         const after = historyCursor.current;
         const history = await chatResponse<GameChatHistory>(await fetch(
           `/api/games/${gameId}/chat?after=${after}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }));
         if (!mounted.current) return;
         historyCursor.current = history.messages.at(-1)?.id ?? after;
         receive(history.messages);
+        updateMute(finishChatMuteRead(muteRef.current, muteEpoch));
         setPermission({ status: statusAtRead, canSend: history.canSend });
         setLoaded(true);
         setError(null);
       }
     } catch (cause) {
+      if (mounted.current && muteRef.current.unmuting) {
+        updateMute({ ...muteRef.current, unmuting: false });
+        setMuteError('Chat could not refresh. Try unmuting again.');
+      }
       if (mounted.current) setError(cause instanceof Error && 'definitive' in cause
         ? cause.message : 'Chat could not connect. Please retry.');
     } finally { reading.current = false; }
-  }, [gameId, receive]);
+  }, [gameId, receive, updateMute]);
 
   useEffect(() => {
     mounted.current = true;
@@ -132,17 +161,20 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
   useLayoutEffect(() => {
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, hidden, activePanel]);
-  useEffect(() => { if (!hidden && activePanel === 'chat') { setUnreadChat(0); const last=messages.at(-1)?.id; if(last){readThrough.current=last;try{localStorage.setItem(readKey,last);}catch{}} } }, [hidden, activePanel, messages, readKey]);
+  }, [messages, mute.muted, activePanel]);
+  useEffect(() => {
+    if (mute.muted || activePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
+  }, [mute.muted, activePanel, messages, markRead]);
 
-  function toggleHidden() {
-    setHidden(value => {
-      try { localStorage.setItem(storageKey, String(!value)); } catch { /* Hiding still works without storage. */ }
-      return !value;
-    });
+  function toggleMute() {
+    const next = toggleChatMute(muteRef.current);
+    updateMute(next);
+    setUnreadChat(0); setNewMessages(false); setMuteError(null);
+    markRead(messagesRef.current.at(-1)?.id);
+    if (next.unmuting) void refresh();
   }
   async function send(preset?: string) {
-    if (posting.current || composerState !== 'allowed' || preset !== undefined && pending.current !== null) return;
+    if (muteRef.current.muted || posting.current || composerState !== 'allowed' || preset !== undefined && pending.current !== null) return;
     const body = pending.current ?? { requestId: crypto.randomUUID(), text: preset ?? text.trim(), preset: preset !== undefined };
     if (!body.text) return;
     pending.current = body;
@@ -172,21 +204,32 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
     <button type="button" aria-pressed={activePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
     <button type="button" aria-pressed={activePanel === 'chat'}
-      aria-label={unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
-      <ChatUnreadBadge count={unreadChat} /></button>
+      aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
+      <ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
     <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
-  return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}
+  return <aside className="game-chat" data-muted={mute.muted} data-analysis={analysisOpen}
     aria-label="Game information, chat and private notes">
     <div className="game-chat-header">{tabs}
-      <button className="secondary" type="button" onClick={toggleHidden} aria-expanded={!hidden}
-        aria-controls={`chat-content-${gameId}`}>{hidden ? 'Show' : 'Hide'}</button></div>
-    <div className="game-chat-content" id={`chat-content-${gameId}`} hidden={hidden}>
-    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={hidden || activePanel !== 'info'}>
+      <button className="secondary chat-mute" type="button" onClick={toggleMute} aria-pressed={mute.muted}
+        aria-label={mute.muted ? 'Unmute chat' : 'Mute chat'} aria-busy={mute.unmuting} disabled={mute.unmuting}
+        aria-controls={`chat-conversation-${gameId}`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+          strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <path d="M18 8a6 6 0 0 0-12 0c0 6-3 6-3 9h18c0-3-3-3-3-9M10 21h4" />
+          {mute.muted && <path d="m3 3 18 18" />}
+        </svg>
+      </button></div>
+    <div className="game-chat-content" id={`chat-content-${gameId}`}>
+    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={activePanel !== 'info'}>
       {info ?? <p>Game information unavailable.</p>}</div>
-    <div className="game-notes-tab" hidden={hidden || activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
-      active={!hidden && activePanel === 'notes'} /></div>
-    <div className="game-chat-tab" hidden={hidden || activePanel !== 'chat'}>
+    <div className="game-notes-tab" hidden={activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
+      active={activePanel === 'notes'} /></div>
+    <div className="game-chat-tab" hidden={activePanel !== 'chat'}>
+      {mute.muted && <div className="game-chat-muted-notice" role="status"><em>You muted the chat</em>
+        {muteError && <p role="alert">{muteError}</p>}</div>}
+      <div className="game-chat-conversation" id={`chat-conversation-${gameId}`} data-muted={mute.muted}
+        inert={mute.muted} aria-hidden={mute.muted}>
       <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
         aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
           following.current = nearChatBottom(event.currentTarget);
@@ -205,6 +248,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       {sendError && <small className="game-chat-error" role="alert">{sendError}</small>}
       <ChatComposer gameId={gameId} state={composerState} text={pending.current?.text ?? text} sending={sending} retrying={pending.current !== null}
         onSend={preset => { void send(preset); }} onText={value => { if (!pending.current) setText(value); }} />
+      </div>
     </div>
     </div>
   </aside>;
