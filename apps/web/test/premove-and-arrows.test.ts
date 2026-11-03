@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { createPositionFromFen } from '@chess/domain';
-import { arrowPath, userArrowPaths, BoardArrows } from '../src/BoardArrows';
+import { arrowPath, userArrowPath, BoardArrows } from '../src/BoardArrows';
 import { isLeftPointerPress, keepsPremovesOnLeftPress } from '../src/board-interaction';
 import { arrowCenter, toggleArrow } from '../src/board-arrows';
 import { addPremove, appendValidPremove, consumePremove, nextPremove, premoveChoice, projectedPieces,
@@ -246,24 +246,23 @@ describe('board arrows', () => {
     expect(arrowCenter('h8', 'black')).toEqual({ x: 50, y: 750 });
   });
 
-  it('joins a translucent shaft to a solid head without overlap in either orientation', () => {
+  it('renders each user arrow as one uniformly translucent silhouette in either orientation', () => {
     const arrows = toggleArrow(toggleArrow([], 'e2', 'e4'), 'g1', 'f3');
     const html = renderToStaticMarkup(createElement(BoardArrows, { arrows, orientation: 'white' }));
     expect(html).not.toContain('<marker');
     expect(html).not.toContain('<line');
-    expect((html.match(/<path /g) ?? [])).toHaveLength(4);
+    expect((html.match(/<path /g) ?? [])).toHaveLength(2);
     expect((html.match(/stroke="none"/g) ?? [])).toHaveLength(2);
     const straight = arrowPath({ x: 450, y: 650 }, { x: 450, y: 450 });
     expect(straight).toContain('L 474.00 502.00 L 450 450 L 426.00 502.00');
     expect(straight).toContain('M 456.00 650.00 L 456.00 489.00');
     expect(html).toContain('fill="#f3b52b"');
-    expect(html.match(/fill-opacity=".65"/g)).toHaveLength(2);
-    const user = userArrowPaths({x:450,y:650}, {x:450,y:450});
-    expect(user.shaft).toBe('M 460.00 650.00 L 460.00 490.00 L 440.00 490.00 L 440.00 650.00 Z');
-    expect(user.head).toBe('M 474.00 490.00 L 450 450 L 426.00 490.00 Z');
+    expect(html.match(/fill-opacity=".72"/g)).toHaveLength(2);
+    const user = userArrowPath({x:450,y:650}, {x:450,y:450});
+    expect(user).toBe('M 460.00 650.00 L 460.00 490.00 L 474.00 490.00 L 450 450 L 426.00 490.00 L 440.00 490.00 L 440.00 650.00 Z');
     expect(renderToStaticMarkup(createElement(BoardArrows, {
       arrows: toggleArrow(arrows, 'e2', 'e4'), orientation: 'white',
-    })).match(/<path /g)).toHaveLength(2);
+    })).match(/<path /g)).toHaveLength(1);
     const flipped = renderToStaticMarkup(createElement(BoardArrows, {
       arrows: [{ from: 'e2', to: 'e4' }], orientation: 'black',
     }));

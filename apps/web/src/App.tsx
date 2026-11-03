@@ -175,7 +175,6 @@ export function App() {
   const [premoves, setPremoves] = useState<Premove[]>([]);
   const [liveMarks, setLiveMarks] = useState<BoardMark[]>([]);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
-  const [arrowPreview, setArrowPreview] = useState<BoardArrow | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [resignConfirmationVersion, setResignConfirmationVersion] = useState<number | null>(null);
@@ -247,7 +246,7 @@ export function App() {
     }
   }, [game?.id, game?.status]);
 
-  useEffect(() => { setArrows([]); setLiveMarks([]); setArrowPreview(null); }, [game?.id]);
+  useEffect(() => { setArrows([]); setLiveMarks([]); }, [game?.id]);
 
   useEffect(() => {
     const clearOnLeftDown = (event: PointerEvent) => {
@@ -258,7 +257,7 @@ export function App() {
       if (analysisOpenRef.current) return;
       const square = target?.closest('[data-square]');
       const boardSquare = square !== null && square !== undefined && !!boardRef.current?.contains(square);
-      if (boardSquare) { setArrows([]); setLiveMarks([]); setArrowPreview(null); }
+      if (boardSquare) { setArrows([]); setLiveMarks([]); }
       const current = gameRef.current;
       const canQueue = current?.status === 'active' && current.position.sideToMove !== current.yourSeat
         && pendingRef.current === null && pendingActionRef.current === null && !posting.current;
@@ -791,7 +790,7 @@ export function App() {
     if (suppressClick.current) return;
     if (analysisOpen) editBoardAnnotations(clearPositionAnnotations);
     else { setArrows([]); setLiveMarks([]); }
-    setArrowPreview(null);
+
     const input = inputPosition();
     if (input === null) return;
     const piece = input.mode === 'premove'
@@ -858,8 +857,6 @@ export function App() {
     if (active === null || active.id !== event.pointerId) return;
     const to = boardSquareAt(event.clientX, event.clientY);
     if (to !== null && to !== active.from) active.dragged = true;
-    setArrowPreview(to !== null && to !== active.from ? { from: active.from, to,
-      ...(analysisOpen && analysisBoard !== null ? { color: 'orange' as const } : {}) } : null);
   }
 
   function endArrow(event: React.PointerEvent<HTMLButtonElement>) {
@@ -867,7 +864,7 @@ export function App() {
     if (active === null || active.id !== event.pointerId) return;
     event.preventDefault();
     rightPointer.current = null;
-    setArrowPreview(null);
+
     const to = annotationRelease(active.from, boardSquareAt(event.clientX, event.clientY), active.dragged);
     if (to !== null) {
       if (analysisOpen) editBoardAnnotations((state, fen) => applyAnnotationGesture(state, fen, active.from, to));
@@ -1013,8 +1010,7 @@ export function App() {
     ? projectedPieces(game.position.fen, game.yourSeat, premoves) : null;
   const boardNotes = analysisOpen && analysisBoard?.gameId === game?.id && displayedFen !== null
     ? positionAnnotations(analysisBoard, displayedFen) : null;
-  const visibleArrows = [...(analysisOpen ? boardNotes?.arrows ?? [] : arrows),
-    ...(arrowPreview === null ? [] : [arrowPreview])];
+  const visibleArrows = analysisOpen ? boardNotes?.arrows ?? [] : arrows;
   const marks = new Map((analysisOpen ? boardNotes?.marks ?? [] : liveMarks).map(mark => [mark.square, mark.color]));
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
   const captured = useMemo(() => game === null ? null : capturedPieces(game, displayedPly,
@@ -1299,7 +1295,7 @@ export function App() {
                       onPointerCancel={event => {
                         if (rightPointer.current?.id === event.pointerId) {
                           rightPointer.current = null;
-                          setArrowPreview(null);
+
                           armArrowMenuSuppression();
                         }
                         if (pointer.current !== null && event.pointerType === 'mouse' && (event.buttons & 2)) {
@@ -1311,7 +1307,7 @@ export function App() {
                         if (!analysisOpen) return;
                         if (event.key === 'Escape') {
                           event.preventDefault(); cancelDrag(); setSelected(null); setAnnotationFrom(null);
-                          rightPointer.current = null; setArrowPreview(null);
+                          rightPointer.current = null;
                           editBoardAnnotations(clearPositionAnnotations);
                         } else if (event.shiftKey && event.key === 'F10') {
                           event.preventDefault();
@@ -1445,7 +1441,7 @@ export function App() {
                   <div className="replay-controls">
                     <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                        else setSelectedReplayPly(0); setSelected(null); }} aria-label={analysisOpen ? 'Starting position' : 'First move'}>{analysisOpen ? 'Start' : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14m13-14-7 7 7 7" /></svg>}</button>
+                        else setSelectedReplayPly(0); setSelected(null); }} aria-label="First move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14m13-14-7 7 7 7" /></svg></button>
                     <button type="button" className="secondary"
                       disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
@@ -1469,7 +1465,7 @@ export function App() {
                       onClick={() => { if (analysisOpen && analysis !== null)
                         setAnalysis(lastMainPosition(analysis, game));
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                      aria-label={analysisOpen ? 'Final position' : 'Last move'}>{analysisOpen ? 'End' : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M6 5l7 7-7 7" /></svg>}</button>
+                      aria-label="Last move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M6 5l7 7-7 7" /></svg></button>
                   </div>
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}

@@ -147,10 +147,16 @@ describe('shared game presentation', () => {
   });
 });
 
-it('keeps Analysis replay labels while making live first/last controls compact and accessible', () => {
+it('uses matching accessible first/last SVG controls in live play and Analysis', () => {
   const source=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
-  expect(source).toContain("aria-label={analysisOpen ? 'Starting position' : 'First move'}");
-  expect(source).toContain("aria-label={analysisOpen ? 'Final position' : 'Last move'}");
+  expect(source).toContain('aria-label="First move"><svg');
+  expect(source).toContain('aria-label="Last move"><svg');
   expect(source).toContain('M5 5v14m13-14-7 7 7 7');
   expect(source).toContain('M19 5v14M6 5l7 7-7 7');
+});
+
+it('renders only committed user arrows, without a drag preview state', () => {
+  const source=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+  expect(source).not.toContain('setArrowPreview');
+  expect(source).toContain('const visibleArrows = analysisOpen ? boardNotes?.arrows ?? [] : arrows;');
 });
