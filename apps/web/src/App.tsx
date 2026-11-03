@@ -156,6 +156,7 @@ export function App() {
   const [gameReview, setGameReview] = useState<GameReview | null>(null);
   const [positionEvaluation, setPositionEvaluation] = useState<EngineEvaluation | null>(null);
   const [engineMove, setEngineMove] = useState<EngineBestMove | null>(null);
+  const [threatMove, setThreatMove] = useState<EngineBestMove | null>(null);
   const [evaluationPendingFen, setEvaluationPendingFen] = useState<string | null>(null);
   const [automaticBoardSize, setAutomaticBoardSize] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState<number | null>(() => {
@@ -1329,6 +1330,8 @@ export function App() {
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
                     && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
+                  {analysisOpen && threatMove?.gameId === game.id && threatMove.fen === displayedFen
+                    && <EngineBestMoveArrow move={threatMove} orientation={orientation} threat />}
                   <BoardArrows arrows={visibleArrows} orientation={orientation} />
                 </div>
                 <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
@@ -1424,7 +1427,7 @@ export function App() {
                   const next = applyEngineVariation(tree, current, rootFen, moves);
                   if (next) { setAnalysis(next); setSelected(null); setAnalysisError(null); }
                 }}
-                onBestMoveChange={setEngineMove}
+                onBestMoveChange={setEngineMove} onThreatMoveChange={setThreatMove}
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
             <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
               book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}

@@ -82,3 +82,16 @@ it('keeps only Analysis and settings in the header, with the switch before Depth
   expect(heading).not.toContain('role="switch"'); expect(heading).not.toContain('>Engine Evaluation</strong>');
   expect(html.slice(html.indexOf('class="engine-depth-row"'))).toMatch(/role="switch"[\s\S]*Depth[\s\S]*aria-label="Continuous analysis"/);
 });
+
+it('shares identical user, best and threat geometry in both orientations, with only color differing', () => {
+  const move={gameId:'game',fen,from:'e2' as const,to:'e4' as const};
+  for(const orientation of ['white','black'] as const) {
+    const user=renderToStaticMarkup(createElement(BoardArrows,{arrows:[{from:move.from,to:move.to}],orientation}));
+    const best=renderToStaticMarkup(createElement(EngineBestMoveArrow,{move,orientation}));
+    const threat=renderToStaticMarkup(createElement(EngineBestMoveArrow,{move,orientation,threat:true}));
+    const path=(html:string)=>/ d="([^"]*)"/.exec(html)?.[1];
+    expect(path(best)).toBe(path(user)); expect(path(threat)).toBe(path(user));
+    expect(best).toContain('fill="#70bcee"'); expect(threat).toContain('fill="#dd4941"');
+    expect(best).toContain('fill-opacity=".72"');
+  }
+});

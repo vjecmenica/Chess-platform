@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse, GameSide } from '@chess/contracts';
 import { EngineVariation } from './EngineVariation';
+import { ThreatControl } from './ThreatControl';
 import { engineVariation, createEngineVariationReader } from './engine-variation';
 import { createEngineStatePublisher } from './engine-ui-updates';
 import { EngineCache, EngineController,
@@ -197,19 +198,21 @@ export function currentEngineEvaluation(state: EngineState, fen: string): Engine
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, onExploreLine, orientation = 'white', reviewHost, sessionOnly = false }: {
+  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, onThreatMoveChange, onExploreLine, orientation = 'white', reviewHost, sessionOnly = false }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
   readonly onEvaluationChange: (evaluation: EngineEvaluation | null) => void;
   readonly onEvaluationPendingChange?: (fen: string | null) => void;
   readonly onBestMoveChange?: (move: EngineBestMove | null) => void;
+  readonly onThreatMoveChange?: (move: EngineBestMove | null) => void;
   readonly onExploreLine?: (rootFen: string, moves: readonly string[]) => void;
   readonly orientation?: GameSide;
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
 }) {
   const [enabled, setEnabled] = useState(true);
+  const [engineEpoch, setEngineEpoch] = useState(0);
   const [preference, setPreference] = useState(() => readEnginePreference(browserStorage()));
   const [fallback, setFallback] = useState(false);
   const [capabilities] = useState(browserEngineThreadCapabilities);
@@ -297,6 +300,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }
 
   function applySettings(next: InteractiveSettingsState) {
+    setEngineEpoch(value => value + 1);
     setSearchSettings(next);
     const settings = next.current;
     controller.current?.setSearchLimits(interactiveLimits(
@@ -428,6 +432,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     </div>}
     <div className="engine-depth-row">
       <EngineToggle enabled={enabled && state.kind !== 'error'} onToggle={() => {
+        setEngineEpoch(value => value + 1);
         if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
         else { controller.current?.start(fen); setEnabled(true); }
       }} />
@@ -439,6 +444,10 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           aria-hidden="true" focusable="false"><path d="M8 2v12M2 8h12" /></svg>
       </button>
       {state.kind === 'searching' && <small className="engine-search-status">{continuous ? 'Continuous' : 'Searching'}</small>}
+      <ThreatControl fen={fen} gameId={game.id}
+        requestKey={`${variant.id}:${threads}:${lineCount}:${profile}:${engineEpoch}`}
+        available={enabled && (state.kind === 'searching' && state.fen === fen || state.kind === 'done' && state.evaluation.fen === fen)}
+        reviewing={review.kind === 'running'} onMove={onThreatMoveChange} />
       <small className="engine-build">{description}</small>
     </div>
     {fallback && <div className="engine-fallback" role="status">Full could not run. Using Stockfish 19 Lite.

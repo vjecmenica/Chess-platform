@@ -3,21 +3,6 @@ import { annotationColors } from './analysis-board';
 import { arrowCenter, type BoardArrow } from './board-arrows';
 import type { EngineBestMove } from './engine-board';
 
-export function arrowPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
-  const length = Math.hypot(to.x - from.x, to.y - from.y);
-  if (length === 0) return '';
-  const forward = { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
-  const side = { x: -forward.y, y: forward.x };
-  const point = (distance: number, offset: number) =>
-    `${(from.x + forward.x * distance + side.x * offset).toFixed(2)} `
-    + `${(from.y + forward.y * distance + side.y * offset).toFixed(2)}`;
-  const tip = `${to.x} ${to.y}`;
-  return `M ${point(0, 6)} L ${point(length - 39, 6)} `
-    + `L ${point(length - 52, 24)} L ${tip} `
-    + `L ${point(length - 52, -24)} L ${point(length - 39, -6)} `
-    + `L ${point(0, -6)} Q ${point(-12, 0)} ${point(0, 6)} Z`;
-}
-
 export function userArrowPath(from: { x: number; y: number }, to: { x: number; y: number }) {
   const length = Math.hypot(to.x - from.x, to.y - from.y);
   if (length === 0) return '';
@@ -29,6 +14,12 @@ export function userArrowPath(from: { x: number; y: number }, to: { x: number; y
     + `L ${point(base, -24)} L ${point(base, -10)} L ${point(0, -10)} Z`;
 }
 
+export function ArrowShape({ from, to, fill }: {
+  from: { x: number; y: number }; to: { x: number; y: number }; fill: string;
+}) {
+  return <path d={userArrowPath(from, to)} fillOpacity=".72" stroke="none" fill={fill} />;
+}
+
 export function BoardArrows({ arrows, orientation }: {
   arrows: readonly BoardArrow[]; orientation: GameSide;
 }) {
@@ -36,16 +27,15 @@ export function BoardArrows({ arrows, orientation }: {
     {arrows.map((arrow, index) => {
       const start = arrowCenter(arrow.from, orientation);
       const end = arrowCenter(arrow.to, orientation);
-      const path = userArrowPath(start, end);
-      return <path d={path} fillOpacity=".72" key={`${arrow.from}-${arrow.to}-${index}`} stroke="none"
+      return <ArrowShape from={start} to={end} key={`${arrow.from}-${arrow.to}-${index}`}
         fill={arrow.color === undefined || arrow.color === 'orange' ? '#f3b52b' : annotationColors[arrow.color].fill} />;
     })}
   </svg>;
 }
 
-export function EngineBestMoveArrow({ move, orientation }: { move: EngineBestMove; orientation: GameSide }) {
-  return <svg className="board-arrows engine-best-move" viewBox="0 0 800 800" aria-hidden="true" focusable="false"
+export function EngineBestMoveArrow({ move, orientation, threat = false }: { move: EngineBestMove; orientation: GameSide; threat?: boolean }) {
+  return <svg className={`board-arrows ${threat ? 'engine-threat-move' : 'engine-best-move'}`} viewBox="0 0 800 800" aria-hidden="true" focusable="false"
     data-from={move.from} data-to={move.to}>
-    <path d={arrowPath(arrowCenter(move.from, orientation), arrowCenter(move.to, orientation))} stroke="none" />
+    <ArrowShape from={arrowCenter(move.from, orientation)} to={arrowCenter(move.to, orientation)} fill={threat ? '#dd4941' : '#70bcee'} />
   </svg>;
 }

@@ -9,6 +9,43 @@ other-position output clears the arrow. Domain validation covers promotion,
 castling and en passant. This arrow is transient and separate from user markings:
 flipping rotates it, annotation edits do not remove it, and it is never serialized.
 
+### Opponent Threat overlay
+
+**Threat** is optional and off initially. It asks what the opponent of the side to
+move would play if that side passed; it is not the second move of the ordinary PV
+and is not proof of a forced threat. The red arrow comes from the legal first move
+of a separate Stockfish 19 Lite search of that hypothetical position. Blue best-move,
+red threat and user arrows share one rendering component, geometry and orientation
+mapping; their colors differ. Both engine overlays are transient and excluded from
+annotations, PGN, notes, caches of user markings and game records.
+
+The existing chess.js rules adapter validates the source and hypothetical FEN.
+The pass switches the turn, clears en passant, retains consistent castling rights,
+increments the reversible halfmove count and increments the fullmove number only
+when Black passed. It never changes the real board or grants a castling right.
+An inconsistent position (including the nonmoving king already attacked) is rejected.
+When the actual side to move is **in check**, no pass search is run: the UI explicitly
+says Threat is unavailable while in check. There is no substitute red arrow. Terminal
+positions with no legal moves and invalid FENs also show an unavailable explanation.
+No legal returned move means no red arrow; missing/failed engine output is not guessed.
+
+Threat uses one Lite worker, MultiPV 1, Hash 16 MB, depth at most 14 and at most 1.2
+seconds per selected position. This intentionally modest tactical approximation may
+miss deeper threats, especially compared with a longer Full search. Its build and
+limits are identified by the control and its accessible description. It does not
+change the interactive build, threads, budgets, scores, PVs, or full-review method.
+Updates with a changed legal best move appear during the search; identical move
+updates are coalesced. Threat results have no persistent cache and use an isolated
+in-memory controller. Old generations and terminated workers cannot publish results.
+Position changes, interactive settings/restart/stop/error, toggling Threat off and
+closing Analysis clear the red arrow and dispose the search. The result is tagged
+with the original displayed FEN, not the hypothetical FEN.
+
+To retain the two-worker ceiling, Threat pauses and clears while Computer Analysis
+runs, with a visible explanation, then starts fresh when review ends or is cancelled.
+Normal current-position evaluation is never stopped for Threat. Only a bounded Lite
+worker is added alongside it; no simultaneous second Full engine is loaded for Threat.
+
 Individual PV moves are keyboard-accessible buttons. Hover or focus shows a local
 miniature board after that exact move occurrence, oriented like the main board.
 Hovering never edits the tree. Clicking validates and applies the complete prefix
@@ -118,7 +155,7 @@ Evaluation**, with its own worker and a bounded depth 14 / 1.2 seconds per posit
 It retains its pause, cancellation, watchdog and CPL/accuracy method. Changing the
 build or Threads cancels an active review and clears its previous results; rerun the
 review under the new selection. At most two engine instances run in one Analysis
-workspace, and review start/cancel/finish does not stop interactive evaluation.
+workspace (Threat pauses while reviewing), and review start/cancel/finish does not stop interactive evaluation.
 Running two Full workers at once can use considerable CPU and memory, especially
 with multiple threads. Stop and Cancel remain independent controls.
 

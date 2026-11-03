@@ -211,7 +211,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .board-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2;
   fill: rgba(162, 77, 31, .8); stroke: rgba(162, 77, 31, .8); }
 .board-arrows line { stroke-width: 12; stroke-linecap: round; }
-.engine-best-move path { fill: rgba(112, 188, 238, .72); }
 .drag-piece { position: fixed; z-index: 20;
   transform: translate(-50%, -50%); pointer-events: none; user-select: none; }
 .board-files, .board-ranks { position: absolute; display: grid; color: #6d5946;
@@ -1127,3 +1126,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .game-layout :is(.board-utilities button, .chat-mute):hover { background: #eee5d6; color: #382b22; }
 .game-layout :is(.board-utilities button, .chat-mute):active { background: #e3d6c3; }
 .game-layout :is(.board-utilities button, .chat-mute):focus-visible { outline: 3px solid #63a9d0; outline-offset: 1px; }
+
+.engine-threat-toggle[aria-pressed='true'] { background: #f1dfd4; border-color: #98654d; }
+.engine-threat-status { order: 1; flex-basis: 100%; color: #756451; font-size: var(--text-compact); }
