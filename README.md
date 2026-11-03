@@ -140,6 +140,7 @@ Add the next numbered file, such as `019_description.sql`, for each schema chang
 - [Roadmap](docs/roadmap.md): the development setup and later feature order.
 - [Architecture](docs/architecture.md): chosen foundation and proposed game/analysis design.
 - [Participant game chat](docs/game-chat.md): migration 017, private guest-seat access, delivery, retries, and limits.
+- [Private rematches and offer history](docs/rematches.md): migration 023, invitation acceptance, system chat entries, and unread counts.
 - [Accounts](docs/accounts.md): registration, account-owned seats, historical guest access, and verified-email recovery (migration 021 and email setup).
 - [UI typography](docs/typography.md): shared text roles, sizes, and dense-content guidance.
 

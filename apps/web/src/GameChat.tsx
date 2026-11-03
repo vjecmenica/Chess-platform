@@ -3,7 +3,7 @@ import type { GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameS
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
 import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, chatResponse, mergeChatMessages, nearChatBottom,
-  type ChatPermission } from './game-chat';
+  unreadEntries, type ChatPermission } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
   playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode }
@@ -12,6 +12,7 @@ export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage
   playerNames?: GamePlayerNames | undefined }) {
   const name = sitePlayerName(playerNames, item.side);
   const label = playerNames?.[item.side] ? name : `${name} (${item.side === 'white' ? 'White' : 'Black'})`;
+  if (item.kind === 'system') return <li className="game-chat-system"><em>{label} {item.text}</em><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></li>;
   return <li className="game-chat-message">
     <p><strong aria-label={`${label}, ${item.side === side ? 'you' : 'opponent'}`}>{label}</strong>{': '}<span>{item.text}</span></p>
     <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
@@ -49,7 +50,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, onSend, o
 
 export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info }: Props) {
   const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
-  const [unreadChat, setUnreadChat] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
   // Send acknowledgements can arrive before older opponent messages are fetched.
@@ -79,9 +80,11 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const reading = useRef(false);
   const requested = useRef(false);
 
+  const readKey = `game-chat-read:${gameId}:${side}`;
+  const readThrough = useRef('0');
+  useEffect(() => { try { const stored=localStorage.getItem(readKey); if(stored && /^\d{1,19}$/.test(stored)) readThrough.current=stored; } catch {} }, [readKey]);
   const receive = useCallback((incoming: readonly GameChatMessage[]) => {
-    if ((view.current.hidden || view.current.activePanel !== 'chat') && incoming.some(item => item.side !== side
-      && !messagesRef.current.some(previous => previous.id === item.id))) setUnreadChat(true);
+    if (view.current.hidden || view.current.activePanel !== 'chat') { const added=unreadEntries(messagesRef.current,incoming,side,readThrough.current); setUnreadChat(count=>count+added); }
     const next = mergeChatMessages(messagesRef.current, incoming);
     const changed = next.at(-1)?.id !== messagesRef.current.at(-1)?.id;
     messagesRef.current = next;
@@ -115,17 +118,18 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   useEffect(() => {
     mounted.current = true;
     const onFocus = () => { void refresh(); };
+    const timer = window.setInterval(onFocus, 4000);
     const onVisible = () => { if (!document.hidden) void refresh(); };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
-    return () => { mounted.current = false; window.removeEventListener('focus', onFocus);
+    return () => { clearInterval(timer); mounted.current = false; window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible); };
   }, [refresh]);
   useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
   useLayoutEffect(() => {
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [messages, hidden, activePanel]);
-  useEffect(() => { if (!hidden && activePanel === 'chat') setUnreadChat(false); }, [hidden, activePanel]);
+  useEffect(() => { if (!hidden && activePanel === 'chat') { setUnreadChat(0); const last=messages.at(-1)?.id; if(last){readThrough.current=last;try{localStorage.setItem(readKey,last);}catch{}} } }, [hidden, activePanel, messages, readKey]);
 
   function toggleHidden() {
     setHidden(value => {
@@ -164,7 +168,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
     <button type="button" aria-pressed={activePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
     <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat
-      {unreadChat && <span className="chat-unread" aria-label="New messages">●</span>}</button>
+      {unreadChat > 0 && <span className="chat-unread" aria-label={`${unreadChat} unread entries`}>{unreadChat}</span>}</button>
     <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
   return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}

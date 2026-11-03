@@ -5,6 +5,7 @@ import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
+import { GameRematch } from './GameRematch';
 import { GameChat } from './GameChat';
 import { GameInfo, liveGameStatus } from './GameInfo';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
@@ -1400,13 +1401,6 @@ export function App() {
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
-              {!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished') && <p className="board-hint">{liveBrowsingHistory
-                ? `Viewing move ${displayedPly} of ${game.history.length}. The live game continues.`
-                  : canMove ? 'Select or drag one of your pieces.'
-                  : 'Select Analysis to explore legal alternatives.'}</p>}
-              {!analysisOpen && imported === null && challenge !== null && <p className="clock-policy" role="note">{challenge.game.clocks === 'not_integrated'
-                ? 'This earlier challenge is untimed.'
-                : `${timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)} server clock · Time continues through disconnects and server outages. The server decides deadlines.`}</p>}
 
             </div>
             <div className="position-column">
@@ -1490,6 +1484,7 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
+                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
                   analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) {

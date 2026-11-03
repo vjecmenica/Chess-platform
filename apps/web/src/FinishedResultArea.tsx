@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActionIcon } from './GameRematch';
 import { isCompactResultHeight, resizedResultHeight } from './result-area';
 
 interface FinishedResultAreaProps {
   readonly score: string;
+  readonly beforeAnalysis?: ReactNode;
   readonly explanation: string;
   readonly analysisOpen: boolean;
   readonly onToggleAnalysis: () => void;
@@ -10,7 +12,7 @@ interface FinishedResultAreaProps {
 }
 
 export function FinishedResultArea({ score, explanation, analysisOpen,
-  onToggleAnalysis, analysisHref }: FinishedResultAreaProps) {
+  onToggleAnalysis, analysisHref, beforeAnalysis }: FinishedResultAreaProps) {
   const [height, setHeight] = useState<number | null>(null);
   const area = useRef<HTMLDivElement | null>(null);
   const maximumHeight = useRef<number | null>(null);
@@ -32,9 +34,9 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
     <div className="final-result" role="status">
       <strong>{score}</strong><span>{explanation}</span>
     </div>
-    <div className="finished-result-actions">
+    <div className="finished-result-actions">{beforeAnalysis}
       {!analysisOpen && analysisHref ? <a className="primary analysis-open" href={analysisHref} target="_blank" rel="noopener noreferrer"
-        aria-label="Open game Analysis in a new tab">Analysis</a> : <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
+        aria-label="Open game Analysis in a new tab"><ActionIcon kind="analysis"/>Analysis</a> : <button type="button" className={analysisOpen ? "secondary" : "primary"} aria-pressed={analysisOpen}
         aria-description="Analysis edits last until Analysis closes and do not affect the game."
         onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
     </div>

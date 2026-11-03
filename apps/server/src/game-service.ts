@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { appendSystemChat } from './game-chat-events.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
 import { timeControlPresets, type TimeControlId } from '@chess/contracts';
@@ -593,6 +594,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         row.side_to_move = state.position.sideToMove;
         row.status = state.status;
         row.result = state.result;
+        const declinedDrawByMoving = row.draw_offer !== null && row.draw_offer !== yourSeat && state.drawOffer === null;
         row.draw_offer = state.drawOffer;
         row.claim_draw_offer = state.claimDrawOffer;
         row.timeout_witness = null;
@@ -623,6 +625,8 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
           (game_id, ply, record, remaining_ms_after_move) VALUES ($1, $2, $3::jsonb, $4)`,
           [row.id, move.ply, JSON.stringify(submitted.move), move.remainingMsAfterMove]);
         await saveGame(client, row);
+        if (declinedDrawByMoving) await appendSystemChat(client, row.id, yourSeat,
+          `draw-move:${row.version}`, 'declined the draw offer by playing a move.');
         if (row.clock_phase === 'handoff') {
           await client.query('UPDATE chess.game_move_receipts SET applied = true WHERE admission_id = $1',
             [receipt.admission_id]);

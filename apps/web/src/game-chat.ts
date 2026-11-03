@@ -44,3 +44,9 @@ export async function chatResponse<T>(response: Response): Promise<T> {
   }
   return body as T;
 }
+
+export function unreadEntries(current: readonly GameChatMessage[], incoming: readonly GameChatMessage[], side: GameChatMessage['side'], readThrough = '0'): number {
+ const seen = new Set(current.map(item => item.id)); let count=0;
+ for(const item of incoming){ if(!seen.has(item.id)&&item.side!==side&&BigInt(item.id)>BigInt(readThrough))count++; seen.add(item.id); }
+ return count;
+}

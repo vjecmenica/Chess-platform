@@ -84,6 +84,7 @@ export interface GameReadResponse extends GameState {
 }
 
 export interface GameChatMessage {
+  readonly kind?: 'system';
   /** Decimal bigint cursor; never convert it to a JavaScript number. */
   readonly id: string;
   readonly side: GameSide;
@@ -105,6 +106,19 @@ export interface MoveAcceptedResponse {
 export interface GameActionAcceptedResponse {
   readonly accepted: true;
   readonly game: GameState;
+}
+
+export interface GameRematchOffer {
+  readonly id: string;
+  readonly side: GameSide;
+  readonly status: 'pending' | 'accepted' | 'declined' | 'expired';
+  readonly newGameId: string | null;
+  readonly expiresAt: string;
+}
+export interface GameRematchResponse { readonly offer: GameRematchOffer | null }
+export interface GameRematchAction {
+  readonly action: 'offer' | 'accept' | 'decline';
+  readonly offerId?: string;
 }
 
 export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {

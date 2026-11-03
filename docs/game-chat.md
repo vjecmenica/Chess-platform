@@ -65,6 +65,13 @@ section below the board/moves. Info/Chat/Notes share the header in live play and
 Analysis, with Chat selected initially. Incoming opponent messages mark Chat when
 another tab is selected or the panel is hidden; they never switch away from notes.
 The Hide/Show button is the only collapse control.
+Migration `023_rematches_and_offer_events.sql` adds typed system entries for draw
+offers/responses and [private rematches](rematches.md). They retain their actor
+side and appear in italics in the same chronological history, separately from
+user messages. The numeric Chat badge counts incoming entries once, excluding
+the player's own entries, and clears when Chat is visible. Its browser-local
+read watermark survives reload. A four-second bounded history catch-up also
+covers missed notifications; new SSE entries still refresh promptly.
 Hiding is local to the browser, game, and seat and survives refresh; it does not
 delete history or notify the opponent.
 The list follows new messages only while the reader is near its bottom. Otherwise,

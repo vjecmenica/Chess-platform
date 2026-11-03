@@ -118,10 +118,10 @@ describe('shared game presentation', () => {
     expect(app.indexOf('className="secondary analysis-flip"')).toBeGreaterThan(app.indexOf('className="game-controls"'));
   });
 
-  it('renders below-board guidance and the clock notice only outside Analysis', () => {
+  it('omits redundant board guidance and clock-policy copy in both modes', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-    expect(app).toContain("!analysisOpen && (canMove || liveBrowsingHistory || game.status === 'finished')");
-    expect(app).toContain('!analysisOpen && imported === null && challenge !== null');
+    expect(app).not.toContain('Select Analysis to explore legal alternatives.');
+    expect(app).not.toContain('Time continues through disconnects and server outages.');
     expect(app).toContain("showStatus={!analysisOpen && game.status !== 'finished'}");
     expect(app).not.toContain('Analysis: ${');
   });

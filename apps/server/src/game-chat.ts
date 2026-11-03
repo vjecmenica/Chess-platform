@@ -8,9 +8,9 @@ const uuid = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 const params = { type: 'object', required: ['id'], additionalProperties: false,
   properties: { id: { type: 'string', pattern: uuid } } } as const;
 interface Access { status: string; creator_guest_id: string; acceptor_guest_id: string }
-interface MessageRow { id: string; sender_side: GameSide; body: string; created_at: Date }
+interface MessageRow { id: string; sender_side: GameSide; body: string; kind: 'user' | 'system'; created_at: Date }
 function message(row: MessageRow): GameChatMessage {
-  return { id: row.id, side: row.sender_side, text: row.body, sentAt: row.created_at.toISOString() };
+  return { id: row.id, side: row.sender_side, text: row.body, sentAt: row.created_at.toISOString(), ...(row.kind === 'system' ? { kind: 'system' as const } : {}) };
 }
 function canSendChat(status: string): boolean {
   return status === 'active' || status === 'finished';
@@ -33,7 +33,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
         return reply.code(403).send({ error: 'not_a_participant' });
       }
       // A bounded latest window also catches up after a long disconnection without replaying a backlog.
-      const { rows } = await pool.query<MessageRow>(`SELECT id, sender_side, body, created_at
+      const { rows } = await pool.query<MessageRow>(`SELECT id, sender_side, body, kind, created_at
         FROM chess.game_chat_messages WHERE game_id = $1 AND id > $2::bigint ORDER BY id DESC LIMIT 100`,
       [request.params.id, after]);
       return { messages: rows.reverse().map(message), canSend: canSendChat(access.status) };
@@ -64,7 +64,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
         const side = seatId === access.creator_guest_id ? 'white'
           : seatId === access.acceptor_guest_id ? 'black' : null;
         if (!side) return reply.code(403).send({ error: 'not_a_participant' });
-        const previous = (await client.query<MessageRow>(`SELECT id, sender_side, body, created_at
+        const previous = (await client.query<MessageRow>(`SELECT id, sender_side, body, kind, created_at
           FROM chess.game_chat_messages WHERE game_id = $1 AND sender_side = $2 AND request_id = $3`,
         [request.params.id, side, requestId])).rows[0];
         if (previous) {
@@ -73,7 +73,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
         }
         if (!canSendChat(access.status)) return reply.code(409).send({ error: 'chat_read_only' });
         const recent = await client.query(`SELECT id FROM chess.game_chat_messages
-          WHERE game_id = $1 AND sender_side = $2 AND created_at > clock_timestamp() - interval '10 seconds'
+          WHERE game_id = $1 AND sender_side = $2 AND kind = 'user' AND created_at > clock_timestamp() - interval '10 seconds'
           ORDER BY created_at DESC LIMIT 5`, [request.params.id, side]);
         if (recent.rows.length >= 5) {
           reply.header('Retry-After', '10');
@@ -81,7 +81,7 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
         }
         const row = (await client.query<MessageRow>(`INSERT INTO chess.game_chat_messages
           (game_id, sender_side, request_id, body) VALUES ($1, $2, $3, $4)
-          RETURNING id, sender_side, body, created_at`, [request.params.id, side, requestId, text])).rows[0]!;
+          RETURNING id, sender_side, body, kind, created_at`, [request.params.id, side, requestId, text])).rows[0]!;
         await client.query("SELECT pg_notify('chess_game_updates', $1)",
           [JSON.stringify({ id: request.params.id, chatId: row.id })]);
         await client.query('COMMIT');

@@ -6,6 +6,7 @@ import { registerChallengeRoutes } from './challenge-routes.js';
 import { registerGameRoutes } from './game-routes.js';
 import { createGameService, type GameService } from './game-service.js';
 import { registerExplorerRoutes } from './explorer-routes.js';
+import { registerRematches } from './game-rematch.js';
 import { registerGameChatRoutes } from './game-chat.js';
 import { registerGameNotes } from './game-notes.js';
 import type { AccountEmail } from './account-email.js';
@@ -39,6 +40,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
       () => gameService.trustedNowMs());
     registerGameRoutes(app, challenges.pool, gameService);
     registerGameChatRoutes(app, challenges.pool);
+    registerRematches(app, challenges.pool, () => gameService.trustedNowMs());
     registerGameNotes(app, challenges.pool);
   }
 
