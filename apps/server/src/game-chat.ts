@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
-import type { GameChatMessage, GameSide } from '@chess/contracts';
+import { gameChatPresets, type GameChatHistory, type GameChatPreset, type GameChatMessage, type GameSide } from '@chess/contracts';
+import { appendSystemChat } from './game-chat-events.js';
 import { requireGuest } from './guest-session.js';
 import { participantGuestId } from './account-session.js';
 
@@ -14,6 +15,19 @@ function message(row: MessageRow): GameChatMessage {
 }
 function canSendChat(status: string): boolean {
   return status === 'active' || status === 'finished';
+}
+
+const presetTexts = gameChatPresets.map(item => item.text);
+async function history(db: pg.PoolClient, gameId: string, side: GameSide, status: string, after = '0'): Promise<GameChatHistory> {
+  const { rows } = await db.query<MessageRow>(`SELECT id, sender_side, body, kind, created_at
+    FROM chess.game_chat_messages WHERE game_id = $1 AND id > $2::bigint ORDER BY id DESC LIMIT 100`, [gameId, after]);
+  const pref = (await db.query<{ muted: boolean; version: number }>(
+    'SELECT muted, version FROM chess.game_chat_preferences WHERE game_id=$1 AND side=$2', [gameId, side])).rows[0];
+  const used = await db.query<{ body: GameChatPreset }>(`SELECT DISTINCT body FROM chess.game_chat_messages
+    WHERE game_id=$1 AND sender_side=$2 AND kind='user'
+      AND body IN ('good game','well played','thank you','got to go','goodbye')`, [gameId, side]);
+  return { messages: rows.reverse().map(message), canSend: canSendChat(status),
+    muted: pref?.muted ?? false, muteVersion: pref?.version ?? 0, usedPresets: used.rows.map(item => item.body) };
 }
 
 export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): void {
@@ -32,11 +46,18 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
       if (seatId !== access.creator_guest_id && seatId !== access.acceptor_guest_id) {
         return reply.code(403).send({ error: 'not_a_participant' });
       }
-      // A bounded latest window also catches up after a long disconnection without replaying a backlog.
-      const { rows } = await pool.query<MessageRow>(`SELECT id, sender_side, body, kind, created_at
-        FROM chess.game_chat_messages WHERE game_id = $1 AND id > $2::bigint ORDER BY id DESC LIMIT 100`,
-      [request.params.id, after]);
-      return { messages: rows.reverse().map(message), canSend: canSendChat(access.status) };
+      const side = seatId === access.creator_guest_id ? 'white' : 'black';
+      const client = await pool.connect();
+      try {
+        // A single snapshot keeps the shared history and mute state consistent.
+        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const result = await history(client, request.params.id, side, access.status, after);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally { client.release(); }
     });
 
   app.post<{ Params: { id: string }; Body: { text: string } }>('/games/:id/chat',
@@ -68,10 +89,15 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
           FROM chess.game_chat_messages WHERE game_id = $1 AND sender_side = $2 AND request_id = $3`,
         [request.params.id, side, requestId])).rows[0];
         if (previous) {
-          if (previous.body !== text) return reply.code(409).send({ error: 'request_id_conflict' });
+          if (previous.kind !== 'user' || previous.body !== text) return reply.code(409).send({ error: 'request_id_conflict' });
           return message(previous);
         }
         if (!canSendChat(access.status)) return reply.code(409).send({ error: 'chat_read_only' });
+        if (presetTexts.includes(text as GameChatPreset)) {
+          const used = await client.query(`SELECT 1 FROM chess.game_chat_messages
+            WHERE game_id=$1 AND sender_side=$2 AND kind='user' AND body=$3 LIMIT 1`, [request.params.id, side, text]);
+          if (used.rowCount) return reply.code(409).send({ error: 'chat_preset_used' });
+        }
         const recent = await client.query(`SELECT id FROM chess.game_chat_messages
           WHERE game_id = $1 AND sender_side = $2 AND kind = 'user' AND created_at > clock_timestamp() - interval '10 seconds'
           ORDER BY created_at DESC LIMIT 5`, [request.params.id, side]);
@@ -91,5 +117,49 @@ export function registerGameChatRoutes(app: FastifyInstance, pool: pg.Pool): voi
         // Release locks on every rejected or failed request, including successful duplicate reads.
         try { if (!committed) await client.query('ROLLBACK'); } finally { client.release(); }
       }
+    });
+
+  app.post<{ Params: { id: string }; Body: { muted: boolean } }>('/games/:id/chat/mute',
+    { schema: { params, headers: { type: 'object', required: ['idempotency-key'],
+      properties: { 'idempotency-key': { type: 'string', pattern: uuid } } },
+    body: { type: 'object', required: ['muted'], additionalProperties: false,
+      properties: { muted: { type: 'boolean' } } } } }, async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const guest = await requireGuest(pool, request, reply, true);
+      if (!guest) return;
+      const seatId = await participantGuestId(pool, request, guest, request.params.id);
+      const client = await pool.connect(); let committed = false;
+      try {
+        await client.query('BEGIN');
+        const access = (await client.query<Access>(`SELECT g.status,c.creator_guest_id,c.acceptor_guest_id
+          FROM chess.games g JOIN chess.challenges c ON c.id=g.id WHERE g.id=$1 FOR UPDATE OF g`, [request.params.id])).rows[0];
+        if (!access) return reply.code(404).send({ error: 'game_not_found' });
+        const side = seatId === access.creator_guest_id ? 'white' : seatId === access.acceptor_guest_id ? 'black' : null;
+        if (!side) return reply.code(403).send({ error: 'not_a_participant' });
+        const requestId = request.headers['idempotency-key'] as string;
+        const previous = (await client.query<{ muted: boolean }>(`SELECT muted FROM chess.game_chat_mute_receipts
+          WHERE game_id=$1 AND side=$2 AND request_id=$3`, [request.params.id, side, requestId])).rows[0];
+        if (previous && previous.muted !== request.body.muted) return reply.code(409).send({ error: 'request_id_conflict' });
+        if (!previous) {
+          const recent = await client.query(`SELECT 1 FROM chess.game_chat_mute_receipts
+            WHERE game_id=$1 AND side=$2 AND created_at > clock_timestamp()-interval '10 seconds' LIMIT 5`, [request.params.id, side]);
+          if (recent.rows.length >= 5) { reply.header('Retry-After', '10'); return reply.code(429).send({ error: 'chat_rate_limited' }); }
+
+          const pref = (await client.query<{ muted: boolean }>(`SELECT muted FROM chess.game_chat_preferences
+            WHERE game_id=$1 AND side=$2`, [request.params.id, side])).rows[0];
+          if ((pref?.muted ?? false) !== request.body.muted) {
+            await client.query(`INSERT INTO chess.game_chat_preferences(game_id,side,muted,version) VALUES($1,$2,$3,1)
+              ON CONFLICT(game_id,side) DO UPDATE SET muted=EXCLUDED.muted,version=game_chat_preferences.version+1`,
+            [request.params.id, side, request.body.muted]);
+            await appendSystemChat(client, request.params.id, side, `mute:${side}:${requestId}`,
+              request.body.muted ? 'has muted the chat' : 'has unmuted the chat');
+          }
+          await client.query(`INSERT INTO chess.game_chat_mute_receipts(game_id,side,request_id,muted) VALUES($1,$2,$3,$4)`,
+            [request.params.id, side, requestId, request.body.muted]);
+        }
+        const result = await history(client, request.params.id, side, access.status);
+        await client.query('COMMIT'); committed = true;
+        return result;
+      } finally { try { if (!committed) await client.query('ROLLBACK'); } finally { client.release(); } }
     });
 }

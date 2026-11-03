@@ -2,23 +2,11 @@ import type { GameChatMessage, GameState } from '@chess/contracts';
 
 export const chatMessageLimit = 500;
 export const chatHistoryLimit = 100;
-export const chatPresets = [
-  { label: 'GG', text: 'good game' }, { label: 'WP', text: 'well played' },
-  { label: 'TY', text: 'thank you' }, { label: 'GTG', text: 'got to go' },
-  { label: 'BYE', text: 'goodbye' },
-] as const;
-
-export interface ChatMuteState { muted: boolean; unmuting: boolean; epoch: number }
+export { gameChatPresets as chatPresets } from '@chess/contracts';
 export const chatMuteKey = (gameId: string, side: GameChatMessage['side']) => `game-chat-muted:${gameId}:${side}`;
-export function initialChatMute(muted: boolean): ChatMuteState { return { muted, unmuting: false, epoch: 0 }; }
-export function toggleChatMute(state: ChatMuteState): ChatMuteState {
-  if (state.unmuting) return state;
-  return { muted: true, unmuting: state.muted, epoch: state.epoch + 1 };
-}
-export function finishChatMuteRead(state: ChatMuteState, readEpoch: number): ChatMuteState {
-  // Finish one fresh history read before enabling notifications, so missed muted
-  // messages cannot become an unread backlog after a disconnect or reload.
-  return state.unmuting && state.epoch === readEpoch ? { ...state, muted: false, unmuting: false } : state;
+export interface ChatMuteState { muted: boolean; version: number }
+export function syncChatMute(current: ChatMuteState, incoming: ChatMuteState): ChatMuteState {
+  return incoming.version >= current.version ? incoming : current;
 }
 
 export function chatEnterSubmits(event: { key: string; isComposing: boolean; keyCode: number; repeat: boolean },
@@ -46,6 +34,7 @@ const errors: Record<string, string> = {
   guest_session_required: 'Your guest session expired. Refresh to reconnect.',
   invalid_csrf_token: 'Your guest session changed. Refresh to reconnect.',
   not_a_participant: 'Chat is only available to this game’s two players.',
+  chat_preset_used: 'You already sent that quick-chat phrase in this game.',
   empty_message: 'Enter a message before sending.',
   chat_read_only: 'Chat is read-only for this game state.',
   chat_rate_limited: 'Please wait 10 seconds before sending more messages.',

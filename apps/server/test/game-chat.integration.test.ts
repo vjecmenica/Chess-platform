@@ -101,13 +101,13 @@ describe('participant game chat against PostgreSQL', () => {
     const conversation = [first, second];
     for (const who of [white, black]) {
       expect((await restarted.inject({ url, headers: { cookie: who.cookie } })).json<GameChatHistory>())
-        .toEqual({ canSend: true, messages: [...conversation] });
+        .toMatchObject({ canSend: true, messages: [...conversation] });
       const response = await send(restarted, url, who, 'Well played');
       expect(response.statusCode).toBe(201);
       conversation.push(response.json<GameChatMessage>());
     }
     for (const who of [white, black]) expect((await restarted.inject({ url, headers: { cookie: who.cookie } }))
-      .json<GameChatHistory>()).toEqual({ canSend: true, messages: conversation });
+      .json<GameChatHistory>()).toMatchObject({ canSend: true, messages: conversation });
     expect((await send(restarted, url, outsider, 'Spectator')).statusCode).toBe(403);
     expect((await restarted.inject({ url, headers: { cookie: outsider.cookie } })).statusCode).toBe(403);
     expect((await send(restarted, url, white, 'Good luck', requestId)).json()).toEqual(first);
@@ -182,7 +182,7 @@ describe('participant game chat against PostgreSQL', () => {
     [id, status, status === 'aborted' ? JSON.stringify({ outcome: 'aborted', reason: 'first_move_deadline' }) : null]);
     for (const who of [white, black]) {
       expect((await server.inject({ url, headers: { cookie: who.cookie } })).json<GameChatHistory>())
-        .toEqual({ canSend: false, messages: [original] });
+        .toMatchObject({ canSend: false, messages: [original] });
       const response = await send(server, url, who, 'Not allowed');
       expect(response.statusCode).toBe(409);
       expect(response.json().error).toBe('chat_read_only');
@@ -190,4 +190,71 @@ describe('participant game chat against PostgreSQL', () => {
     expect((await send(server, url, white, 'Existing history', requestId)).json()).toEqual(original);
     expect((await send(server, url, outsider, 'Still private')).statusCode).toBe(403);
   });
+  it('limits every preset per seat across concurrent servers and retries, even outside the history window', async () => {
+    const { server, white, black, url, id } = await setup();
+    const second = app();
+    for (const text of ['good game', 'well played', 'thank you', 'got to go', 'goodbye']) {
+      const requestId = randomUUID();
+      const sent = await send(server, url, white, text, requestId);
+      expect(sent.statusCode).toBe(201);
+      expect((await send(second, url, white, text, requestId)).json()).toEqual(sent.json());
+      expect((await send(second, url, white, text)).json().error).toBe('chat_preset_used');
+      expect((await send(second, url, black, text)).statusCode).toBe(201);
+    }
+    await pool.query(`INSERT INTO chess.game_chat_messages(game_id,sender_side,request_id,body)
+      SELECT $1,'black',gen_random_uuid(),'Later '||n FROM generate_series(1,105) n`, [id]);
+    const restored = (await second.inject({ url, headers: { cookie: white.cookie } })).json<GameChatHistory>();
+    expect([...restored.usedPresets].sort()).toEqual(['good game','well played','thank you','got to go','goodbye'].sort());
+    expect(restored.messages).toHaveLength(100);
+    expect((await send(second, url, white, 'good game')).json().error).toBe('chat_preset_used');
+    const fresh = await setup();
+    const responses = await Promise.all([send(server, fresh.url, fresh.white, 'good game'), send(second, fresh.url, fresh.white, 'good game')]);
+    expect(responses.map(r => r.statusCode).sort()).toEqual([201,409]);
+    expect((await second.inject({ url: fresh.url, headers: { cookie: fresh.white.cookie } })).json<GameChatHistory>().messages).toHaveLength(1);
+  });
+
+  it('does not consume a preset on rejection', async () => {
+    const { server, white, url } = await setup();
+    for (let i=0;i<5;i++) expect((await send(server,url,white,`hello ${i}`)).statusCode).toBe(201);
+    expect((await send(server,url,white,'good game')).statusCode).toBe(429);
+    expect((await server.inject({url,headers:{cookie:white.cookie}})).json<GameChatHistory>().usedPresets).toEqual([]);
+  });
+
+  it('persists shared mute events once, preserves both players history, and never changes move versions', async () => {
+    const { server, white, black, outsider, url, id } = await setup();
+    const second = app();
+    const mute = (app: FastifyInstance, who: Guest, muted: boolean, key = randomUUID()) =>
+      app.inject({ method: 'POST', url: `${url}/mute`, headers: headers(who,key), payload: { muted } });
+    expect((await mute(server,outsider,true)).statusCode).toBe(403);
+    expect((await server.inject({method:'POST',url:`${url}/mute`,headers:{cookie:white.cookie,'idempotency-key':randomUUID()},payload:{muted:true}})).statusCode).toBe(403);
+    const noOp = randomUUID();
+    expect((await mute(server,white,false,noOp)).json<GameChatHistory>().messages).toEqual([]);
+    const key = randomUUID();
+    const repeated = await Promise.all([mute(server,white,true,key),mute(second,white,true,key),mute(second,white,true)]);
+    for (const response of repeated) expect(response.json<GameChatHistory>()).toMatchObject({ muted:true,muteVersion:1,
+      messages:[{side:'white',kind:'system',text:'has muted the chat'}] });
+    expect((await mute(server,white,false,key)).json().error).toBe('request_id_conflict');
+    // Replaying a successful no-op cannot undo a subsequent transition.
+    expect((await mute(server,white,false,noOp)).json<GameChatHistory>().muted).toBe(true);
+    const during = (await send(second,url,black,'While muted')).json<GameChatMessage>();
+    const whiteRead = (await second.inject({url,headers:{cookie:white.cookie}})).json<GameChatHistory>();
+    const blackRead = (await second.inject({url,headers:{cookie:black.cookie}})).json<GameChatHistory>();
+    expect(whiteRead.muted).toBe(true); expect(blackRead.muted).toBe(false);
+    expect(whiteRead.messages).toEqual(blackRead.messages);
+    expect(whiteRead.messages.at(-1)).toEqual(during);
+    const unmuteKey = randomUUID();
+    const enabled = (await mute(second,white,false,unmuteKey)).json<GameChatHistory>();
+    expect(enabled).toMatchObject({muted:false,muteVersion:2});
+    expect(enabled.messages.map(m=>m.text)).toEqual(['has muted the chat','While muted','has unmuted the chat']);
+    await server.close();
+    const restarted = app();
+    for (const who of [white,black]) expect((await restarted.inject({url,headers:{cookie:who.cookie}})).json<GameChatHistory>().messages).toEqual(enabled.messages);
+    await mute(restarted,white,false,unmuteKey);
+    await mute(restarted,white,true,key);
+    const final = (await restarted.inject({url,headers:{cookie:white.cookie}})).json<GameChatHistory>();
+    expect(final.muted).toBe(false); expect(final.messages).toEqual(enabled.messages);
+    expect((await restarted.inject({url:`/games/${id}`,headers:{cookie:white.cookie}})).json().version).toBe(0);
+    expect((await restarted.inject({url:`${url}?after=${during.id}`,headers:{cookie:black.cookie}})).json<GameChatHistory>().messages).toEqual([enabled.messages.at(-1)]);
+  });
+
 });

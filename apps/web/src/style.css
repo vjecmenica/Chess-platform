@@ -534,7 +534,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .nag-glyph { font-family: Arial, sans-serif; font-size: var(--text-meta); font-weight: 700; overflow-wrap: anywhere; }
 .nag-description { font-size: var(--text-compact); }
 .nag-grid button[aria-pressed="true"] { background: #d8e6cf; border-color: #143d30; }
-.replay { margin: 0 0 8px; padding: 8px; border: 1px solid #d2c6b5; border-radius: 8px; background: #faf7ef; }
+.replay { margin: 0 0 8px; padding: 0; border: 0; background: transparent; }
 .replay-position { margin: 0 0 7px; font-size: var(--text-compact); font-weight: 600; }
 .replay-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 .replay-controls button { min-width: 0; padding: 7px 2px; }
@@ -646,8 +646,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .game-chat-conversation[data-muted="true"] { visibility: hidden; pointer-events: none; }
 .game-chat-muted-notice { position: absolute; inset: 0; padding-top: 8px; color: #756451; }
 .game-chat-muted-notice p { font-size: var(--text-compact); }
-.game-layout .chat-mute { display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; padding: 7px; }
 .chat-mute svg { width: 20px; height: 20px; }
 .game-chat-tab[hidden], .game-chat-content > [hidden] { display: none; }
 .game-notes { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 6px; }
@@ -1123,10 +1121,10 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .finished-result-actions :is(button,a) { display:inline-flex; align-items:center; gap:5px; }
 .board-utilities { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
 .play-column > .board-utilities { margin-top: 22px; }
-.game-layout .board-utilities button { display: inline-flex; align-items: center; justify-content: center;
+.game-layout :is(.board-utilities button, .chat-mute) { display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; min-width: 40px; min-height: 40px; margin: 0; padding: 8px;
   border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: #604326; }
 .board-utilities svg { width: 22px; height: 22px; }
-.game-layout .board-utilities button:hover { background: #eee5d6; color: #382b22; }
-.game-layout .board-utilities button:active { background: #e3d6c3; }
-.game-layout .board-utilities button:focus-visible { outline: 3px solid #63a9d0; outline-offset: 1px; }
+.game-layout :is(.board-utilities button, .chat-mute):hover { background: #eee5d6; color: #382b22; }
+.game-layout :is(.board-utilities button, .chat-mute):active { background: #e3d6c3; }
+.game-layout :is(.board-utilities button, .chat-mute):focus-visible { outline: 3px solid #63a9d0; outline-offset: 1px; }

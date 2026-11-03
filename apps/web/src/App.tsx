@@ -1441,7 +1441,7 @@ export function App() {
                   <div className="replay-controls">
                     <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                        else setSelectedReplayPly(0); setSelected(null); }} aria-label="Starting position">Start</button>
+                        else setSelectedReplayPly(0); setSelected(null); }} aria-label={analysisOpen ? 'Starting position' : 'First move'}>{analysisOpen ? 'Start' : '|‹'}</button>
                     <button type="button" className="secondary"
                       disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
                       onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
@@ -1465,7 +1465,7 @@ export function App() {
                       onClick={() => { if (analysisOpen && analysis !== null)
                         setAnalysis(lastMainPosition(analysis, game));
                       else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                      aria-label="Final position">End</button>
+                      aria-label={analysisOpen ? 'Final position' : 'Last move'}>{analysisOpen ? 'End' : '›|'}</button>
                   </div>
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}

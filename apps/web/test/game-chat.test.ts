@@ -190,3 +190,19 @@ it('distinguishes definite rejections from uncertain delivery so retries keep th
     definitive: false, message: 'Chat could not connect. Please retry.',
   });
 });
+
+it('disables only confirmed used phrases for this player, preserving other quick replies', () => {
+  const send = vi.fn();
+  const buttons = QuickChatPresets({ disabled:false,used:['good game','thank you'],onSend:send }).props.children;
+  expect(buttons.map(button=>[button.props.children,button.props.disabled])).toEqual([
+    ['GG',true],['WP',false],['TY',true],['GTG',false],['BYE',false]
+  ]);
+  const fresh=QuickChatPresets({disabled:false,onSend:send}).props.children;
+  expect(fresh.every(button=>!button.props.disabled)).toBe(true);
+});
+it('renders mute and unmute system events as plain italic chronological entries without periods', () => {
+  for(const text of ['has muted the chat','has unmuted the chat']) {
+    const html=renderToStaticMarkup(createElement(ChatMessage,{item:{...message('10'),kind:'system',text},side:'black',playerNames:{white:'Alice',black:'Bob'}}));
+    expect(html).toContain(`<em>Alice ${text}</em>`);
+  }
+});

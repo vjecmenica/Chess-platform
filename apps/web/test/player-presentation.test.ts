@@ -146,3 +146,11 @@ describe('shared game presentation', () => {
     }
   });
 });
+
+it('keeps Analysis replay labels while making live first/last controls compact and accessible', () => {
+  const source=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+  expect(source).toContain("aria-label={analysisOpen ? 'Starting position' : 'First move'}");
+  expect(source).toContain("aria-label={analysisOpen ? 'Final position' : 'Last move'}");
+  expect(source).toContain("{analysisOpen ? 'Start' : '|‹'}");
+  expect(source).toContain("{analysisOpen ? 'End' : '›|'}");
+});

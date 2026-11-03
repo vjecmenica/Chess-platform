@@ -19,7 +19,8 @@ Messages contain a game reference, server-derived side, UUID retry key, plain te
 timestamp, and bigint ordering cursor. No generic messaging or forum tables exist.
 
 `GET /games/:id/chat?after=<decimal cursor>` returns at most the latest 100 messages
-after that cursor, ordered oldest first, plus `canSend`. Omitting the cursor returns
+after that cursor, ordered oldest first, plus `canSend`, the current seat’s
+`muted`/`muteVersion`, and `usedPresets`. Preferences and history share a database snapshot. Omitting the cursor returns
 the latest 100 messages. This is a recent-history window, not a bulk export or an
 unbounded pagination endpoint. The browser also caps its list at 100 messages.
 
@@ -55,7 +56,14 @@ only from history responses, so a newer own-message acknowledgement cannot skip 
 older opponent message. Enter sends a nonempty message outside IME composition;
 repeated keydown and pending requests cannot send duplicates. Optional GG, WP, TY,
 GTG, and BYE buttons send good game, well played, thank you, got to go, and goodbye,
-respectively. They use the same endpoint and safeguards and preserve a separately typed draft.
+respectively. Each exact lowercase phrase can be sent only once per game and side,
+including when typed or sent directly to the API. Successful earlier sends also count;
+legacy duplicates remain unchanged. The game lock serializes the history check and
+insert, and a partial index supports usage lookup beyond the recent-history window.
+Retries of the successful request still return that original message. A new request
+for an already used phrase returns 409 `chat_preset_used`. The buttons use confirmed
+usage only; rejection does not consume a phrase. The other player and new games
+have independent usage. A separately typed draft remains intact.
 Uncertain send failures retain the retry key and text: the input stays focused and
 read-only until Enter confirms that same message. Presets are disabled until it is
 resolved. Definite rejections allow editing again. Reads and sends time out after ten seconds. Messages
@@ -65,10 +73,12 @@ The desktop rail stays beside the board. On narrower screens it becomes a
 section below the board/moves. Info/Chat/Notes share the header in live play and
 Analysis, with Chat selected initially. Incoming opponent messages mark Chat when
 another tab is selected; they never switch away from notes. The bell button mutes
-only this browser's current player/game conversation. It does not collapse the
-panel or change Info, Notes, server history, or the other player's chat. Muted Chat
+only the current player's game conversation across that seat's sessions. It does not
+collapse the panel or change Info, Notes, or the other player's visibility. Muted Chat
 shows an italic notice, suppresses unread counts, and preserves the writing draft.
-The old collapse preference is ignored; muting uses a separate per-game/side key.
+The old collapse preference is ignored. A per-game/side browser cache avoids an initial
+flash; the server is authoritative, with monotonic versions rejecting stale refreshes.
+Earlier browser-only mute preferences are replaced by server state on the first read.
 Migration `023_rematches_and_offer_events.sql` adds typed system entries for draw
 offers/responses and [private rematches](rematches.md). They retain their actor
 side and appear in italics in the same chronological history, separately from
@@ -76,10 +86,24 @@ user messages. The numeric Chat badge counts incoming entries once, excluding
 the player's own entries, and clears when Chat is visible. Its browser-local
 read watermark survives reload. A four-second bounded history catch-up also
 covers missed notifications; new SSE entries still refresh promptly.
-Muting survives reload. Reads continue while muted and advance the local read
-watermark. Unmuting catches up history before notifications resume; a failed
-catch-up leaves chat muted with a retry message. This avoids an unread backlog
-after reconnecting. Draw/rematch offers and response controls remain in the game
+Migration `024_chat_preferences.sql` adds per-seat mute state and command receipts,
+plus the preset usage index. Apply it before starting the updated server; it does
+not rewrite game ownership, messages, or explorer data. The CSRF-protected
+`POST /games/:id/chat/mute` accepts `{ "muted": true|false }` with a UUID
+`Idempotency-Key`. Each actual transition atomically stores the preference and one
+shared italic system entry: “{player} has muted the chat” or “{player} has unmuted
+the chat”. Names resolve through existing seat names; Guest retains the side label.
+Unchanged state creates no event. Even no-op requests have durable receipts, so
+old retries after a later transition cannot reverse that transition or duplicate
+events. Reusing a key for another value returns 409. New commands are limited to
+five per ten seconds per side; successful retries bypass this check. Preferences
+may change in read-only game states too; this does not allow user messages there.
+Muting survives reload and restart. The server never filters shared history for
+mute; only the muted client's conversation is inert and hidden. Reads continue
+and advance its local read watermark. The successful unmute response includes
+caught-up recent history before notifications resume, avoiding a muted backlog.
+Uncertain failures retain the command key for an explicit bell retry; failed
+requests leave visibility unchanged until confirmed server state arrives. Draw/rematch offers and response controls remain in the game
 actions outside this conversation, even while chat is muted.
 The list follows new messages only while the reader is near its bottom. Otherwise,
 a New messages control lets the reader jump down explicitly.

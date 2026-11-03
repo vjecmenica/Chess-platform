@@ -174,6 +174,8 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
     await pool.query('SELECT instance_id FROM chess.clock_ingress_watermarks LIMIT 0');
     await pool.query('SELECT kind, event_key FROM chess.game_chat_messages LIMIT 0');
     await pool.query('SELECT id, sender_seat, status FROM chess.game_rematches LIMIT 0');
+    await pool.query('SELECT muted, version FROM chess.game_chat_preferences LIMIT 0');
+    await pool.query('SELECT request_id FROM chess.game_chat_mute_receipts LIMIT 0');
   } catch {
     throw new Error('The game schema is missing or inaccessible. Run npm run db:migrate and check database permissions.');
   }

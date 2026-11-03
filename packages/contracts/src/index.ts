@@ -92,7 +92,17 @@ export interface GameChatMessage {
   readonly sentAt: string;
 }
 
+export const gameChatPresets = [
+  { label: 'GG', text: 'good game' }, { label: 'WP', text: 'well played' },
+  { label: 'TY', text: 'thank you' }, { label: 'GTG', text: 'got to go' },
+  { label: 'BYE', text: 'goodbye' },
+] as const;
+export type GameChatPreset = typeof gameChatPresets[number]['text'];
+
 export interface GameChatHistory {
+  readonly muted: boolean;
+  readonly muteVersion: number;
+  readonly usedPresets: readonly GameChatPreset[];
   readonly messages: readonly GameChatMessage[];
   readonly canSend: boolean;
 }
