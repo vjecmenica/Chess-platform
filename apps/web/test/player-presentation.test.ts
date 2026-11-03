@@ -115,7 +115,7 @@ describe('shared game presentation', () => {
     expect(app).not.toContain('material-below');
     expect(app).not.toContain('<MaterialTotal');
     expect(app).not.toContain('className="analysis-footer-row"');
-    expect(app.indexOf('className="secondary analysis-flip"')).toBeGreaterThan(app.indexOf('className="game-controls"'));
+    expect(app).not.toContain('className="secondary analysis-flip"');
   });
 
   it('omits redundant board guidance and clock-policy copy in both modes', () => {

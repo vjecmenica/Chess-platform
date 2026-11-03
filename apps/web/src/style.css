@@ -146,7 +146,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .material-positive { color: #205d3d; }
 .material-negative { color: #98483a; }
-.evaluation-spacer { flex: 0 0 28px; margin-right: 6px; }
 .board-stage .board-frame {
   position: relative;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 34px), 1080px);
@@ -400,7 +399,11 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-score-badge[data-side="black"] { background: var(--evaluation-black, #333b36); color: #fffdf8; border-color: #333b36; }
 .engine-candidate:has(.engine-score-badge) { align-items: center; }
 .game-chat-header .analysis-view-tabs { border-bottom: 0; min-width: 0; }
-.chat-unread { margin-left: 4px; color: #0867a5; font-size: .65em; }
+.game-chat-header .analysis-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
+.chat-unread { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 4px; border-radius: 4px;
+  background: #d63335; color: #fff; font-size: 13px; font-weight: 750;
+  line-height: 1; font-variant-numeric: tabular-nums; }
 .game-info-tab { flex: 1; min-height: 0; overflow: auto; }
 .game-info-tab:focus-visible { outline: 2px solid #a47a37; outline-offset: 2px; }
 .game-info { padding: 0 2px 4px; color: var(--wood-ink, #382b22); }
@@ -658,7 +661,17 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 
 /* Shared board-led workspace: identity strips follow the board in every mode. */
 .game-layout { --board-top-offset: 0px; --default-board-size: clamp(280px, calc(100dvh - 420px), 620px);
+  --board-column-size: calc(var(--board-size, var(--default-board-size)) + 34px);
   grid-template-columns: minmax(0, min(var(--board-column-size, calc(var(--default-board-size) + 34px)), calc(100% - 338px))) minmax(320px, 430px); }
+/* The saved size includes 14px of coordinates. Keep the square unchanged while
+   live ranks use the normal column gap, with no hidden evaluation-bar rail. */
+.game-layout:not(.analysis-workspace) { --board-column-size: calc(var(--board-size, var(--default-board-size)) - 14px); }
+.game-layout:not(.analysis-workspace) .board-stage .board-frame,
+.game-layout:not(.analysis-workspace) .play-column > .player-material-panel {
+  width: min(calc(var(--board-size, var(--default-board-size)) - 14px), 100%, 1066px); padding-left: 0; }
+.game-layout:not(.analysis-workspace) .board-ranks { left: -14px; }
+.game-layout:not(.analysis-workspace) .board-files { left: 0; }
+.game-layout:not(.analysis-workspace) .board-frame { margin-inline: 0; }
 .game-layout.analysis-workspace { align-items: start; }
 .play-column { padding-top: 36px; }
 .board-stage .board-frame, .analysis-footer-row, .board-hint, .clock-policy {
@@ -701,6 +714,9 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   .board-stage .board-frame, .play-column > .player-material-panel, .analysis-footer-row {
     width: min(var(--board-size, 100%), calc(100% - 34px), 1080px); }
   .play-column { align-items: flex-end; }
+  .game-layout:not(.analysis-workspace) .board-stage .board-frame,
+  .game-layout:not(.analysis-workspace) .play-column > .player-material-panel {
+    width: min(calc(var(--board-size, var(--default-board-size)) - 14px), calc(100% - 48px), 1066px); }
   .game-layout .game-sidebar { display: flex; flex-direction: column; height: auto; margin: 0; }
   .game-layout .move-panel { height: min(360px, 45dvh); flex: none; }
   .analysis-workspace .position-column { grid-column: 1; }
@@ -875,8 +891,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .analysis-workspace .review-average[data-accuracy-method] { grid-column: span 2; }
 .analysis-workspace .review-count { flex-direction: row; gap: 6px; }
 .analysis-workspace .game-controls { position: relative; }
-.analysis-workspace .analysis-flip { float: right; margin-left: 10px; min-height: 36px; }
-.game-controls .pgn-download { float: right; margin-left: 10px; min-height: 36px; }
 .analysis-workspace .square-mark { border-radius: 50%; background: transparent !important; }
 .analysis-workspace .replay { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .analysis-workspace .replay-position { margin: 0; }
@@ -893,7 +907,6 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 @media (max-width: 540px) {
   .analysis-navigation nav { font-size: var(--text-compact); gap: 10px; }
   .analysis-navigation nav [aria-disabled="true"] { display: none; }
-  .analysis-workspace .analysis-flip, .game-controls .pgn-download { float: none; margin: 0 6px 6px 0; }
   .analysis-workspace .review-average { grid-column: 1/-1; }
   .analysis-workspace .review-average[data-accuracy-method] { grid-column: 1/-1; }
 }
@@ -985,7 +998,8 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
   .archive-game time { grid-column: 1 / -1; }
 }
 
-.game-chat { display: flex; flex-direction: column; grid-column: 1 / -1; min-width: 0;
+.game-companion-column { display: flex; flex-direction: column; gap: 4px; grid-column: 1 / -1; min-width: 0; }
+.game-chat { display: flex; flex-direction: column; min-width: 0;
   border: 1px solid #dedbd2; border-radius: 8px; background: #fffdf8; padding: 4px 10px 8px; }
 .game-chat-content { display: flex; flex-direction: column; min-height: 0; flex: 1; padding: 6px 2px 0; }
 .game-chat-content[hidden] { display: none; }
@@ -1017,17 +1031,18 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
       minmax(440px, 1fr); }
   .site-game-workspace.analysis-workspace .play-column { grid-column: 2; }
   .site-game-workspace.analysis-workspace .position-column { grid-column: 3; }
-  .site-game-workspace.analysis-workspace .game-chat { grid-column: 1; grid-row: 1; }
+  .site-game-workspace.analysis-workspace .game-companion-column { grid-column: 1; grid-row: 1; }
   .game-layout.site-game-workspace:not(.analysis-workspace) {
     grid-template-columns: clamp(280px, 17vw, 320px)
       minmax(0, min(var(--board-column-size, calc(var(--default-board-size) + 34px)), calc(100% - 796px)))
       minmax(440px, 1fr); }
   .site-game-workspace:not(.analysis-workspace) .play-column { grid-column: 2; }
   .site-game-workspace:not(.analysis-workspace) .game-sidebar { grid-column: 3; }
-  .site-game-workspace:not(.analysis-workspace) .game-chat { grid-column: 1; grid-row: 1; }
+  .site-game-workspace:not(.analysis-workspace) .game-companion-column { grid-column: 1; grid-row: 1; }
+  .site-game-workspace .game-companion-column { align-self: start; margin-top: var(--board-alignment-offset, 90px); }
   .site-game-workspace .game-chat { min-width: 0; align-self: start;
     height: max(0px, calc(var(--board-row-height, 480px) - 14px));
-    margin: var(--board-alignment-offset, 90px) 0 0; padding: 4px 10px 8px;
+    width: 100%; margin: 0; padding: 4px 10px 8px;
     border: 1px solid #dedbd2; border-radius: 8px; background: #fffdf8; }
   .site-game-workspace .game-chat[data-hidden="true"] { height: auto; }
   .site-game-workspace .game-notes-tab { min-height: 0; }
@@ -1089,4 +1104,18 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .finished-result-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .rematch-actions small { order:4; width:100%; font-size:var(--text-caption); color:#756451; }
 .rematch-status,.rematch-actions .error { order:5; width:100%; font-size:var(--text-compact); }
+.rematch-outcome { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.game-layout .rematch-open { padding: 5px 10px; min-height: 32px; border: 1px solid #b5a18a;
+  border-radius: 5px; background: #fbf8f1; color: #382b22; text-decoration: none; }
+.game-layout .rematch-open:hover { background: #eee5d6; }
+.game-layout .rematch-open:focus-visible { outline: 3px solid #63a9d0; outline-offset: 2px; }
 .finished-result-actions :is(button,a) { display:inline-flex; align-items:center; gap:5px; }
+.board-utilities { display: flex; align-items: center; gap: 4px; }
+.play-column > .board-utilities { margin-top: 22px; }
+.game-layout .board-utilities button { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px; margin: 0; padding: 8px;
+  border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: #604326; }
+.board-utilities svg { width: 22px; height: 22px; }
+.game-layout .board-utilities button:hover { background: #eee5d6; color: #382b22; }
+.game-layout .board-utilities button:active { background: #e3d6c3; }
+.game-layout .board-utilities button:focus-visible { outline: 3px solid #63a9d0; outline-offset: 1px; }

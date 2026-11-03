@@ -13,10 +13,11 @@ export function analysisSidebarHeight(viewportHeight: number, stripTop: number, 
 export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean,
   chatRail = false, analysis = false): number {
   // The wide site-game grid reserves a 320px chat rail, a 440px move panel,
-  // its gaps, and the space around the square board inside its column.
+  // its gaps, and analysis's evaluation rail. Live ranks sit in the gap; the
+  // saved frame size still includes their 14px, so the square is unchanged.
   const reserve = stacked ? 34 : chatRail
-    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 18 + 34)
-    : analysis ? 50 + 400 + 16 : 34 + 320 + 18;
+    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 18 - 14)
+    : analysis ? 50 + 400 + 16 : 320 + 18 - 14;
   return Math.max(0, workspaceWidth - reserve);
 }
 

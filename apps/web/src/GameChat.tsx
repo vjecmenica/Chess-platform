@@ -8,11 +8,15 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
   playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode }
 
+export function ChatUnreadBadge({ count }: { count: number }) {
+  return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
+}
+
 export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
   playerNames?: GamePlayerNames | undefined }) {
   const name = sitePlayerName(playerNames, item.side);
   const label = playerNames?.[item.side] ? name : `${name} (${item.side === 'white' ? 'White' : 'Black'})`;
-  if (item.kind === 'system') return <li className="game-chat-system"><em>{label} {item.text}</em><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></li>;
+  if (item.kind === 'system') return <li className="game-chat-system"><em>{label} {item.text.replace(/\.$/, '')}</em><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></li>;
   return <li className="game-chat-message">
     <p><strong aria-label={`${label}, ${item.side === side ? 'you' : 'opponent'}`}>{label}</strong>{': '}<span>{item.text}</span></p>
     <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
@@ -167,8 +171,9 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
 
   const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
     <button type="button" aria-pressed={activePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
-    <button type="button" aria-pressed={activePanel === 'chat'} onClick={() => setActivePanel('chat')}>Chat
-      {unreadChat > 0 && <span className="chat-unread" aria-label={`${unreadChat} unread entries`}>{unreadChat}</span>}</button>
+    <button type="button" aria-pressed={activePanel === 'chat'}
+      aria-label={unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
+      <ChatUnreadBadge count={unreadChat} /></button>
     <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
   return <aside className="game-chat" data-hidden={hidden} data-analysis={analysisOpen}

@@ -7,6 +7,7 @@ import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameRematch } from './GameRematch';
 import { GameChat } from './GameChat';
+import { BoardUtilities } from './BoardUtilities';
 import { GameInfo, liveGameStatus } from './GameInfo';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
@@ -248,10 +249,12 @@ export function App() {
   useEffect(() => {
     const clearOnLeftDown = (event: PointerEvent) => {
       if (!isLeftPointerPress(event.button, event.pointerType)) return;
+      const target = event.target instanceof Element ? event.target : null;
+      // A display-only flip must preserve queued premoves and drawn arrows.
+      if (target?.closest('[data-board-display-control]')) return;
       if (analysisOpenRef.current) return;
       setArrows([]);
       setArrowPreview(null);
-      const target = event.target instanceof Element ? event.target : null;
       const square = target?.closest('[data-square]');
       const boardSquare = square !== null && square !== undefined && !!boardRef.current?.contains(square);
       const current = gameRef.current;
@@ -388,7 +391,7 @@ export function App() {
   }, [game?.id, game?.status, analysis?.gameId, imported]);
 
   useEffect(() => {
-    if (game?.status !== 'finished' || analysisBoard?.gameId === game.id) return;
+    if (game === null || analysisBoard?.gameId === game.id) return;
     if (imported?.game.id === game.id) {
       setAnalysisBoard(createAnalysisBoard(game.id));
       return;
@@ -402,7 +405,7 @@ export function App() {
   }, [game?.id, game?.status, analysisBoard?.gameId, imported?.game.id]);
 
   useEffect(() => {
-    if (game?.status !== 'finished' || analysisBoard?.gameId !== game.id) return;
+    if (game === null || analysisBoard?.gameId !== game.id) return;
     if (imported?.game.id === game.id) return;
     try { window.localStorage.setItem(analysisBoardStorageKey(game.id), serializeAnalysisBoard(analysisBoard)); }
     catch { /* Board controls still work when storage is unavailable. */ }
@@ -999,7 +1002,7 @@ export function App() {
     }
   }, [promotion, game?.id, game?.status, displayedFen, analysisOpen]);
   const orientation = game === null ? 'white' : boardOrientation(game.yourSeat,
-    analysisOpen && analysisBoard?.gameId === game.id && analysisBoard.flipped);
+    analysisBoard?.gameId === game.id && analysisBoard.flipped);
   const rows = game === null || displayedFen === null ? null : boardRows(displayedFen, orientation);
   const premovePieces = game?.status === 'active' && !liveBrowsingHistory
     && game.position.sideToMove !== game.yourSeat
@@ -1025,6 +1028,11 @@ export function App() {
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
+  const boardUtilities = game === null ? null : <BoardUtilities
+    downloadable={analysisOpen && canExportGame(game)}
+    onDownload={() => downloadGamePgn(game, imported?.headers)}
+    onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
+      ? { ...current, flipped: !current.flipped } : current)} />;
   const hintSide = game === null ? null : analysisOpen && analysis !== null
     ? cursorSide(analysis, game) : game.position.sideToMove;
   const showHints = selected !== null && displayedFen !== null && hintSide !== null
@@ -1243,7 +1251,6 @@ export function App() {
               '--player-workspace-height': `${playerWorkspace.height}px`,
               ...((boardSize ?? (analysisOpen ? automaticBoardSize : null)) === null ? {} : {
                 '--board-size': `${boardSize ?? automaticBoardSize}px`,
-                '--board-column-size': `${(boardSize ?? automaticBoardSize ?? 480) + 34}px`,
               }),
               ...(boardRowHeight === null ? {} : {
                 '--board-row-height': `${boardRowHeight}px`,
@@ -1266,7 +1273,6 @@ export function App() {
                 {analysisOpen && displayedFen !== null &&
                   <EvaluationBar gameId={game.id} fen={displayedFen} evaluation={selectedEvaluation}
                     pending={evaluationPendingFen === displayedFen} />}
-                {!analysisOpen && <div className="evaluation-spacer" aria-hidden="true" />}
                 <div className="board-frame" ref={boardFrameRef}>
                 <div className="board" role="group" ref={boardRef}
                   onContextMenu={event => event.preventDefault()}
@@ -1341,7 +1347,6 @@ export function App() {
                       const layout = gameLayoutRef.current;
                       if (!layout) return;
                       layout.style.setProperty('--board-size', `${size}px`);
-                      layout.style.setProperty('--board-column-size', `${size + 34}px`);
                       layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
                       layout.style.setProperty('--board-row-height', `${size}px`);
                     }, size => { commitBoardSize(size); setBoardRowHeight(size); }, limit);
@@ -1401,6 +1406,7 @@ export function App() {
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
+              {imported !== null && boardUtilities}
 
             </div>
             <div className="position-column">
@@ -1474,12 +1480,6 @@ export function App() {
 
               </div>
               <div className="game-controls">
-                {analysisOpen && <button type="button" className="secondary analysis-flip"
-                  onClick={() => setAnalysisBoard(current => current?.gameId === game.id
-                    ? { ...current, flipped: !current.flipped } : current)}>Flip board</button>}
-                {analysisOpen && canExportGame(game) && <button type="button" className="secondary pgn-download"
-                  aria-description="Download this game's main line and available headers. Clocks and analysis comments are not included."
-                  onClick={() => downloadGamePgn(game, imported?.headers)}>Download PGN</button>}
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
@@ -1570,9 +1570,12 @@ export function App() {
             </aside>
             </AnalysisSidebarTabs>
             </div>
-            {imported === null && session !== null && <GameChat key={game.id} gameId={game.id}
+            {imported === null && session !== null && <div className="game-companion-column">
+              <GameChat key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />}
+              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />
+              {boardUtilities}
+            </div>}
             {analysisOpen && <>
               <div className="computer-analysis-card" ref={setReviewHost} />
             </>}

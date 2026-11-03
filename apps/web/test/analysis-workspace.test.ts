@@ -42,7 +42,7 @@ describe('analysis workspace sizing', () => {
   });
 
   it('follows a diagonal drag and clamps to desktop and mobile space', () => {
-    expect(availableAnalysisBoardWidth(1140, false)).toBe(768);
+    expect(availableAnalysisBoardWidth(1140, false)).toBe(816);
     expect(availableAnalysisBoardWidth(390, true)).toBe(356);
     // The shared engine/moves column stays readable beside a maximally resized board.
     expect(availableAnalysisBoardWidth(1140, false, false, true)).toBe(674);
@@ -50,7 +50,7 @@ describe('analysis workspace sizing', () => {
       availableAnalysisBoardWidth(865, false, false, true))).toBe(399);
     // A wide site game keeps both the move list and chat usable at the board's limit.
     expect(availableAnalysisBoardWidth(1600, false, true, true)).toBe(758);
-    expect(availableAnalysisBoardWidth(1540, false, true, false)).toBe(710);
+    expect(availableAnalysisBoardWidth(1540, false, true, false)).toBe(758);
     expect(resizedBoardSize(500, 1000, 1000,
       availableAnalysisBoardWidth(1404, false, true, true))).toBe(562);
     expect(resizedBoardSize(500, 60, 40, 680)).toBe(550);

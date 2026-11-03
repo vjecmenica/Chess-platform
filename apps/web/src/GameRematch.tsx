@@ -4,6 +4,12 @@ import { timeControlLabel } from './TimeControlSelect';
 export function ActionIcon({ kind }: {
   kind: 'new' | 'rematch' | 'analysis';
 }) { return <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={kind === 'new' ? 'M12 4v16M4 12h16' : kind === 'rematch' ? 'M4 10a8 8 0 1 1 1 8M4 4v6h6' : 'M4 19V5m0 14h16M7 15l4-5 4 3 5-8'} /></svg>; }
+export function ClosedRematchStatus({ offer }: { offer: GameRematchOffer }) {
+  return <span className="rematch-status rematch-outcome" role="status">
+    <span>Rematch {offer.status}</span>
+    {offer.newGameId && <a className="secondary rematch-open" href={'/challenge/' + offer.newGameId}>Open game</a>}
+  </span>;
+}
 export function GameRematch({ game, csrfToken, revision }: {
   game: GameReadResponse;
   csrfToken: string;
@@ -102,7 +108,7 @@ export function GameRematch({ game, csrfToken, revision }: {
   return <div className="rematch-actions"><button type="button" className="secondary" disabled aria-describedby={'matchmaking-' + game.id}><ActionIcon kind="new" />New {tc}</button><small id={'matchmaking-' + game.id}>Matchmaking coming later</small>
     <button type="button" className="secondary" disabled={busy || offer?.status === 'pending'} onClick={() => void act('offer')}><ActionIcon kind="rematch" />Rematch</button>
     {offer?.status === 'pending' && <span className="rematch-status" role="status">{offer.side === game.yourSeat ? 'Rematch offered. Waiting for opponent (up to two minutes).' : <>Opponent offered a rematch. <button type="button" disabled={busy} onClick={() => void act('accept')}>Accept</button><button type="button" disabled={busy} onClick={() => void act('decline')}>Decline</button></>}</span>}
-    {offer && offer.status !== 'pending' && <span className="rematch-status" role="status">Rematch {offer.status}.{offer.newGameId && <a href={'/challenge/' + offer.newGameId}> Open game</a>}</span>}
+    {offer && offer.status !== 'pending' && <ClosedRematchStatus offer={offer} />}
     {connectionError && <span className="rematch-status" role="status">{connectionError}</span>}
     {error && <span className="error" role="alert">{error} <button type="button" disabled={busy} onClick={() => void act('offer')}>Retry</button></span>}</div>;
 }
