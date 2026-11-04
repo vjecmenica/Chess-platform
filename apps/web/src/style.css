@@ -192,9 +192,9 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .board .square.last-move::before { content: ''; position: absolute; inset: 0;
   background: rgba(214, 190, 78, .42); box-shadow:var(--appearance-last-move-outline,none); pointer-events: none; }
 .board .square.legal-destination::after { content: ''; position: absolute; width: 22%; aspect-ratio: 1;
-  border-radius: 50%; background: rgba(93, 64, 36, .52); pointer-events: none; }
+  border-radius: 50%; background: rgba(93, 64, 36, .52); box-shadow:var(--appearance-hint-shadow,none); pointer-events: none; }
 .board .square.legal-capture::after { content: ''; position: absolute; inset: 5%;
-  border: 3px solid rgba(93, 64, 36, .78); border-radius: 50%; pointer-events: none; }
+  border: 3px solid rgba(93, 64, 36, .78); border-radius: 50%; box-shadow:var(--appearance-hint-shadow,none); pointer-events: none; }
 .board .square.selected::after { content: ''; position: absolute; inset: 0;
   box-shadow: inset 0 0 0 4px #a65d21; pointer-events: none; }
 .board .square.annotation-origin::after { content: ''; position: absolute; inset: 0;
@@ -1123,14 +1123,18 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .game-layout :is(.board-utilities button, .chat-mute):active { background: #e3d6c3; }
 .game-layout :is(.board-utilities button, .chat-mute):focus-visible { outline: 3px solid #63a9d0; outline-offset: 1px; }
 
-.engine-threat-toggle[aria-pressed='true'] { background: #f1dfd4; border-color: #98654d; }
+.engine-threat-toggle { display:inline-grid; place-items:center; width:34px; height:32px; padding:5px; color:#604326; }
+.engine-threat-toggle[aria-pressed='true'] { color:#bd302b; background:#fce9e3; border-color:#b85045; }
+.engine-threat-toggle[aria-pressed='true']:hover { color:#a62220; background:#f8d9d1; }
+.engine-threat-toggle:focus-visible,.appearance-close:focus-visible { outline:3px solid #63a9d0; outline-offset:2px; }
 .engine-threat-status { order: 1; flex-basis: 100%; color: #756451; font-size: var(--text-compact); }
 
 /* Appearance changes never change square hit boxes or the board's measured dimensions. */
-.square.light,.engine-preview-board .light { background-color:var(--appearance-light,#f0dfbd); }
-.square.dark,.engine-preview-board .dark { background-color:var(--appearance-dark,#aa7953); }
-.board .square,.engine-preview-board :is(.light,.dark) { background-image:var(--appearance-texture,none);
-  background-size:cover; background-position:center; background-blend-mode:soft-light; }
+.square.light,.engine-preview-board .light { background-color:var(--appearance-light,#f0dfbd);
+  background-image:var(--appearance-light-texture,none); background-blend-mode:var(--appearance-light-blend,normal); }
+.square.dark,.engine-preview-board .dark { background-color:var(--appearance-dark,#aa7953);
+  background-image:var(--appearance-dark-texture,none); background-blend-mode:var(--appearance-dark-blend,normal); }
+.board .square,.engine-preview-board :is(.light,.dark) { background-size:cover; background-position:center; }
 .board { border-color:transparent; background:transparent; }
 .board::after { content:''; position:absolute; inset:-2px; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); pointer-events:none; z-index:4; }
 .board .square,.engine-preview-board span { box-shadow:var(--appearance-grid,none); }
@@ -1146,6 +1150,10 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .appearance-preview { width:min(100%,360px); grid-template-columns:repeat(6,1fr); aspect-ratio:auto; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); }
 .appearance-preview img { width:88%; height:88%; }
 .appearance-dialog { width:min(600px,calc(100% - 24px)); max-height:90dvh; overflow:auto; border:1px solid #ad9b84; border-radius:8px; background:#faf7ef; color:#3b2c22; padding:20px; }
+.appearance-dialog h3 { margin:0 44px 16px 0; min-height:36px; display:flex; align-items:center; }
+.appearance-close { position:absolute; top:16px; right:16px; display:grid; place-items:center;
+  width:36px; height:36px; min-height:36px; padding:7px; border:0; background:transparent; color:#604326; }
+.appearance-close:hover { background:#eee5d6; }
 
 .engine-preview-board img { width:88%; height:88%; }
 

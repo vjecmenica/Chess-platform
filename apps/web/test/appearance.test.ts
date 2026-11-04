@@ -6,6 +6,7 @@ import { pieceImage } from '../src/board-interaction';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppearanceSettings } from '../src/AppearanceSettings';
+import { AppearanceLauncher } from '../src/AppearanceSettings';
 import { appearanceVariables } from '../src/appearance-styles';
 it('restores old, unknown and malicious preferences without changing defaults or accepting CSS injection', () => {
     expect(restoreAppearance(null)).toEqual(defaultAppearance);
@@ -64,22 +65,32 @@ it('removes only the eval border color when both border controls are off', () =>
 it('uses bounded local textures in preview and play, clears them for solids, and preserves custom colors', () => {
     for (const theme of ['naturalwood', 'goldenwood'] as const) {
         const variables = appearanceVariables({ ...defaultAppearance, theme, light: '#eeeeff', dark: '#554466' });
-        expect(variables['--appearance-texture']).toMatch(/^url\("\/boards\/[a-z-]+\.jpg"\)$/);
+        expect(variables['--appearance-light-texture']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
+        expect(variables['--appearance-dark-texture']).not.toBe(variables['--appearance-light-texture']);
+        expect(variables['--appearance-light-blend']).toBe('soft-light');
         expect(variables['--appearance-light']).toBe('#eeeeff');
         expect(variables['--appearance-dark']).toBe('#554466');
     }
-    expect(appearanceVariables({ ...defaultAppearance, theme: 'purple' })['--appearance-texture']).toBe('none');
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'naturalwood' })['--appearance-light-blend']).toBe('normal');
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'purple' })['--appearance-light-texture']).toBe('none');
     const root = new URL('../public/pieces/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
     const textures = manifest.filter((x: any) => x.kind === 'board-texture');
     expect(textures.map((x: any) => x.id)).toEqual(['naturalwood', 'goldenwood']);
     for (const texture of textures) {
-        const file = texture.files[0];
+        expect(texture.files).toHaveLength(2);
+        for (const file of texture.files) {
         const bytes = readFileSync(new URL(file.file, root));
         expect(bytes.length).toBe(file.bytes);
         expect(bytes.length).toBeLessThan(65000);
         expect(bytes.subarray(0, 2).toString('hex')).toBe('ffd8');
         expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256);
-        expect(readFileSync(new URL(texture.licenseEvidence, root), 'utf8')).toContain(texture.revision);
+        expect(readFileSync(new URL(texture.licenseEvidence, root), 'utf8')).toContain(file.revision);
+        }
     }
+});
+it('uses a recognizable SVG art control with an accessible name', () => {
+    const html = renderToStaticMarkup(createElement(AppearanceLauncher));
+    expect(html).toContain('aria-label="Board and piece appearance"');
+    expect(html).toContain('<svg'); expect(html).not.toContain('⚙');
 });

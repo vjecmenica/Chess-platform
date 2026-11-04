@@ -435,16 +435,26 @@
     "author": "Chess Platform (created using OpenAI image generation)",
     "license": "Project-original generated artwork; no external texture assets",
     "source": "Original generation; full prompt and processing in ../boards/PROVENANCE.md",
-    "revision": "exec-4ab315cd-f095-4eb6-9d1a-1c04e5dc6531",
+    "revision": "paired-materials-v2",
     "licenseEvidence": "../boards/PROVENANCE.md",
-    "originalSha256": "8a9f973ffbea11e200f1a445f053988aa98cf1f4dfe851ded2ef6b53831a2507",
     "files": [
       {
-        "file": "../boards/natural-wood.jpg",
-        "width": 512,
-        "height": 512,
-        "bytes": 33720,
-        "sha256": "b880c106eb83509f7da29bcdaabe74df6a4a0b25af7042121e6182c1a09db12a"
+        "file": "../boards/natural-light-v2.jpg",
+        "revision": "exec-f4f57692-ac29-4fed-a8e2-daac757898ed",
+        "originalSha256": "29f4fd674437bc76d72c508d2adccb4ae867fdd75edda71465ed4176fb806928",
+        "width": 256,
+        "height": 256,
+        "bytes": 11349,
+        "sha256": "91d9fcea87ee3415d10f13d8410c27462bc8b2fb630a46b9a7cf0d7053b0de37"
+      },
+      {
+        "file": "../boards/natural-dark-v2.jpg",
+        "revision": "exec-9226c188-d6a1-44df-b6e1-223040e1ac22",
+        "originalSha256": "e07e37a07571b98d398c8b36050170e741288e4c1c39ed2c76b2480c85cca94f",
+        "width": 256,
+        "height": 256,
+        "bytes": 13255,
+        "sha256": "5995be81e1a9944c521653d35cd3b69307148e3c79a47295524b35aa8eee8703"
       }
     ]
   },
@@ -454,16 +464,26 @@
     "author": "Chess Platform (created using OpenAI image generation)",
     "license": "Project-original generated artwork; no external texture assets",
     "source": "Original generation; full prompt and processing in ../boards/PROVENANCE.md",
-    "revision": "exec-ca011e0b-d44a-4b18-8aa4-4c7d29f844e0",
+    "revision": "paired-materials-v2",
     "licenseEvidence": "../boards/PROVENANCE.md",
-    "originalSha256": "abb3011b111298e85878b02342288793108626be5440c750849e932efc308d7e",
     "files": [
       {
-        "file": "../boards/golden-wood.jpg",
-        "width": 512,
-        "height": 512,
-        "bytes": 55694,
-        "sha256": "4b78eaf1f4cea9e411bba885d5535427de154f5a2e849bbcaee01ff8f64371c4"
+        "file": "../boards/golden-light-v2.jpg",
+        "revision": "exec-601f5af3-f350-419b-a613-f184f60c26ef",
+        "originalSha256": "61f6ac891794a2d3e60886005879e33c6a7ec25f5d98f9704700336263536e79",
+        "width": 256,
+        "height": 256,
+        "bytes": 13965,
+        "sha256": "8b771694d291d5689e6a2ebcee164a93e3abbdc6bae76885db49c488da8a554e"
+      },
+      {
+        "file": "../boards/golden-dark-v2.jpg",
+        "revision": "exec-0b941cc4-14b7-45f6-998e-9904b4a20c42",
+        "originalSha256": "47844be050aefb1ded05e328cc7e5f4a9d87841a0e2ef62efedaea440d1885b6",
+        "width": 256,
+        "height": 256,
+        "bytes": 17498,
+        "sha256": "49379c349dbe90ae6666496c8e7f8c9570ba5c40a8cd2b7825cd34fd2562555d"
       }
     ]
   }

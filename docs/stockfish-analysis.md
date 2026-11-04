@@ -14,7 +14,7 @@ flipping rotates it, annotation edits do not remove it, and it is never serializ
 **Threat** is optional and off initially. It asks what the opponent of the side to
 move would play if that side passed; it is not the second move of the ordinary PV
 and is not proof of a forced threat. The red arrow comes from the legal first move
-of a separate Stockfish 19 Lite search of that hypothetical position. Blue best-move,
+of a separate, resource-bounded Stockfish search of that hypothetical position. Blue best-move,
 red threat and user arrows share one rendering component, geometry and orientation
 mapping; their colors differ. Both engine overlays are transient and excluded from
 annotations, PGN, notes, caches of user markings and game records.
@@ -29,22 +29,44 @@ says Threat is unavailable while in check. There is no substitute red arrow. Ter
 positions with no legal moves and invalid FENs also show an unavailable explanation.
 No legal returned move means no red arrow; missing/failed engine output is not guessed.
 
-Threat uses one Lite worker, MultiPV 1, Hash 16 MB, depth at most 14 and at most 1.2
-seconds per selected position. This intentionally modest tactical approximation may
-miss deeper threats, especially compared with a longer Full search. Its build and
-limits are identified by the control and its accessible description. It does not
+Threat uses one separate worker, MultiPV 1, Hash 8 MB, depth at most 14 and at most
+750 ms per selected position. Full Threat is limited to one UCI thread.
+This intentionally modest tactical approximation may
+miss deeper threats, especially compared with a longer Full search. Its build is
+identified in the control status; these resource limits remain fixed. It does not
 change the interactive build, threads, budgets, scores, PVs, or full-review method.
 Updates with a changed legal best move appear during the search; identical move
 updates are coalesced. Threat results have no persistent cache and use an isolated
 in-memory controller. Old generations and terminated workers cannot publish results.
 Position changes, interactive settings/restart/stop/error, toggling Threat off and
-closing Analysis clear the red arrow and dispose the search. The result is tagged
+closing Analysis clear the red arrow and cancel the previous search. The result is tagged
 with the original displayed FEN, not the hypothetical FEN.
 
 To retain the two-worker ceiling, Threat pauses and clears while Computer Analysis
 runs, with a visible explanation, then starts fresh when review ends or is cancelled.
-Normal current-position evaluation is never stopped for Threat. Only a bounded Lite
-worker is added alongside it; no simultaneous second Full engine is loaded for Threat.
+Normal current-position evaluation is never stopped for Threat. The red crosshair
+control identifies the actual Threat build in its status text. Devices reporting at
+least six logical cores and 8 GB memory use the selected Full variant (multithreaded
+at one thread, or single-threaded). Smaller devices, or browsers without a memory
+hint, use Lite with a visible reason. Selecting Lite uses Lite for both analyses.
+Full Threat startup/runtime failure falls back to Lite only for Threat; toggling
+Threat off/on retries. Browser hints are conservative gates, not RAM guarantees.
+A small Hash does not cap the Full neural network and WASM runtime memory.
+
+The bounded worker is retained idle and reused on position changes via the existing
+stop/ready barrier, avoiding repeated Full startup. Threat off, engine stop/restart,
+review start, or unmount dispose of it. Same-move PV/score churn is coalesced before
+reaching the board. No ordinary evaluation, PV, persistent cache or review budget
+is shared with Threat.
+
+The production-preview smoke check exercised Full and Lite Threat, position changes,
+review pause/resume, stop cleanup, and the crosshair at 1440×900 and 390×844. With
+normal Full searching continuously, eight click-to-updated-DOM automation round trips
+had medians of 282 ms with Threat off and 281.5 ms with Full Threat enabled. These
+include browser-automation transport overhead and are not render-time or battery
+benchmarks. Main PV depth continued increasing; both arrows cleared on stop.
+Full-single and constrained/unknown-device fallback cases are covered by unit tests,
+not a separate non-isolated physical-device benchmark.
 
 Individual PV moves are keyboard-accessible buttons. Hover or focus shows a local
 miniature board after that exact move occurrence, oriented like the main board.
@@ -146,7 +168,8 @@ Lite is always single-threaded. Threads starts at **1** and is capped at
 `max(1, min(4, floor(hardwareConcurrency) - 2))`; unavailable core data uses one.
 The cap leaves some capacity for the UI and a separate review worker on larger devices.
 Hardware concurrency is a browser hint, not guaranteed dedicated CPU capacity.
-Both controllers keep Hash at 16 MB; the Full neural network/runtime additionally
+Interactive evaluation and review keep Hash at 16 MB; Threat uses 8 MB.
+Each Full neural network/runtime additionally
 uses substantially more memory than Lite. A higher thread count may reduce
 responsiveness or battery life; mobile users can select Lite and stop searches.
 

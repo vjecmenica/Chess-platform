@@ -182,9 +182,11 @@ export class EngineController {
 
   constructor(private readonly makeWorker: () => EngineWorker,
     private readonly onState: (state: EngineState) => void,
-    private readonly cache: EngineCache, private readonly options: { readonly threads?: number } = {}) {
+    private readonly cache: EngineCache, private readonly options: { readonly threads?: number; readonly hashMb?: number } = {}) {
     if (options.threads !== undefined && (!Number.isInteger(options.threads)
       || options.threads < 1 || options.threads > 4)) throw new RangeError('Engine threads must be between 1 and 4.');
+    if (options.hashMb !== undefined && (!Number.isInteger(options.hashMb)
+      || options.hashMb < 1 || options.hashMb > 64)) throw new RangeError('Engine hash must be between 1 and 64 MB.');
   }
 
   start(fen: string): void { this.enabled = true; this.setPosition(fen); }
@@ -312,7 +314,7 @@ export class EngineController {
         continue;
       }
       if (line === 'uciok') {
-        this.worker?.postMessage('setoption name Hash value 16');
+        this.worker?.postMessage(`setoption name Hash value ${this.options.hashMb ?? 16}`);
         if (this.options.threads !== undefined)
           this.worker?.postMessage(`setoption name Threads value ${this.options.threads}`);
         this.worker?.postMessage(`setoption name MultiPV value ${this.lineCount}`);

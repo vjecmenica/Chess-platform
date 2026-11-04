@@ -445,8 +445,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       </button>
       {state.kind === 'searching' && <small className="engine-search-status">{continuous ? 'Continuous' : 'Searching'}</small>}
       <ThreatControl fen={fen} gameId={game.id}
+        selected={variant}
         requestKey={`${variant.id}:${threads}:${lineCount}:${profile}:${engineEpoch}`}
-        available={enabled && (state.kind === 'searching' && state.fen === fen || state.kind === 'done' && state.evaluation.fen === fen)}
+        available={enabled && state.kind !== 'error'}
         reviewing={review.kind === 'running'} onMove={onThreatMoveChange} />
       <small className="engine-build">{description}</small>
     </div>

@@ -19,7 +19,15 @@ export function AppearanceSettings() {
     <div className="appearance-actions"><button type="button" className="primary" disabled={!ready} onClick={() => void save()}>Save appearance</button><button type="button" className="secondary" onClick={() => change({ ...defaultAppearance })}>Reset appearance</button></div><small>{owner ? 'Saved to your account.' : 'Guest preferences stay in this browser.'}</small><p role="status">{status}</p><a href="/pieces/credits.html" target="_blank" rel="noreferrer">Piece artwork credits and licenses</a></section>;
 }
 export function AppearanceLauncher() {
- const ref=useRef<HTMLDialogElement>(null);const [open,setOpen]=useState(false);
+ const ref=useRef<HTMLDialogElement>(null), trigger=useRef<HTMLButtonElement>(null);const [open,setOpen]=useState(false);
  useLayoutEffect(()=>{if(open)ref.current?.showModal();},[open]);
- return <><button type="button" aria-label="Board & Pieces" data-board-display-control onClick={()=>setOpen(true)}>⚙</button>{open&&createPortal(<dialog className="appearance-dialog" ref={ref} onCancel={()=>setOpen(false)}><button type="button" className="secondary" onClick={()=>setOpen(false)}>Close</button><AppearanceSettings/></dialog>,document.body)}</>;
+ const close=()=>{ref.current?.close();setOpen(false);trigger.current?.focus({preventScroll:true});};
+ return <><button type="button" ref={trigger} aria-label="Board and piece appearance" data-board-display-control onClick={()=>setOpen(true)}>
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+     <path d="m14 4 6 6M6 14 16 3a2.8 2.8 0 0 1 4 4L9 17M6 14l3 3c0 4-4 5-7 4 3-1 0-5 4-7Z"/>
+   </svg>
+ </button>{open&&createPortal(<dialog className="appearance-dialog" aria-label="Board & Pieces" ref={ref} onCancel={close}>
+   <button type="button" className="appearance-close" aria-label="Close" onClick={close}>
+     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg>
+   </button><AppearanceSettings/></dialog>,document.body)}</>;
 }

@@ -1,8 +1,9 @@
 import { boardThemes, type BoardAppearance } from '@chess/contracts';
 
 // Original, locally bundled grain textures; never fetched from an external host.
-const textures: Partial<Record<keyof typeof boardThemes, string>> = {
-  naturalwood: '/boards/natural-wood.jpg', goldenwood: '/boards/golden-wood.jpg',
+const textures: Partial<Record<keyof typeof boardThemes, readonly [string, string]>> = {
+  naturalwood: ['/boards/natural-light-v2.jpg', '/boards/natural-dark-v2.jpg'],
+  goldenwood: ['/boards/golden-light-v2.jpg', '/boards/golden-dark-v2.jpg'],
 };
 
 export function appearanceVariables(value: BoardAppearance): Record<string, string> {
@@ -11,7 +12,11 @@ export function appearanceVariables(value: BoardAppearance): Record<string, stri
   return {
     '--appearance-light': value.light ?? colors[0],
     '--appearance-dark': value.dark ?? colors[1],
-    '--appearance-texture': texture ? `url("${texture}")` : 'none',
+    '--appearance-light-texture': texture ? `url("${texture[0]}")` : 'none',
+    '--appearance-dark-texture': texture ? `url("${texture[1]}")` : 'none',
+    '--appearance-light-blend': value.light === null ? 'normal' : 'soft-light',
+    '--appearance-dark-blend': value.dark === null ? 'normal' : 'soft-light',
+    '--appearance-hint-shadow': texture ? '0 0 0 1px rgb(255 248 233 / .85)' : 'none',
     '--appearance-scale': String(value.scale / 100),
     '--appearance-offset': value.offset + '%',
     '--appearance-frame': value.frame ? value.frameColor : 'transparent',

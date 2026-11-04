@@ -2,6 +2,11 @@ import { expect, it } from 'vitest';
 import { STANDARD_STARTING_FEN } from '@chess/domain';
 import { EngineCache, EngineController, type EngineWorker } from '../src/engine-analysis';
 import { ThreatController, type ThreatState } from '../src/threat-analysis';
+import { fullEngine, fullSingleEngine, liteEngine } from '../src/engine-builds';
+import { threatEnginePlan } from '../src/threat-engine';
+import { ThreatControl } from '../src/ThreatControl';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 function workers() {
   const all: { worker: EngineWorker; commands: unknown[]; ended: boolean; emit: (text: string) => void }[] = [];
@@ -23,7 +28,8 @@ it('shows independent, refining opponent moves while ordinary analysis continues
   const n = normalWorkers.all[0]!, t = threatWorkers.all[0]!;
   for (const item of [n,t]) { item.emit('uciok'); item.emit('readyok'); }
   expect(t.commands).toContain(`position fen ${fen.replace(' w ', ' b ').replace('0 1', '1 1')}`);
-  expect(t.commands).toContain('go depth 14 movetime 1200');
+  expect(t.commands).toContain('go depth 14 movetime 750');
+  expect(t.commands).toContain('setoption name Hash value 8');
   expect(t.commands).toContain('setoption name MultiPV value 1');
   expect(n.commands).toContain('go infinite');
   expect(n.commands).toContain('setoption name MultiPV value 3');
@@ -47,23 +53,71 @@ it('ignores stopped/replaced output, validates opponent moves, and never opens a
   old.emit('info depth 4 score cp 2 pv e2e4');
   expect(states.at(-1)).toMatchObject({ move:null }); // Wrong side, not an opponent threat.
   const black=fen.replace(' w ', ' b ');
-  controller.start(black,'game'); const next=factory.all[1]!;
-  expect(old.ended).toBe(true);
-  const count=states.length; old.emit('info depth 12 score cp 45 pv e7e5'); old.emit('bestmove e7e5');
+  controller.start(black,'game'); const next=factory.all[0]!;
+  expect(factory.all).toHaveLength(1); expect(old.ended).toBe(false);
+  expect(old.commands).toContain('stop');
+  const count=states.length; old.emit('info depth 12 score cp 45 pv e7e5');
   expect(states).toHaveLength(count);
-  next.emit('uciok'); next.emit('readyok'); next.emit('info depth 4 score cp 3 pv e2e4');
+  old.emit('bestmove e7e5'); // Finish the old request before starting the new position.
+  next.emit('readyok'); next.emit('info depth 4 score cp 3 pv e2e4');
   expect(states.at(-1)).toMatchObject({ move:{fen:black,from:'e2',to:'e4'} });
   controller.dispose(); const stopped=states.length; next.emit('info depth 12 score cp 100 pv d2d4');
   expect(states).toHaveLength(stopped);
   controller.start('4r1k1/8/8/8/8/8/8/4K3 w - - 0 1','game');
-  expect(factory.all).toHaveLength(2);
+  expect(factory.all).toHaveLength(1);
   expect(states.at(-1)).toEqual({kind:'unavailable',message:'Threat unavailable while in check.'});
+});
+it('uses the selected Full variant only when duplicating it is supported, and explains each Lite fallback', () => {
+  const desktop = { cores: 8, memoryGb: 8 };
+  for (const variant of [fullEngine, fullSingleEngine]) {
+    expect(threatEnginePlan(variant, desktop)).toEqual({ engine: variant, reason: null });
+    expect(threatEnginePlan(variant, { cores: 4, memoryGb: 8 }).reason).toContain('six logical cores');
+    expect(threatEnginePlan(variant, { cores: 8, memoryGb: 4 }).engine).toBe(liteEngine);
+    expect(threatEnginePlan(variant, { cores: 8 }).reason).toContain('not reported');
+    expect(threatEnginePlan(variant, desktop, variant.id).reason).toContain('could not run');
+    expect(threatEnginePlan(variant, desktop, 'old-build').engine).toBe(variant);
+  }
+  expect(threatEnginePlan(liteEngine, desktop)).toEqual({ engine: liteEngine, reason: null });
+});
+it('bounds Full Threat to one UCI thread and 8MB Hash, independent of the main engine settings', () => {
+  const factory = workers();
+  const controller = new ThreatController(() => factory.make(), () => {}, fullEngine);
+  controller.start(fen, 'game');
+  const worker = factory.all[0]!; worker.emit('uciok'); worker.emit('readyok');
+  expect(worker.commands).toContain('setoption name Threads value 1');
+  expect(worker.commands).toContain('setoption name Hash value 8');
+  expect(worker.commands).toContain('go depth 14 movetime 750');
+  controller.start(fen, 'game'); expect(factory.all).toHaveLength(1);
+  controller.dispose(); expect(worker.ended).toBe(true);
+  expect(() => new EngineController(() => factory.make(), () => {}, new EngineCache(), { hashMb: 0 })).toThrow();
+});
+it('renders a named, pressed-state crosshair instead of a text Threat button', () => {
+  const html = renderToStaticMarkup(createElement(ThreatControl, {fen, gameId:'game', requestKey:'key',
+    available:true, reviewing:false, selected:fullEngine}));
+  expect(html).toContain('aria-label="Show threat"');
+  expect(html).toContain('aria-pressed="false"');
+  expect(html).toContain('<svg'); expect(html).not.toContain('>Threat</button>');
 });
 it('keeps failures isolated from ordinary evaluation', () => {
   const factory=workers(), states:ThreatState[]=[];
   const controller=new ThreatController(()=>factory.make(), state=>states.push(state));
   controller.start(fen,'game'); factory.all[0]!.worker.onerror?.({} as ErrorEvent);
   expect(states.at(-1)?.kind).toBe('error'); expect(factory.all[0]!.ended).toBe(true);
+});
+it('disposes on game replacement and on checked positions, without accepting late output', () => {
+  const factory = workers(), states: ThreatState[] = [];
+  const controller = new ThreatController(() => factory.make(), state => states.push(state), fullEngine);
+  controller.start(fen, 'first'); const first = factory.all[0]!;
+  first.emit('uciok'); first.emit('readyok');
+  controller.start(fen, 'second'); expect(first.ended).toBe(true);
+  const second = factory.all[1]!; second.emit('uciok'); second.emit('readyok');
+  second.emit('info depth 5 score cp 10 pv e7e5');
+  expect(states.at(-1)).toMatchObject({ move: {gameId:'second'} });
+  controller.start('4r1k1/8/8/8/8/8/8/4K3 w - - 0 1', 'second');
+  expect(second.ended).toBe(true); const count = states.length;
+  first.emit('info depth 7 score cp 50 pv d7d5'); second.emit('bestmove e7e5');
+  expect(states).toHaveLength(count);
+  controller.dispose();
 });
 
 it('does not republish score and PV churn when the threat move is unchanged', () => {
