@@ -24,7 +24,7 @@ it('persists private account preferences across sessions and rejects guests, CSR
     const initial = (await read(a)).json();
     expect(initial.appearance).toEqual(defaultAppearance);
     const save = (w: typeof a, owner: string, value: object, csrf = w.csrf) => app.inject({ method: 'PUT', url: '/account/appearance', headers: { cookie: w.cookie, 'x-csrf-token': csrf, 'x-appearance-owner': owner }, payload: value });
-    const selected = { ...defaultAppearance, pieceSet: 'kosal', theme: 'slate', scale: 105 };
+    const selected = { ...defaultAppearance, pieceSet: 'kosal', theme: 'goldenwood', scale: 105, frame: false, grid: false };
     expect((await save(a, initial.owner, selected)).statusCode).toBe(200);
     const second = await browser();
     await auth(second, 'login', name);

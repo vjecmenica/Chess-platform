@@ -1,14 +1,34 @@
 # Board and piece appearance
 
-Board & Pieces is in Account Settings and the board utility gear for guests and accounts. Basic piece/theme choices have a shared live preview; Advanced contains custom colors, scale (80–110%), vertical offset (−8–8%), frame color/width (1–5 px), thin square edges, and optional shadow (0–30%). Reset actions preview changes; Save appearance persists them. Theme colors are original solid CSS palettes, including Warm wood; no board texture was imported.
+Board & Pieces is in Account Settings and the board utility gear for guests and accounts. Basic piece/theme choices have a shared live preview; Advanced contains custom colors, scale (80–110%), vertical offset (−8–8%), frame color/width (1–5 px), thin square edges, and optional shadow (0–30%). Reset actions preview changes; Save appearance persists them. Solid palettes are original CSS colors. The default and all earlier theme IDs/colors remain unchanged.
 
 Migration 025_board_appearance.sql adds nullable accounts.board_appearance. Existing accounts receive unchanged defaults. GET/PUT /account/appearance use existing participant-independent account sessions; writes require CSRF and an owner header to reject account-switch races. The server validates all IDs, colors and numeric limits. Guests save only to chess-board-appearance:guest:v1. Guest values never migrate automatically into an account. Settings load on startup/focus, and unknown saved IDs fall back to defaults. Save errors preserve the preview and show retry feedback. Appearance is not game/PGN data.
 
 All board consumers use one source for piece URLs and CSS variables, including site play, analysis, imported/explorer games, captures, promotion and engine previews. Only appearance changes notify context consumers; position navigation does not update the appearance store. Glyph transforms leave square targets and board measurements unchanged. Frame rendering occupies reserved border space and cannot move player panels.
 
+## Additional palettes and original wood materials
+
+| Theme | Light base | Dark base | Surface |
+| --- | --- | --- | --- |
+| Muted purple | `#e9e1ee` | `#92809f` | Solid |
+| Warm amber | `#f4e4bb` | `#b28b47` | Solid |
+| Muted burgundy | `#efdfdc` | `#a06f78` | Solid |
+| Natural wood | `#e3cba7` | `#896545` | Original maple grain |
+| Golden wood | `#e8dcc4` | `#927855` | Original oak grain |
+
+The two textured choices use locally bundled, original AI-generated artwork, not copied BabasChess/Lichess textures or externally licensed stock images. Exact prompts, generation IDs and JPEG optimization are documented in [texture provenance](../apps/web/public/boards/PROVENANCE.md). The existing asset manifest now includes entries marked `kind: board-texture`, with the original-output and shipped-file SHA-256 hashes. The artwork credits page includes the texture provenance link.
+
+Textured squares blend a 512px material image over the base/custom color using `soft-light`, so the table specifies base colors rather than every resulting pixel. Each square uses the image as a cover without repeating it inside the square. The JPEGs total 89,414 bytes and require no per-move image processing. Solid choices clear the image completely. Preview, main board and engine previews share the same surface rules. Warm amber and both new woods add a subtle inner boundary to the existing yellow last-move wash, which otherwise blends into those backgrounds; existing presets retain their original highlights. No arrow colors or geometry changed.
+
+White-side analysis fills are pure `#fff`, independent of the board palette: the evaluation bar, positive/zero PV score badges, and positive Computer Analysis graph areas share one variable. The graph uses a warm-gray `#e9e5dd` background so white areas remain distinct, retaining the baseline, brown trace and interactive targets. Negative fills remain `#333b36`. When both Board frame and Thin square borders are off, the eval-bar outer border and backing are transparent. Its reserved 1px border box remains, so disabling borders cannot resize or realign the bar. Either enabled border control restores its frame-color edge; keyboard focus stays visible.
+
+No additional migration is needed: the existing version-1 JSON preferences and server-side preset validation accept the new IDs. Existing saved selections are neither rewritten nor reset.
+
 Apply forward migration 025 through the existing migration command before deploying the new account endpoint. No game records or historical ownership are changed. The migration was validated only on the disposable test database during development.
 
 Validation: `npm run check` covers type checks, the full non-database test suite, and all production builds. `npm run test:db -- apps/server/test/account-appearance.integration.test.ts apps/server/test/database.integration.test.ts` checks account isolation, cross-session persistence, CSRF/owner validation, and the migration system. Browser checks used the production preview at 1440×900 and 390×844, including live play, completed-game analysis, imported and blank analysis, flipping, resizing, captures, promotion and guest reload. Account persistence was verified by integration tests rather than manual account login. Asset tests verify twelve files per set, hashes, full license texts, and absence of external SVG resources.
+
+The palette refinement additionally checked all five new presets on 497px and 311px boards at desktop/mobile widths, with Chessnut, Kosal, Celtic and RhosGFX. A read-only contrast fixture reused the actual board-model, piece, legal-hint, user-arrow and engine-arrow components at 320px/184px in both orientations. A completed browser-local Stockfish review of a synthetic PGN supplied both positive and negative graph areas. Removing borders was measured before/after: board 704×704px and bar 28×704px in both states. Tests also cover new-theme restoration, textured/custom-color surfaces, clearing textures on solid themes, bounded local files, and persistence of a borderless textured account preference across sessions.
 
 ## Asset audit and provenance
 

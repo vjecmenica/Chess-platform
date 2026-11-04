@@ -114,8 +114,10 @@ describe('browser-local full-game review', () => {
     expect(reviewAdvantageSegments([-100, -200], 320).map(segment => segment.side))
       .toEqual(['black']);
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.review-fill-white\s*\{[^}]*fill: #eee9d9/);
-    expect(css).toMatch(/\.review-fill-black\s*\{[^}]*fill: #333b36/);
+    expect(css).toMatch(/--evaluation-white: #fff;/);
+    expect(css).toMatch(/\.review-fill-white\s*\{[^}]*fill: var\(--evaluation-white, #fff\)/);
+    expect(css).toMatch(/\.review-fill-black\s*\{[^}]*fill: var\(--evaluation-black, #333b36\)/);
+    expect(css).toMatch(/\.review-graph\s*\{[^}]*background: #e9e5dd/);
   });
 
   it('cycles each player’s review category in ply order and wraps around', () => {

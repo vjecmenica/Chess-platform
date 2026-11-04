@@ -428,5 +428,43 @@
     ],
     "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
     "authorLicenseStatement": "https://rhosgfx.itch.io/vector-chess-pieces"
+  },
+  {
+    "id": "naturalwood",
+    "kind": "board-texture",
+    "author": "Chess Platform (created using OpenAI image generation)",
+    "license": "Project-original generated artwork; no external texture assets",
+    "source": "Original generation; full prompt and processing in ../boards/PROVENANCE.md",
+    "revision": "exec-4ab315cd-f095-4eb6-9d1a-1c04e5dc6531",
+    "licenseEvidence": "../boards/PROVENANCE.md",
+    "originalSha256": "8a9f973ffbea11e200f1a445f053988aa98cf1f4dfe851ded2ef6b53831a2507",
+    "files": [
+      {
+        "file": "../boards/natural-wood.jpg",
+        "width": 512,
+        "height": 512,
+        "bytes": 33720,
+        "sha256": "b880c106eb83509f7da29bcdaabe74df6a4a0b25af7042121e6182c1a09db12a"
+      }
+    ]
+  },
+  {
+    "id": "goldenwood",
+    "kind": "board-texture",
+    "author": "Chess Platform (created using OpenAI image generation)",
+    "license": "Project-original generated artwork; no external texture assets",
+    "source": "Original generation; full prompt and processing in ../boards/PROVENANCE.md",
+    "revision": "exec-ca011e0b-d44a-4b18-8aa4-4c7d29f844e0",
+    "licenseEvidence": "../boards/PROVENANCE.md",
+    "originalSha256": "abb3011b111298e85878b02342288793108626be5440c750849e932efc308d7e",
+    "files": [
+      {
+        "file": "../boards/golden-wood.jpg",
+        "width": 512,
+        "height": 512,
+        "bytes": 55694,
+        "sha256": "4b78eaf1f4cea9e411bba885d5535427de154f5a2e849bbcaee01ff8f64371c4"
+      }
+    ]
   }
 ]

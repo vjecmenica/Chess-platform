@@ -6,12 +6,18 @@ import { pieceImage } from '../src/board-interaction';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppearanceSettings } from '../src/AppearanceSettings';
+import { appearanceVariables } from '../src/appearance-styles';
 it('restores old, unknown and malicious preferences without changing defaults or accepting CSS injection', () => {
     expect(restoreAppearance(null)).toEqual(defaultAppearance);
     expect(restoreAppearance({ version: 2, theme: 'green' })).toEqual(defaultAppearance);
     expect(restoreAppearance({ version: 1, pieceSet: '../../secret', theme: 'future', scale: 1000, offset: NaN, light: 'url(https://bad)', shadow: -1 })).toEqual(defaultAppearance);
     expect(restoreAppearance({ ...defaultAppearance, pieceSet: 'kosal', theme: 'slate', scale: 105, offset: -4 })).toMatchObject({ pieceSet: 'kosal', theme: 'slate', scale: 105, offset: -4 });
-    expect(Object.keys(boardThemes)).toHaveLength(6);
+    for (const theme of Object.keys(boardThemes))
+        expect(restoreAppearance({ ...defaultAppearance, theme }).theme).toBe(theme);
+    expect(defaultAppearance.theme).toBe('default');
+    expect(boardThemes.default).toEqual(['#f0dfbd', '#aa7953']);
+    expect(appearanceVariables(defaultAppearance)['--appearance-last-move-outline']).toBe('none');
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'goldenwood' })['--appearance-last-move-outline']).toContain('inset');
 });
 it('previews all twelve themed pieces and keeps advanced controls bounded and individually resettable', () => {
     const html = renderToStaticMarkup(createElement(AppearanceSettings));
@@ -28,8 +34,9 @@ it('previews all twelve themed pieces and keeps advanced controls bounded and in
 it('bundles complete pinned sets with matching hashes and full license texts, without remote SVG resources', () => {
     const root = new URL('../public/pieces/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
-    expect(manifest.map((x: any) => x.id)).toEqual([...pieceSets]);
-    for (const set of manifest) {
+    const sets = manifest.filter((x: any) => x.kind !== 'board-texture');
+    expect(sets.map((x: any) => x.id)).toEqual([...pieceSets]);
+    for (const set of sets) {
         expect(set.files).toHaveLength(12);
         expect(readFileSync(new URL(set.id + '/LICENSE.txt', root), 'utf8').length).toBeGreaterThan(500);
         for (const file of set.files) {
@@ -39,5 +46,40 @@ it('bundles complete pinned sets with matching hashes and full license texts, wi
         }
         expect(pieceImage('N', set.id)).toBe('/pieces/' + set.id + '/wN.svg');
         expect(pieceImage('q', set.id)).toBe('/pieces/' + set.id + '/bQ.svg');
+    }
+});
+it('removes only the eval border color when both border controls are off', () => {
+    expect(appearanceVariables(defaultAppearance)['--appearance-evaluation-border']).toBe('#755740');
+    const borderless = { ...defaultAppearance, frame: false, grid: false };
+    const variables = appearanceVariables(borderless);
+    expect(variables['--appearance-evaluation-border']).toBe('transparent');
+    expect(variables['--appearance-frame-width']).toBe('0px');
+    expect(appearanceVariables({ ...borderless, grid: true })['--appearance-evaluation-border']).toBe('#755740');
+    expect(variables).not.toHaveProperty('width');
+    expect(variables).not.toHaveProperty('height');
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.evaluation-bar\s*\{[^}]*border: 1px solid var\(--appearance-evaluation-border,/);
+    expect(css).toMatch(/\.evaluation-bar\s*\{[^}]*background: transparent/);
+});
+it('uses bounded local textures in preview and play, clears them for solids, and preserves custom colors', () => {
+    for (const theme of ['naturalwood', 'goldenwood'] as const) {
+        const variables = appearanceVariables({ ...defaultAppearance, theme, light: '#eeeeff', dark: '#554466' });
+        expect(variables['--appearance-texture']).toMatch(/^url\("\/boards\/[a-z-]+\.jpg"\)$/);
+        expect(variables['--appearance-light']).toBe('#eeeeff');
+        expect(variables['--appearance-dark']).toBe('#554466');
+    }
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'purple' })['--appearance-texture']).toBe('none');
+    const root = new URL('../public/pieces/', import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
+    const textures = manifest.filter((x: any) => x.kind === 'board-texture');
+    expect(textures.map((x: any) => x.id)).toEqual(['naturalwood', 'goldenwood']);
+    for (const texture of textures) {
+        const file = texture.files[0];
+        const bytes = readFileSync(new URL(file.file, root));
+        expect(bytes.length).toBe(file.bytes);
+        expect(bytes.length).toBeLessThan(65000);
+        expect(bytes.subarray(0, 2).toString('hex')).toBe('ffd8');
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256);
+        expect(readFileSync(new URL(texture.licenseEvidence, root), 'utf8')).toContain(texture.revision);
     }
 });
