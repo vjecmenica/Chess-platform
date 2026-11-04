@@ -1,0 +1,4 @@
+celtic by Maurizio Monge. MIT.
+https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic
+Two-color exports; original artwork: https://github.com/maurimo/chess-art/tree/18baed27e8a2a721f1d60e7e27452166b3e20c1b
+No local artwork changes; filenames normalized for Kosal.

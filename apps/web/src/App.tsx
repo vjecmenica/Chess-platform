@@ -1,3 +1,5 @@
+import { loadGuestSession } from './guest-session-client';
+import { useAppearance } from './Appearance';
 import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis } from './analysis-links';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
@@ -108,14 +110,6 @@ async function responseBody<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-let guestSessionRequest: Promise<GuestSessionResponse> | null = null;
-function loadGuestSession(): Promise<GuestSessionResponse> {
-  guestSessionRequest ??= fetch('/api/guest-session', { cache: 'no-store' })
-    .then(response => responseBody<GuestSessionResponse>(response))
-    .catch(cause => { guestSessionRequest = null; throw cause; });
-  return guestSessionRequest;
-}
-
 interface PendingMove {
   requestId: string;
   expectedVersion: number;
@@ -136,6 +130,7 @@ const actionPaths: Record<GameAction, string> = {
 const initialAnalysisEntry = analysisEntry(new URL(window.location.href));
 
 export function App() {
+  const {value:appearance} = useAppearance();
   const [session, setSession] = useState<GuestSessionResponse | null>(null);
   const [challenge, setChallenge] = useState<ChallengeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1324,8 +1319,8 @@ export function App() {
                       }}
                       onClick={() => chooseSquare(square)}>
                       {marks.has(square) && <span className="square-mark" aria-hidden="true" />}
-                      {piece !== null && <img className="piece" src={pieceImage(piece)} alt="" draggable={false} />}
-                      {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost)} alt=""
+                      {piece !== null && <img className="piece" src={pieceImage(piece, appearance.pieceSet)} alt="" draggable={false} />}
+                      {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost, appearance.pieceSet)} alt=""
                         aria-hidden="true" draggable={false} />}
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
@@ -1406,7 +1401,7 @@ export function App() {
                     game.timeControl !== null && 'initialMs' in game.timeControl
                       ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
               </PlayerMaterialPanel>
-              {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece)} alt=""
+              {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
               {imported !== null && boardUtilities}

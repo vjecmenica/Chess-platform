@@ -1,3 +1,4 @@
+import { useAppearance } from './Appearance';
 import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameSide } from '@chess/contracts';
@@ -9,6 +10,7 @@ export function EngineVariation({ fen, moves, orientation, onExplore }: {
   fen: string; moves: readonly VariationMove[]; orientation: GameSide;
   onExplore?: ((rootFen: string, moves: readonly string[]) => void) | undefined;
 }) {
+  const {value:appearance} = useAppearance();
   const id = useId();
   const [preview, setPreview] = useState<{ index: number; fen: string; left: number; top: number } | null>(null);
   const show = (element: HTMLElement, index: number) => {
@@ -36,7 +38,7 @@ export function EngineVariation({ fen, moves, orientation, onExplore }: {
       aria-label={`Position after ${moves[current.index]!.san}`} style={{ left: current.left, top: current.top }}>
       <div className="engine-preview-board" aria-hidden="true" data-orientation={orientation}>
         {boardRows(current.fen, orientation).flat().map(square => <span key={square.square} data-square={square.square}
-          className={square.dark ? 'dark' : 'light'}>{square.piece && <img src={pieceImage(square.piece)} alt="" />}</span>)}
+          className={square.dark ? 'dark' : 'light'}>{square.piece && <img src={pieceImage(square.piece, appearance.pieceSet)} alt="" />}</span>)}
       </div>
     </div>, document.body)}
   </>;

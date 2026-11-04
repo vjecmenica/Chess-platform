@@ -1,3 +1,4 @@
+import { useAppearance } from './Appearance';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameSide } from '@chess/contracts';
@@ -19,6 +20,7 @@ export function PromotionPicker({ request, anchor, onChoose, onCancel }: {
   request: PromotionRequest; anchor: HTMLElement | null;
   onChoose: (piece: 'q' | 'r' | 'b' | 'n') => void; onCancel: () => void;
 }) {
+  const {value:appearance} = useAppearance();
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const cancel = useRef(onCancel); cancel.current = onCancel;
@@ -53,7 +55,7 @@ export function PromotionPicker({ request, anchor, onChoose, onCancel }: {
     style={position}>
     <div>{([['q', 'Queen'], ['r', 'Rook'], ['b', 'Bishop'], ['n', 'Knight']] as const).map(([piece, name]) =>
       <button type="button" key={piece} aria-label={`Promote to ${name.toLowerCase()}`} onClick={() => onChoose(piece)}>
-        <img src={pieceImage((request.side === 'white' ? piece.toUpperCase() : piece) as Piece)} alt="" draggable={false} />
+        <img src={pieceImage((request.side === 'white' ? piece.toUpperCase() : piece) as Piece, appearance.pieceSet)} alt="" draggable={false} />
       </button>)}</div>
     <button type="button" className="secondary promotion-cancel" onClick={onCancel}>Cancel</button>
   </div>, document.body);

@@ -161,3 +161,5 @@ export interface AccountGame { readonly id: string; readonly side: 'white' | 'bl
   readonly opponent: string | null; readonly result: GameState['result']; readonly timeControl: string | null }
 export interface AccountGames { readonly account: AccountIdentity; readonly games: readonly AccountGame[];
   readonly next: string | null; readonly summary: { readonly wins: number; readonly draws: number; readonly losses: number } }
+
+export * from './appearance.js';

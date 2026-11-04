@@ -1,0 +1,4 @@
+kosal by Philatype. CC-BY-4.0.
+https://github.com/philatype/kosal/tree/fea676adb94de83e19834a2160b9f19ab94fd104/
+
+No local artwork changes; filenames normalized for Kosal.

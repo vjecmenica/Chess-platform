@@ -1,0 +1,4 @@
+chessnut by Alexis Luengas. Apache-2.0.
+https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut
+
+No local artwork changes; filenames normalized for Kosal.

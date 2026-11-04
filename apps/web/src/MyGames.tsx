@@ -1,5 +1,6 @@
+import { loadGuestSession } from './guest-session-client';
 import { useEffect, useRef, useState } from 'react';
-import type { AccountGame, AccountGames, AccountState, GuestSessionResponse } from '@chess/contracts';
+import type { AccountGame, AccountGames, AccountState } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
 import { resultDisplay } from './result-display';
@@ -120,9 +121,7 @@ export function AccountPage() {
     setLoading(true); setError(null);
     if (!before) { setPage(null); setDetails(null); setSignedOut(false); }
     try {
-      const sessionResponse = await fetch('/api/guest-session', { cache: 'no-store', signal: controller.signal });
-      if (!sessionResponse.ok) throw new Error();
-      const session = await sessionResponse.json() as GuestSessionResponse;
+      const session = await loadGuestSession();
       if (controller.signal.aborted) return;
       setCsrf(session.csrfToken);
       const accountResponse = await fetch('/api/account', { cache: 'no-store', signal: controller.signal });

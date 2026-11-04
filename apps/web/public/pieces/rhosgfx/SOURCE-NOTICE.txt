@@ -1,0 +1,4 @@
+rhosgfx by RhosGFX. CC0-1.0.
+https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx
+
+No local artwork changes; filenames normalized for Kosal.

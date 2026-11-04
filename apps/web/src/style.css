@@ -1129,3 +1129,27 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 
 .engine-threat-toggle[aria-pressed='true'] { background: #f1dfd4; border-color: #98654d; }
 .engine-threat-status { order: 1; flex-basis: 100%; color: #756451; font-size: var(--text-compact); }
+
+/* Appearance changes never change square hit boxes or the board's measured dimensions. */
+.square.light,.engine-preview-board .light { background:var(--appearance-light,#f0dfbd); }
+.square.dark,.engine-preview-board .dark { background:var(--appearance-dark,#aa7953); }
+.board { border-color:transparent; background:transparent; }
+.board::after { content:''; position:absolute; inset:-2px; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); pointer-events:none; z-index:4; }
+.board .square,.engine-preview-board span { box-shadow:var(--appearance-grid,none); }
+.piece,.premove-ghost,.promotion-choice img,.captured-row img,.engine-preview-board img { transform:translateY(var(--appearance-offset,0%)) scale(var(--appearance-scale,1)); filter:var(--appearance-shadow,none); pointer-events:none; }
+.drag-piece { filter:var(--appearance-shadow,none); scale:var(--appearance-scale,1); translate:0 var(--appearance-offset,0%); }
+.appearance-settings { min-width:0; max-width:640px; }
+.appearance-settings label { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0; }
+.appearance-settings label>input[type=range],.appearance-settings label>select { width:auto; flex:1; min-width:100px; }
+.appearance-settings input[type=color] { width:50px; padding:2px; height:34px; }
+.appearance-settings input[type=checkbox] { width:auto; }
+.appearance-settings output { min-width:45px; font-variant-numeric:tabular-nums; }
+.appearance-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+.appearance-preview { width:min(100%,360px); grid-template-columns:repeat(6,1fr); aspect-ratio:auto; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); }
+.appearance-preview img { width:88%; height:88%; }
+.appearance-dialog { width:min(600px,calc(100% - 24px)); max-height:90dvh; overflow:auto; border:1px solid #ad9b84; border-radius:8px; background:#faf7ef; color:#3b2c22; padding:20px; }
+
+.engine-preview-board img { width:88%; height:88%; }
+
+.appearance-settings select { font:inherit; min-height:36px; border:1px solid #ad9b84; border-radius:5px; padding:5px 8px; background:#fffdf8; color:inherit; }
+.appearance-settings button { min-height:36px; }

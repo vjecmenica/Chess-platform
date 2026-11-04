@@ -50,6 +50,6 @@ export function boardMove(fen: string, side: GameSide, from: Square, target: Squ
   return { kind: 'invalid' };
 }
 
-export function pieceImage(piece: Piece): string {
-  return `/pieces/chessnut/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.svg`;
+export function pieceImage(piece: Piece, set = 'chessnut'): string {
+  return `/pieces/${set}/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.svg`;
 }

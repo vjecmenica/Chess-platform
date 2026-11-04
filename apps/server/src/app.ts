@@ -1,3 +1,4 @@
+import { registerAppearance } from './account-appearance.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import type pg from 'pg';
@@ -32,6 +33,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   });
 
   if (challenges) {
+    registerAppearance(app, challenges.pool);
     registerAccountRoutes(app, challenges.pool, challenges.secureCookies, !!challenges.accountEmail);
     registerRecoveryRoutes(app, challenges.pool, challenges.accountEmail);
     registerExplorerRoutes(app, challenges.pool);

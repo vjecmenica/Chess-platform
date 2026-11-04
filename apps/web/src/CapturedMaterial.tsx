@@ -1,3 +1,4 @@
+import { useAppearance } from './Appearance';
 import type { GameSide } from '@chess/contracts';
 import type { ReactNode } from 'react';
 import { pieceImage } from './board-interaction';
@@ -26,11 +27,12 @@ export function PlayerMaterialPanel({ side, pieces, advantage, placement, childr
 export function CapturedRow({ side, pieces, placement }: {
   side: GameSide; pieces: readonly CapturedPiece[]; placement: 'top' | 'bottom';
 }) {
+  const {value:appearance} = useAppearance();
   const opponent = side === 'white' ? 'black' : 'white';
   return <div className={`captured-row captured-${placement} captured-${opponent}`}
     aria-label={pieces.length > 0 ? `${side === 'white' ? 'White' : 'Black'} captured pieces` : undefined}>
     {pieces.map((piece, index) => <img key={`${piece}-${index}`}
-      src={pieceImage((opponent === 'white' ? piece.toUpperCase() : piece) as Parameters<typeof pieceImage>[0])}
+      src={pieceImage((opponent === 'white' ? piece.toUpperCase() : piece) as Parameters<typeof pieceImage>[0], appearance.pieceSet)}
       alt={`Captured ${opponent} ${names[piece]}`} draggable={false} />)}
   </div>;
 }

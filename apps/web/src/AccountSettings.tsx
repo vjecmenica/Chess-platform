@@ -1,3 +1,4 @@
+import { AppearanceSettings } from './AppearanceSettings';
 import type { FormEvent } from 'react';
 import type { AccountState } from '@chess/contracts';
 
@@ -9,6 +10,7 @@ export function AccountSettings({ state, busy, onAction }: { state: AccountState
     onAction(path, body);
   }
   return <section className="account-details" aria-label="Account details and settings">
+    <AppearanceSettings />
     <div><h3>Account session</h3>
       <button className="secondary" disabled={busy} onClick={() => onAction('/logout')}>Log out</button>
     </div>

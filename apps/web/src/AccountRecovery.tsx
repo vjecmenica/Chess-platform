@@ -1,3 +1,4 @@
+import { loadGuestSession } from './guest-session-client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { accountMessages } from './AccountMenu';
 
@@ -26,9 +27,7 @@ export function RecoveryPage({ mode, token }: { mode: RecoveryMode; token: strin
   const validLink = mode === 'recover' || /^[a-f0-9]{64}$/.test(token);
   useEffect(() => {
     let active = true;
-    void fetch('/api/guest-session', { cache: 'no-store' }).then(async response => {
-      if (!response.ok) throw new Error();
-      const session = await response.json(); if (active) setCsrf(session.csrfToken);
+    void loadGuestSession().then(session => { if (active) setCsrf(session.csrfToken);
     }).catch(() => { if (active) setError('Could not start a secure session. Reload this page to try again.'); });
     return () => { active = false; };
   }, []);

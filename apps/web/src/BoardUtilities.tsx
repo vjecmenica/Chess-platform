@@ -1,7 +1,9 @@
+import { AppearanceLauncher } from './AppearanceSettings';
 export function BoardUtilities({ downloadable, onDownload, onFlip }: {
   downloadable: boolean; onDownload: () => void; onFlip: () => void;
 }) {
   return <div className="board-utilities" role="group" aria-label="Board and game tools">
+    <AppearanceLauncher />
     {downloadable && <button type="button" aria-label="Download PGN"
       aria-description="Download this game's main line and available headers. Clocks and analysis comments are not included."
       onClick={onDownload}>
