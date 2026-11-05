@@ -67,6 +67,7 @@ it('uses bounded local textures in preview and play, clears them for solids, and
         const variables = appearanceVariables({ ...defaultAppearance, theme, light: '#eeeeff', dark: '#554466' });
         expect(variables['--appearance-light-texture']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
         expect(variables['--appearance-dark-texture']).not.toBe(variables['--appearance-light-texture']);
+        expect(variables['--appearance-texture-size']).toBe('400% 400%');
         expect(variables['--appearance-light-blend']).toBe('soft-light');
         expect(variables['--appearance-light']).toBe('#eeeeff');
         expect(variables['--appearance-dark']).toBe('#554466');
@@ -88,6 +89,18 @@ it('uses bounded local textures in preview and play, clears them for solids, and
         expect(readFileSync(new URL(texture.licenseEvidence, root), 'utf8')).toContain(file.revision);
         }
     }
+});
+it('preserves the exact pre-photographic wood assets and definitions outside production', () => {
+    const backup = new URL('../../../assets/board-backups/paired-wood-v2-ee528fc/', import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL('manifest.json', backup), 'utf8'));
+    for (const texture of manifest.filter((x: any) => x.kind === 'board-texture')) {
+        for (const file of texture.files) {
+            const name = file.file.split('/').at(-1);
+            expect(createHash('sha256').update(readFileSync(new URL(name, backup))).digest('hex')).toBe(file.sha256);
+        }
+    }
+    expect(readFileSync(new URL('appearance.ts.snapshot', backup), 'utf8')).toContain("naturalwood: ['#e3cba7', '#896545']");
+    expect(readFileSync(new URL('README.md', backup), 'utf8')).toContain('To restore');
 });
 it('uses a recognizable SVG art control with an accessible name', () => {
     const html = renderToStaticMarkup(createElement(AppearanceLauncher));

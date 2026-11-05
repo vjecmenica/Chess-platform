@@ -186,12 +186,6 @@ export function EngineToggle({ enabled, onToggle }: {
       <span className="engine-toggle-track" aria-hidden="true"><span>{enabled ? '✓' : ''}</span></span>
     </button>;
 }
-export function EngineCurrentScore({ enabled, score }: { enabled: boolean; score: string | null }) {
-  return <strong className="engine-current-score" aria-label={score === null
-      ? enabled ? 'Current position evaluation pending' : 'Interactive engine off'
-      : `Current position, White perspective ${score}`}>{score ?? '—'}</strong>;
-}
-
 export function currentEngineEvaluation(state: EngineState, fen: string): EngineEvaluation | null {
   return (state.kind === 'done' || state.kind === 'searching') && state.evaluation?.fen === fen
     ? state.evaluation : null;
@@ -362,8 +356,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <div className="engine-heading">
       <strong className="engine-panel-title">Analysis</strong>
-      <EngineCurrentScore enabled={enabled && state.kind !== 'error'}
-        score={enabled ? lines.find(line => line.rank === 1)?.score ?? null : null} />
       <button type="button" className="engine-settings-button" ref={settingsButtonRef}
         aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
         onClick={() => setSettingsOpen(value => !value)}>

@@ -1,9 +1,9 @@
 import { boardThemes, type BoardAppearance } from '@chess/contracts';
 
-// Original, locally bundled grain textures; never fetched from an external host.
+// Locally bundled, color-treated CC0 photographs; provenance is in public/boards.
 const textures: Partial<Record<keyof typeof boardThemes, readonly [string, string]>> = {
-  naturalwood: ['/boards/natural-light-v2.jpg', '/boards/natural-dark-v2.jpg'],
-  goldenwood: ['/boards/golden-light-v2.jpg', '/boards/golden-dark-v2.jpg'],
+  naturalwood: ['/boards/natural-light-v3.jpg', '/boards/natural-dark-v3.jpg'],
+  goldenwood: ['/boards/golden-light-v3.jpg', '/boards/golden-dark-v3.jpg'],
 };
 
 export function appearanceVariables(value: BoardAppearance): Record<string, string> {
@@ -14,6 +14,7 @@ export function appearanceVariables(value: BoardAppearance): Record<string, stri
     '--appearance-dark': value.dark ?? colors[1],
     '--appearance-light-texture': texture ? `url("${texture[0]}")` : 'none',
     '--appearance-dark-texture': texture ? `url("${texture[1]}")` : 'none',
+    '--appearance-texture-size': texture ? '400% 400%' : 'cover',
     '--appearance-light-blend': value.light === null ? 'normal' : 'soft-light',
     '--appearance-dark-blend': value.dark === null ? 'normal' : 'soft-light',
     '--appearance-hint-shadow': texture ? '0 0 0 1px rgb(255 248 233 / .85)' : 'none',

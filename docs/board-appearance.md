@@ -6,19 +6,21 @@ Migration 025_board_appearance.sql adds nullable accounts.board_appearance. Exis
 
 All board consumers use one source for piece URLs and CSS variables, including site play, analysis, imported/explorer games, captures, promotion and engine previews. Only appearance changes notify context consumers; position navigation does not update the appearance store. Glyph transforms leave square targets and board measurements unchanged. Frame rendering occupies reserved border space and cannot move player panels.
 
-## Additional palettes and original wood materials
+## Additional palettes and photographic wood materials
 
 | Theme | Light base | Dark base | Surface |
 | --- | --- | --- | --- |
 | Muted purple | `#e9e1ee` | `#92809f` | Solid |
 | Warm amber | `#f4e4bb` | `#b28b47` | Solid |
 | Muted burgundy | `#efdfdc` | `#a06f78` | Solid |
-| Natural wood | `#e3cba7` | `#896545` | Original maple grain |
-| Golden wood | `#e8dcc4` | `#927855` | Original oak grain |
+| Natural wood | `#e3cba7` | `#896545` | Photographic oak / stained-table grain |
+| Golden wood | `#e8dcc4` | `#927855` | Golden treatment of oak / stained-table grain |
 
-The two textured choices use locally bundled, original AI-generated artwork, not copied BabasChess/Lichess textures or externally licensed stock images. Exact prompts, generation IDs and JPEG optimization are documented in [texture provenance](../apps/web/public/boards/PROVENANCE.md). The existing asset manifest now includes entries marked `kind: board-texture`, with the original-output and shipped-file SHA-256 hashes. The artwork credits page includes the texture provenance link.
+The textured choices now use locally bundled CC0 photographs from Poly Haven: Oak Veneer 01 by Jenelle van Heerden and Wood Table 001 by Dimitrios Savva (photography) and Rico Cilliers (processing). Commercial use and redistribution are explicitly permitted. Exact diffuse-map URLs, source hashes and color treatment are documented in [texture provenance](../apps/web/public/boards/PROVENANCE.md). The asset manifest records source and derivative SHA-256 hashes. Product artwork credits link the authors, source pages, license and provenance. No BabasChess texture is used.
 
-The v2 textures use independent 256px light/dark material images, displayed directly so the full board retains visible maple/walnut or golden-oak grain. The table specifies fallback/custom base colors, not every textured pixel. Custom square colors opt into `soft-light` tinting; clearing a custom color restores the original material. Each square uses its image as a cover without repeating it inside the square. The four JPEGs total 56,067 bytes and require no per-move image processing. A thin cream edge keeps legal-move dots and capture rings visible over darker grain. Solid choices clear the image completely. Preview, main board and engine previews share the same surface rules. Warm amber and both new woods add a subtle inner boundary to the existing yellow last-move wash, which otherwise blends into those backgrounds; existing presets retain their original highlights. No arrow colors or geometry changed.
+The v3 materials preserve photographed grain in 512px images with restrained light/dark color treatments. CSS selects different crops across squares instead of repeating one identical tile everywhere. Four JPEGs total 185,116 bytes; only the selected pair (about 93 KB) loads. There are no runtime filters or per-move image operations. The table lists fallback/custom colors, not every textured pixel. Custom colors retain soft-light tinting. Preview, main board and engine previews share these rules; legal hints retain a cream edge and warm themes retain the last-move boundary. Defaults and saved IDs remain unchanged.
+
+The exact v2 JPEGs, definitions, CSS and provenance are backed up outside the production assets in [paired-wood-v2-ee528fc](../assets/board-backups/paired-wood-v2-ee528fc/README.md). Its README gives restoration steps without reverting unrelated UI changes.
 
 White-side analysis fills are pure `#fff`, independent of the board palette: the evaluation bar, positive/zero PV score badges, and positive Computer Analysis graph areas share one variable. The graph uses a warm-gray `#e9e5dd` background so white areas remain distinct, retaining the baseline, brown trace and interactive targets. Negative fills remain `#333b36`. When both Board frame and Thin square borders are off, the eval-bar outer border and backing are transparent. Its reserved 1px border box remains, so disabling borders cannot resize or realign the bar. Either enabled border control restores its frame-color edge; keyboard focus stays visible.
 

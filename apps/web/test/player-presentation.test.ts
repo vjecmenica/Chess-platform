@@ -51,7 +51,7 @@ describe('shared game presentation', () => {
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
       ...result, analysisOpen: true, onToggleAnalysis: () => {},
     }));
-    expect(html).toContain('class="finished-result-area"');
+    expect(html).toContain('class="finished-result-area analysis-result-area"');
     expect(html).toContain('class="final-result"');
     expect(html).toContain('1-0');
     expect(html).toContain('White won.');

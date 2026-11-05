@@ -1,29 +1,52 @@
-# Original paired wood textures (v2)
+# Photographic wood textures — photographic-wood-v3
 
-Created for Chess Platform with the built-in OpenAI image-generation tool on 2026-11-04. No screenshot pixels, reference-image inputs, BabasChess/Lichess assets, or third-party texture pack was used. These are project-original generated assets, not externally licensed stock images; no third-party attribution requirement was introduced. Piece licenses remain separate. Exact original-output and shipped-file hashes are in `/pieces/manifest.json`.
+Verified/downloaded 2026-11-05. Both source asset pages identify the diffuse maps as
+CC0. https://polyhaven.com/license explicitly permits commercial use, redistribution,
+and inclusion in sold products. Attribution is appreciated, not required. We credit
+both works in /pieces/credits.html; the full CC0 text is CC0-1.0.txt beside this file.
+No runtime external requests, site screenshots, preview renders, BabasChess assets,
+or generated grain are used.
 
-Four independent material images form pale-maple/dark-walnut and light/dark golden-oak pairs. Windows System.Drawing reduces each output to a 256px JPEG, quality 88, using high-quality bicubic resampling. Normal mode displays the material directly; custom square colors use soft-light tinting. The old 512px single-image blends are superseded by these versioned URLs. No per-square image generation or runtime filters are used.
+## Exact source files
 
-## natural-light-v2
+- Oak Veneer 01, Jenelle van Heerden: https://polyhaven.com/a/oak_veneer_01
+  https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg
+  SHA-256: 7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf
+- Wood Table 001, Dimitrios Savva (photography), Rico Cilliers (processing):
+  https://polyhaven.com/a/wood_table_001
+  https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_table_001/wood_table_001_diff_4k.jpg
+  SHA-256: 5da68c7ebe8732f029ecbd602cb0d86d2a271e32539df953a0f10efa052b9516
 
-Generation revision: `exec-f4f57692-ac29-4fed-a8e2-daac757898ed`.
+These content hashes pin the exact downloaded versions; the provider has no Git
+revision for these files. All derivative filenames/hashes are in /pieces/manifest.json.
+Wood Table (a different pine asset) was inspected but rejected as too distressed;
+it is not shipped. The oak/table photographs are better suited to a clean playing
+surface than another generated pattern.
 
-Original chess-square material: pale natural maple veneer. Macro close-up, one square patch, entire image edge-to-edge wood. Broad recognizable flowing grain with gentle curved growth lines and subtle fibers, about 8–14 main grain bands across the patch, visible even reduced to 60px. Warm cream/pale tan light wood, no dramatic knots or black streaks. Grain tone variation modest but clearly visible, not a flat surface or fine noise. Flat diffuse lighting with no shading gradient, border, objects, chess pattern, text or watermark. Fresh original artwork, not copied from any chess software. Seamless edge appearance. Photoreal material scan style.
+## Derivatives and rendering
 
-## natural-dark-v2
+The two photos are reduced with high-quality bicubic resampling to 512x512. A
+luminance-preserving color treatment distinguishes pale oak / brown stained grain
+(Natural) and honey oak / golden-brown stained grain (Golden). These are color
+variants, not claims that the photos depict four different species of wood.
+No fibers or knots are synthesized. The exact repeatable processing is in
+`tools/prepare-board-photos.ps1`; supply the two locally downloaded, hash-verified
+source JPEGs as -OakSource and -TableSource. JPEG quality is 88.
 
-Generation revision: `exec-9226c188-d6a1-44df-b6e1-223040e1ac22`.
+Natural light/dark RGB midpoint: (224,204,170)/(126,88,58); contrast .85/1.10.
+Golden light/dark RGB midpoint: (237,211,161)/(159,112,59); contrast .85/1.05.
+Each pixel retains its luminance difference from the source mean. The four shipped
+images total 185,116 bytes (two images, about 93 KB, loaded for the selected theme).
 
-Original chess-square material: medium-dark natural walnut veneer. Macro close-up, one square patch entirely wood, edge to edge. Broad clearly recognizable wavy grain and long softly curved growth rings, about 8–14 main grain bands across image; recognizable when reduced to 60px. Cocoa/taupe brown, medium-dark rather than near-black so black chess pieces with white outlines remain readable. Moderate natural tonal variation, calm grain and delicate fibers, no high contrast knots or noise. Flat diffuse light with no lighting gradient, objects, frames, chess pattern, letters or watermark. Original artwork, no chess software textures. Photoreal material scan style, edges suitable for repeated square use.
+CSS displays different 128px windows into each photograph using 400% background
+size and deterministic crop positions. This reduces identical-square repetition
+without per-square images, runtime filters or work on pointer events. Crops repeat
+after sixteen cells; this is a small bounded material atlas, not nonrepeating wood.
+Preview and game boards share the surface rules. Custom square colors still opt
+into soft-light tinting. Solid/default theme and preference IDs are unchanged.
 
-## golden-light-v2
+## Previous version backup
 
-Generation revision: `exec-601f5af3-f350-419b-a613-f184f60c26ef`.
-
-Original light golden oak chess-square material. A single square macro patch of satin-finished golden oak veneer, entire image uninterrupted wood. Recognizable broad flowing grain and softly curved growth-ring lines, roughly 8–14 main grain bands across the patch, plus fine fibers. It must read as wood at 60px, not a flat yellow fill or noisy overlay. Pale honey/warm biscuit color, restrained saturation. Moderate quiet tonal variation, no dark knots. Even diffuse illumination, no lighting gradients, edge borders, objects, checker pattern, text or watermark. Fresh original photoreal material design, not taken from chess software, suitable for covering individual squares.
-
-## golden-dark-v2
-
-Generation revision: `exec-0b941cc4-14b7-45f6-998e-9904b4a20c42`.
-
-Original dark golden oak chess-square material. One square macro patch of fumed golden oak veneer, all wood edge to edge. Broad meandering longitudinal grain, gently curved growth lines and natural material variation clearly recognizable at 60px, roughly 8–14 main grain bands across image. Medium toasted amber/brown with restrained gold saturation, distinct from pale honey oak and not orange or neon. Calm tonal variation, not near-black, no black knots, no visual clutter or generic noise. Even diffuse lighting without gradient, no objects, frames, checker pattern, letters or watermark. Newly generated original photoreal material, not any chess application's texture.
+`assets/board-backups/paired-wood-v2-ee528fc/` contains the exact four previous JPEGs,
+theme/style definitions, manifest and original generation provenance. Its README
+explains restoration. It is outside public/ and is not shipped by Vite.

@@ -6,7 +6,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { EngineCache, EngineController, evaluationLabel, parseSearchInfo, searchCommand,
   searchProfile, variationSan,
   type EngineState, type EngineStorage, type EngineWorker } from '../src/engine-analysis';
-import { candidateLines, currentEngineEvaluation, EnginePanel, EngineToggle, EngineCurrentScore, engineLineRows, interactiveLimits } from '../src/EnginePanel';
+import { candidateLines, currentEngineEvaluation, EnginePanel, EngineToggle, engineLineRows, interactiveLimits } from '../src/EnginePanel';
 
 const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
@@ -64,6 +64,7 @@ describe('browser Stockfish controller', () => {
       selectedPly: 0, onSelectPly: () => {}, onReviewChange: () => {},
       onEvaluationChange: () => {} }));
     expect(html).toContain('aria-label="Engine settings"');
+    expect(html).not.toContain('engine-current-score');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('Unlimited depth');
     expect(html).not.toContain('Unlimited search time');
@@ -354,19 +355,16 @@ describe('browser Stockfish controller', () => {
   });
 });
 
-it('renders an accessible engine switch and a labelled score without using a button title', () => {
-  const render = (enabled: boolean, score: string | null) => renderToStaticMarkup(createElement(EngineToggle,
-    { enabled, onToggle: () => {} })) + renderToStaticMarkup(createElement(EngineCurrentScore, { enabled, score }));
-  expect(render(true, '+0.37')).toContain('role="switch" aria-checked="true"');
-  expect(render(true, '+0.37')).toContain('Current position, White perspective +0.37');
-  expect(render(true, 'Mate -3')).toContain('>Mate -3</strong>');
-  expect(render(true, null)).toContain('Current position evaluation pending');
-  expect(render(false, null)).toContain('role="switch" aria-checked="false"');
-  expect(render(false, null)).toContain('Interactive engine off');
-  expect(render(true, '+0.37')).not.toContain(' title=');
+it('renders an accessible engine switch without using a button title', () => {
+  for (const enabled of [true, false]) {
+    const html = renderToStaticMarkup(createElement(EngineToggle, { enabled, onToggle: () => {} }));
+    expect(html).toContain(`role="switch" aria-checked="${enabled}"`);
+    expect(html).toContain('aria-label="Interactive engine"');
+    expect(html).not.toContain(' title=');
+  }
 });
 
-it('never uses another position’s cached or in-progress evaluation for the header', () => {
+it('never uses another position’s cached or in-progress evaluation for engine lines', () => {
   const evaluation = { fen: afterE4, depth: 20, score: { kind: 'cp' as const, value: 37 }, bestMove: null, variation: [] };
   const state: EngineState = { kind: 'done', evaluation, cached: true };
   expect(currentEngineEvaluation(state, start)).toBeNull();

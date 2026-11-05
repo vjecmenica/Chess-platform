@@ -54,7 +54,7 @@ export function ThreatControl({ fen, gameId, requestKey, available, reviewing, s
           : state.kind === 'loading' || state.kind === 'off' ? `Loading Threat · ${label}…`
             : `Threat · ${label}`;
   return <>
-    <button type="button" className="secondary engine-threat-toggle" aria-pressed={enabled}
+    <button type="button" className="engine-threat-toggle" aria-pressed={enabled}
       aria-label="Show threat" aria-description="Opponent's move after a hypothetical pass. Unavailable in check."
       onClick={() => { if (!enabled) setFailed(null); setEnabled(value => !value); }}>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"

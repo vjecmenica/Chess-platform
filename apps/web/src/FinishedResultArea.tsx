@@ -29,8 +29,8 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
   }, []);
 
   return <div ref={area}
-    className={`finished-result-area${isCompactResultHeight(height, maximumHeight.current) ? ' compact' : ''}`}
-    style={height === null ? undefined : { height }}>
+    className={`finished-result-area${analysisOpen ? ' analysis-result-area' : isCompactResultHeight(height, maximumHeight.current) ? ' compact' : ''}`}
+    style={analysisOpen || height === null ? undefined : { height }}>
     <div className="final-result" role="status">
       <strong>{score}</strong><span>{explanation}</span>
     </div>
@@ -40,7 +40,7 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
         aria-description="Analysis edits last until Analysis closes and do not affect the game."
         onClick={onToggleAnalysis}>{analysisOpen ? 'Close analysis' : 'Analysis'}</button>}
     </div>
-    <button type="button" className="result-resize-handle"
+    {!analysisOpen && <button type="button" className="result-resize-handle"
       aria-label="Resize result area" aria-description="Drag to resize result area; use arrow keys on the handle"
       onPointerDown={event => {
         if (event.button !== 0 || area.current === null) return;
@@ -69,6 +69,6 @@ export function FinishedResultArea({ score, explanation, analysisOpen,
         maximumHeight.current ??= area.current.getBoundingClientRect().height;
         setHeight(resizedResultHeight(height ?? maximumHeight.current,
           maximumHeight.current, event.key === 'ArrowUp' ? -8 : 8));
-      }} />
+      }} />}
   </div>;
 }
