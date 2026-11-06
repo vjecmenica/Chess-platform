@@ -1,0 +1,510 @@
+[
+  {
+    "id": "chessnut",
+    "author": "Alexis Luengas",
+    "license": "Apache-2.0",
+    "source": "https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut",
+    "revision": "bdd824062fcf3a680687d20d7a7322c71d2dae53",
+    "licenseEvidence": "lila-COPYING.md",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wK.svg",
+        "sha256": "f64f2d088fe96a10fa77104cd1a42339e5495f56d6dcfda491298decbda7b2fa"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wQ.svg",
+        "sha256": "2d20b17499c7c268ca87f3c4038a3b1335e0a087010037b0d854f2f7f84aa254"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wR.svg",
+        "sha256": "57d662b9b905a603e1cf28e36d61576dfd1a50695b23724c7189cd0f15736f03"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wB.svg",
+        "sha256": "ec62a67ea0212ec75e151ff673b2ef27e33e1732665839148dfdd27c357ab096"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wN.svg",
+        "sha256": "f0fac07e481f7b31d1b074e458908f8fcad9ee4abdc76d84c274b8c4f438e388"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/wP.svg",
+        "sha256": "81cde9f22edf3f750a282335a6d1367f011642d5a9bb8a94c6c6859ab1b326ea"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bK.svg",
+        "sha256": "9e3c0ec404aec41dfabea96a204712c3feae80a456496ec0398499a1a77e642f"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bQ.svg",
+        "sha256": "cf47f78c1ad9a99163e942f70365f8dd2b6d911011a5d8298be3d0596ad924a2"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bR.svg",
+        "sha256": "b588445132bd2295989b94b058d6ed91605b5dffbb5b4533a2f782848cae1684"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bB.svg",
+        "sha256": "933697379921e0a36f17a6863f5324e7f05fa73b243dab3d94e5ce8c37d064c2"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bN.svg",
+        "sha256": "8842b49915174de6d224273f9dffd2a84f65dc5fc2b67c83441cfbe1b423d008"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/chessnut/bP.svg",
+        "sha256": "22da60dfa9fc6bfb54b1ee369dc9e3555e567e43eaea0fccad2e0211259ff0aa"
+      }
+    ],
+    "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0"
+  },
+  {
+    "id": "kosal",
+    "author": "Philatype",
+    "license": "CC-BY-4.0",
+    "source": "https://github.com/philatype/kosal/tree/fea676adb94de83e19834a2160b9f19ab94fd104/",
+    "revision": "fea676adb94de83e19834a2160b9f19ab94fd104",
+    "licenseEvidence": "kosal/README.txt",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_king.svg",
+        "sha256": "443332572ca4c57c441c2467d0129432cdd9f9e1195649f84df233a749e6dbf7"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_queen.svg",
+        "sha256": "89128b10b247992d1366e4e6da8fa426c06e629d8abbfc2c955aaad5c05022ab"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_rook.svg",
+        "sha256": "33b98a25277fac757c44c320ca99aeea857b44edf3cf12d259756eb58776f46b"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_bishop.svg",
+        "sha256": "b3edc4c12726482f30f2a597c695d85fab8ce614d47e2c6e96360da7e2e91c33"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_knight.svg",
+        "sha256": "16f5d03a48d8e8b06d3953d514c1572c32498580bf6fc5602bedcdeb0c4d8085"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/white_pawn.svg",
+        "sha256": "5b70c145b2f36b331eb41e2c7fc6223e79dae720398a27d6e93ed926b4b30ad4"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_king.svg",
+        "sha256": "1bd950bf5dffba8cb0302bd13dbd78e9157725c5e1ca3522c2120364790f4648"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_queen.svg",
+        "sha256": "ccb10091b95197862ab25267edb160e1723deff9caf72e154e855f14c7dfe609"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_rook.svg",
+        "sha256": "a59a7b3fc5ec3c95a3e68e0da0ad2e1c0a7c72fb84ba66800c0c7857f74f8394"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_bishop.svg",
+        "sha256": "111c7540e6813435e2c6045475d55c56f0a299882c100691a982687ae63dbab4"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_knight.svg",
+        "sha256": "27c69df3cca781f377cb1547c7b8e12d0740e1c257a70c6071895371cb28472a"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/philatype/kosal/fea676adb94de83e19834a2160b9f19ab94fd104/black_pawn.svg",
+        "sha256": "1650805bc134a00b3bdb651b6531453c92c1a13b31fe5334e4e500cde3226c4b"
+      }
+    ],
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "celtic",
+    "author": "Maurizio Monge",
+    "license": "MIT",
+    "source": "https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic",
+    "revision": "bdd824062fcf3a680687d20d7a7322c71d2dae53",
+    "licenseEvidence": "upstream-monge-README.md",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wK.svg",
+        "sha256": "8f8ddf272134dcbae8e50831e22bada71d01719378c7fa83e5f0d981dcd62b91"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wQ.svg",
+        "sha256": "9750aea417a338541776362c098bad01f53a8ffbf45a48cb77fd9586026eff79"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wR.svg",
+        "sha256": "0c4fe9b03ad21bfb6b9b8b7bc731fe66c3f4db155284edec2fd739d1c1da8659"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wB.svg",
+        "sha256": "b467f2849185de0924a69a4e0c1b49d70410302af7638024671fe27856e301a2"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wN.svg",
+        "sha256": "5bb16b24efc7f3958835269572a57c9fbbea920d0b7273fe87857e743a98eac7"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/wP.svg",
+        "sha256": "191c0d283ffd7292c2494142a56204d32bc26447a0df37e33962fa5f3f674c5b"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bK.svg",
+        "sha256": "6169f0454f87277725f0a2c89b14a45aad4a09585e717df2fc6af82318bce5ee"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bQ.svg",
+        "sha256": "d54b68ea845b70692280ca634ad8066d6723d3db49a3c32892f76bcf22cdccd3"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bR.svg",
+        "sha256": "426bc22db33c7fc1851558045a72577e3400e8179c69812b514106ba5be3d9e7"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bB.svg",
+        "sha256": "7cdb3c9500f55b4834cfef5cc33f5bafe11ac870d62ede3b3f0fcf48c6bd9397"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bN.svg",
+        "sha256": "b82f388cb50401a32066b37dfb378f68079f079419ad7a9c850bcf3a5471b440"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/celtic/bP.svg",
+        "sha256": "6deef22c5c1ad21338cafbcce42b58202b48cbefc8b3c921e017d578c311cbcb"
+      }
+    ],
+    "licenseUrl": "https://github.com/maurimo/chess-art/blob/18baed27e8a2a721f1d60e7e27452166b3e20c1b/LICENSE",
+    "originalArtwork": "https://github.com/maurimo/chess-art/tree/18baed27e8a2a721f1d60e7e27452166b3e20c1b"
+  },
+  {
+    "id": "fantasy",
+    "author": "Maurizio Monge",
+    "license": "MIT",
+    "source": "https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy",
+    "revision": "bdd824062fcf3a680687d20d7a7322c71d2dae53",
+    "licenseEvidence": "upstream-monge-README.md",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wK.svg",
+        "sha256": "d806f0d0a94bc1f8d71089a1a12370cea46806dd0dd6d758b04817b831c6ecd2"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wQ.svg",
+        "sha256": "ac53d7b2106532f7c3090531575cf39d5a3315530061be4390f245f6f19f05e4"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wR.svg",
+        "sha256": "e4934c4d25d24c7dd2b9e6df4e546c5efbbba09a7d63cb4c72cbc2ae36f32384"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wB.svg",
+        "sha256": "3042d9f3359402759d13c5c23bd66129e7cbc63233a9d108312047de63cec904"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wN.svg",
+        "sha256": "bb532c0c19727613fe3385d556c99815f5ef5ba4cb75cc07e3e4554ae50e9d0e"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/wP.svg",
+        "sha256": "07105c9aa3fdf172cc51480521ae3401fbfc33cfaab780ffc332d43859d963e6"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bK.svg",
+        "sha256": "023b003765e5c812007d02fb92b7d72eaafd535075d2ffeb209dc4a841f9524a"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bQ.svg",
+        "sha256": "6c667a1b37d6dec21b2b72238991fbb87b936c5048cdd481e6dc43b2bbd422e5"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bR.svg",
+        "sha256": "236d1fa4d39bd5563ecbde3453ac80d0b0266a570a7f7644b8ba7902380c14f1"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bB.svg",
+        "sha256": "6e7e079b8c73b066537a6ce2623a14b65d1d625a408af8f42f5cffe3ea798e63"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bN.svg",
+        "sha256": "aa8eb58d10722fca992dff04985d16165a7b8cf8a3a231c426dc7685a6981040"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/fantasy/bP.svg",
+        "sha256": "09b98781c32a4933533a3dfd3fa7ce20618f36827b3d649f69ac32dd7b82469c"
+      }
+    ],
+    "licenseUrl": "https://github.com/maurimo/chess-art/blob/18baed27e8a2a721f1d60e7e27452166b3e20c1b/LICENSE",
+    "originalArtwork": "https://github.com/maurimo/chess-art/tree/18baed27e8a2a721f1d60e7e27452166b3e20c1b"
+  },
+  {
+    "id": "spatial",
+    "author": "Maurizio Monge",
+    "license": "MIT",
+    "source": "https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial",
+    "revision": "bdd824062fcf3a680687d20d7a7322c71d2dae53",
+    "licenseEvidence": "upstream-monge-README.md",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wK.svg",
+        "sha256": "d1255749e00346bfca3e098afd7ab9118a729f8031f0121874c1d306780084e5"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wQ.svg",
+        "sha256": "8d57bc3f75779f1a2a355246d0c1c9a8cfdae721bced568e70d233b0ffa60f98"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wR.svg",
+        "sha256": "d1eb1ec3aadf3d37f98b839795780fd4f8c0d47122dfbee069e6a94f6db74722"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wB.svg",
+        "sha256": "da513b3b8071b0f70c2f03d4b6c84920680a847e972eb629e1a3795a8f61f6bf"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wN.svg",
+        "sha256": "ed4b9264f83a3d1d658ed33b9b5286926a3d8cd3e77eb4ef9f5a8600b45d46f9"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/wP.svg",
+        "sha256": "e28c15f05210d24667830f4d7f6daa1176e05b33fd571e94575114f8fea7d270"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bK.svg",
+        "sha256": "aae225fbcf6b9c2ae659c2f355ecd09f5031608e2a0624c808d24d410da21645"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bQ.svg",
+        "sha256": "1961df8bee9812f3834eb70e5e4f9be42caeffdefb44beeb17877ec530f0f87e"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bR.svg",
+        "sha256": "3fb504d1ce6be5208067471de4f64a0099fd0ee017c000f47542e6db03318eb3"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bB.svg",
+        "sha256": "3bfac1a7809cf6d50318f701d6108fe76d99f0828a50598023d35f1fafee6627"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bN.svg",
+        "sha256": "c0f3dda96a49920412d1496ea6c780f1b5bad5164244bd74e611b2134eeff341"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/spatial/bP.svg",
+        "sha256": "7d1203bfe0fb86bab3bffbc9d93160c1da16b961c35942853843d3cecda6a30f"
+      }
+    ],
+    "licenseUrl": "https://github.com/maurimo/chess-art/blob/18baed27e8a2a721f1d60e7e27452166b3e20c1b/LICENSE",
+    "originalArtwork": "https://github.com/maurimo/chess-art/tree/18baed27e8a2a721f1d60e7e27452166b3e20c1b"
+  },
+  {
+    "id": "rhosgfx",
+    "author": "RhosGFX",
+    "license": "CC0-1.0",
+    "source": "https://github.com/lichess-org/lila/tree/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx",
+    "revision": "bdd824062fcf3a680687d20d7a7322c71d2dae53",
+    "licenseEvidence": "lila-COPYING.md",
+    "files": [
+      {
+        "file": "wK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wK.svg",
+        "sha256": "7c669f5fe1d59d480d4edaabf5354340dfb4aab298cad699ca42e9848525c3d8"
+      },
+      {
+        "file": "wQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wQ.svg",
+        "sha256": "aff8bfda174d092a7e6535b1fe65bd5e67019e338ad4c4c4c64ad4624c90839b"
+      },
+      {
+        "file": "wR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wR.svg",
+        "sha256": "55fe7f6cb0aa2df8c89a5ce3ec3b7696abb0b7535fa7d7c8c4493af729d7e557"
+      },
+      {
+        "file": "wB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wB.svg",
+        "sha256": "a421f3893411853a22f549b055befcbf533c9bb09931945f97cf76b814140bda"
+      },
+      {
+        "file": "wN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wN.svg",
+        "sha256": "3167d995a48f7b8cf2f09fc1bb682653311d55470b01e79fd32efc227faeb9a1"
+      },
+      {
+        "file": "wP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/wP.svg",
+        "sha256": "6966a81c1551423e24cddb5a08e047d040c51521b890edc7c2ef9977bb3ad710"
+      },
+      {
+        "file": "bK.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bK.svg",
+        "sha256": "f793700444c85a7bd2882f58e9bbb6100245116b26272ce103e79a6a745fa76c"
+      },
+      {
+        "file": "bQ.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bQ.svg",
+        "sha256": "9ce603348bd7cc11fdef55656370694b126e2ae9947435baa17d7565c5f50329"
+      },
+      {
+        "file": "bR.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bR.svg",
+        "sha256": "3364c8b6b98c30a1dd7db07cc6184a162e2b0d67cdc037d7d02a684d60404021"
+      },
+      {
+        "file": "bB.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bB.svg",
+        "sha256": "67370d6187fe9dacec1c04509a4e49277a2b2b35eda62d54db334158839dc2cf"
+      },
+      {
+        "file": "bN.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bN.svg",
+        "sha256": "36448201d9f17b14bfdd4d8ee52bd8e4da38e4b9b3e433a7f44426d75c3892a3"
+      },
+      {
+        "file": "bP.svg",
+        "source": "https://raw.githubusercontent.com/lichess-org/lila/bdd824062fcf3a680687d20d7a7322c71d2dae53/public/piece/rhosgfx/bP.svg",
+        "sha256": "a604ea6015f5285c60534b775cd611872bc4ab640f92b088426c320c05d3df53"
+      }
+    ],
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "authorLicenseStatement": "https://rhosgfx.itch.io/vector-chess-pieces"
+  },
+  {
+    "id": "naturalwood",
+    "kind": "board-texture",
+    "author": "Jenelle van Heerden (Oak Veneer 01); Dimitrios Savva (Wood Table 001 photography), Rico Cilliers (processing)",
+    "license": "CC0-1.0",
+    "source": "https://polyhaven.com/license",
+    "revision": "photographic-wood-v3",
+    "licenseEvidence": "../boards/PROVENANCE.md",
+    "files": [
+      {
+        "file": "../boards/natural-light-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
+        "author": "Jenelle van Heerden",
+        "license": "CC0-1.0",
+        "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
+        "sha256": "1bb6a51e0a5024541cbf2f26022de9225447b1c26abde049955ee4a54aca233f",
+        "width": 512,
+        "height": 512,
+        "bytes": 43793,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      },
+      {
+        "file": "../boards/natural-dark-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_table_001/wood_table_001_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/wood_table_001",
+        "author": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+        "license": "CC0-1.0",
+        "originalSha256": "5da68c7ebe8732f029ecbd602cb0d86d2a271e32539df953a0f10efa052b9516",
+        "sha256": "fd64a3c1357670e4387a4be05e6a40b9d80ea96a12b752f3bce2eb66901831dd",
+        "width": 512,
+        "height": 512,
+        "bytes": 49427,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      }
+    ]
+  },
+  {
+    "id": "goldenwood",
+    "kind": "board-texture",
+    "author": "Jenelle van Heerden (Oak Veneer 01); Dimitrios Savva (Wood Table 001 photography), Rico Cilliers (processing)",
+    "license": "CC0-1.0",
+    "source": "https://polyhaven.com/license",
+    "revision": "photographic-wood-v3",
+    "licenseEvidence": "../boards/PROVENANCE.md",
+    "files": [
+      {
+        "file": "../boards/golden-light-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
+        "author": "Jenelle van Heerden",
+        "license": "CC0-1.0",
+        "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
+        "sha256": "9668c34f171406aa505c89985a69903a5ff10c2ca974b282d5a744dfcffea46f",
+        "width": 512,
+        "height": 512,
+        "bytes": 43755,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      },
+      {
+        "file": "../boards/golden-dark-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_table_001/wood_table_001_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/wood_table_001",
+        "author": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+        "license": "CC0-1.0",
+        "originalSha256": "5da68c7ebe8732f029ecbd602cb0d86d2a271e32539df953a0f10efa052b9516",
+        "sha256": "d81d60c4236556e3cb58d6c6dff8e37cfc77cc23a492838d3bc60b4068e45481",
+        "width": 512,
+        "height": 512,
+        "bytes": 48141,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      }
+    ]
+  }
+]

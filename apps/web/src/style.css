@@ -1133,23 +1133,28 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .engine-threat-status { order: 1; flex-basis: 100%; color: #756451; font-size: var(--text-compact); }
 
 /* Appearance changes never change square hit boxes or the board's measured dimensions. */
-.square.light,.engine-preview-board .light { background-color:var(--appearance-light,#f0dfbd);
-  background-image:var(--appearance-light-texture,none); background-blend-mode:var(--appearance-light-blend,normal); }
-.square.dark,.engine-preview-board .dark { background-color:var(--appearance-dark,#aa7953);
-  background-image:var(--appearance-dark-texture,none); background-blend-mode:var(--appearance-dark-blend,normal); }
-.board .square,.engine-preview-board :is(.light,.dark) {
-  background-size:var(--appearance-texture-size,cover);
-  background-position:var(--grain-x,0%) var(--grain-y,0%); }
-/* Different windows into one photograph: no generated images or work on pointer moves. */
-:is(.board,.engine-preview-board)>:nth-child(4n+2) { --grain-x:66.6667%; }
-:is(.board,.engine-preview-board)>:nth-child(4n+3) { --grain-x:33.3333%; }
-:is(.board,.engine-preview-board)>:nth-child(4n) { --grain-x:100%; }
-:is(.board,.engine-preview-board)>:nth-child(16n+5),:is(.board,.engine-preview-board)>:nth-child(16n+6),
-:is(.board,.engine-preview-board)>:nth-child(16n+7),:is(.board,.engine-preview-board)>:nth-child(16n+8) { --grain-y:66.6667%; }
-:is(.board,.engine-preview-board)>:nth-child(16n+9),:is(.board,.engine-preview-board)>:nth-child(16n+10),
-:is(.board,.engine-preview-board)>:nth-child(16n+11),:is(.board,.engine-preview-board)>:nth-child(16n+12) { --grain-y:33.3333%; }
-:is(.board,.engine-preview-board)>:nth-child(16n+13),:is(.board,.engine-preview-board)>:nth-child(16n+14),
-:is(.board,.engine-preview-board)>:nth-child(16n+15),:is(.board,.engine-preview-board)>:nth-child(16n+16) { --grain-y:100%; }
+.engine-preview-board, .engine-preview-board > span { position: relative; }
+
+/* Paint and soften the photograph once. Only the tint changes at a square edge. */
+:is(.board, .engine-preview-board)::before {
+  content: var(--appearance-grain-layer, none);
+  position: absolute;
+  inset: -5px;
+  padding: 5px;
+  background: #a77951 var(--appearance-grain-image, none) center / var(--board-grain-size, 200%) auto no-repeat;
+  background-origin: content-box;
+  filter: blur(1.5px) brightness(1.45) saturate(.72);
+  /* Trim the blur's overscan at the board perimeter, leaving every edge opaque. */
+  clip-path: inset(5px);
+  pointer-events: none;
+}
+
+.square.light, .engine-preview-board .light {
+  background-color: color-mix(in srgb, var(--appearance-light, #f0dfbd) var(--appearance-square-coverage, 100%), transparent);
+}
+.square.dark, .engine-preview-board .dark {
+  background-color: color-mix(in srgb, var(--appearance-dark, #aa7953) var(--appearance-square-coverage, 100%), transparent);
+}
 .board { border-color:transparent; background:transparent; }
 .board::after { content:''; position:absolute; inset:-2px; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); pointer-events:none; z-index:4; }
 .board .square,.engine-preview-board span { box-shadow:var(--appearance-grid,none); }
@@ -1162,7 +1167,7 @@ footer { margin-top: 36px; color: var(--text-muted); font-size: var(--text-meta)
 .appearance-settings input[type=checkbox] { width:auto; }
 .appearance-settings output { min-width:45px; font-variant-numeric:tabular-nums; }
 .appearance-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
-.appearance-preview { width:min(100%,360px); grid-template-columns:repeat(6,1fr); aspect-ratio:auto; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); }
+.appearance-preview { width:min(100%,360px); grid-template-columns:repeat(6,1fr); aspect-ratio:auto; border:var(--appearance-frame-width,2px) solid var(--appearance-frame,#755740); --board-grain-size: calc(200% * 8 / 6); }
 .appearance-preview img { width:88%; height:88%; }
 .appearance-dialog { width:min(600px,calc(100% - 24px)); max-height:90dvh; overflow:auto; border:1px solid #ad9b84; border-radius:8px; background:#faf7ef; color:#3b2c22; padding:20px; }
 .appearance-dialog h3 { margin:0 44px 16px 0; min-height:36px; display:flex; align-items:center; }

@@ -13,14 +13,14 @@ All board consumers use one source for piece URLs and CSS variables, including s
 | Muted purple | `#e9e1ee` | `#92809f` | Solid |
 | Warm amber | `#f4e4bb` | `#b28b47` | Solid |
 | Muted burgundy | `#efdfdc` | `#a06f78` | Solid |
-| Natural wood | `#e3cba7` | `#896545` | Photographic oak / stained-table grain |
-| Golden wood | `#e8dcc4` | `#927855` | Golden treatment of oak / stained-table grain |
+| Natural wood | `#e3cba7` | `#896545` | Continuous stained-table grain |
+| Golden wood | `#e8dcc4` | `#927855` | Golden treatment of continuous stained-table grain |
 
-The textured choices now use locally bundled CC0 photographs from Poly Haven: Oak Veneer 01 by Jenelle van Heerden and Wood Table 001 by Dimitrios Savva (photography) and Rico Cilliers (processing). Commercial use and redistribution are explicitly permitted. Exact diffuse-map URLs, source hashes and color treatment are documented in [texture provenance](../apps/web/public/boards/PROVENANCE.md). The asset manifest records source and derivative SHA-256 hashes. Product artwork credits link the authors, source pages, license and provenance. No BabasChess texture is used.
+Both wood themes reuse their existing CC0 Wood Table 001 photograph from Poly Haven, with photography by Dimitrios Savva and processing by Rico Cilliers. The exact source, license and asset hashes are recorded in [texture provenance](../apps/web/public/boards/PROVENANCE.md) and the asset manifest.
 
-The v3 materials preserve photographed grain in 512px images with restrained light/dark color treatments. CSS selects different crops across squares instead of repeating one identical tile everywhere. Four JPEGs total 185,116 bytes; only the selected pair (about 93 KB) loads. There are no runtime filters or per-move image operations. The table lists fallback/custom colors, not every textured pixel. Custom colors retain soft-light tinting. Preview, main board and engine previews share these rules; legal hints retain a cream edge and warm themes retain the last-move boundary. Defaults and saved IDs remain unchanged.
+The board paints the photograph once at twice the board width, softens it, and applies light and dark tints through the square fills. The same grain passes under the full grid, with a crisp color change at each square edge. Custom square colors use the same tint method. The settings swatch and engine preview share the surface renderer. Each theme loads one JPEG of about 49 KB.
 
-The exact v2 JPEGs, definitions, CSS and provenance are backed up outside the production assets in [paired-wood-v2-ee528fc](../assets/board-backups/paired-wood-v2-ee528fc/README.md). Its README gives restoration steps without reverting unrelated UI changes.
+The four previous JPEGs, definitions and provenance are preserved in [photographic wood v3](../assets/board-backups/photographic-wood-v3-f004273/README.md). The earlier generated set is in [paired wood v2](../assets/board-backups/paired-wood-v2-ee528fc/README.md).
 
 White-side analysis fills are pure `#fff`, independent of the board palette: the evaluation bar, positive/zero PV score badges, and positive Computer Analysis graph areas share one variable. The graph uses a warm-gray `#e9e5dd` background so white areas remain distinct, retaining the baseline, brown trace and interactive targets. Negative fills remain `#333b36`. When both Board frame and Thin square borders are off, the eval-bar outer border and backing are transparent. Its reserved 1px border box remains, so disabling borders cannot resize or realign the bar. Either enabled border control restores its frame-color edge; keyboard focus stays visible.
 

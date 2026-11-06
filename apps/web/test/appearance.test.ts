@@ -65,21 +65,24 @@ it('removes only the eval border color when both border controls are off', () =>
 it('uses bounded local textures in preview and play, clears them for solids, and preserves custom colors', () => {
     for (const theme of ['naturalwood', 'goldenwood'] as const) {
         const variables = appearanceVariables({ ...defaultAppearance, theme, light: '#eeeeff', dark: '#554466' });
-        expect(variables['--appearance-light-texture']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
-        expect(variables['--appearance-dark-texture']).not.toBe(variables['--appearance-light-texture']);
-        expect(variables['--appearance-texture-size']).toBe('400% 400%');
-        expect(variables['--appearance-light-blend']).toBe('soft-light');
+        expect(variables['--appearance-grain-image']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
+        expect(variables['--appearance-grain-layer']).toBe('""');
+        expect(Number.parseInt(variables['--appearance-square-coverage']!, 10)).toBeLessThan(100);
         expect(variables['--appearance-light']).toBe('#eeeeff');
         expect(variables['--appearance-dark']).toBe('#554466');
     }
-    expect(appearanceVariables({ ...defaultAppearance, theme: 'naturalwood' })['--appearance-light-blend']).toBe('normal');
-    expect(appearanceVariables({ ...defaultAppearance, theme: 'purple' })['--appearance-light-texture']).toBe('none');
+    const solid = appearanceVariables({ ...defaultAppearance, theme: 'purple' });
+    expect(solid['--appearance-grain-image']).toBe('none');
+    expect(solid['--appearance-grain-layer']).toBe('none');
+    expect(solid['--appearance-square-coverage']).toBe('100%');
     const root = new URL('../public/pieces/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
     const textures = manifest.filter((x: any) => x.kind === 'board-texture');
     expect(textures.map((x: any) => x.id)).toEqual(['naturalwood', 'goldenwood']);
     for (const texture of textures) {
-        expect(texture.files).toHaveLength(2);
+        expect(texture.files).toHaveLength(1);
+        expect(appearanceVariables({ ...defaultAppearance, theme: texture.id })['--appearance-grain-image'])
+            .toBe(`url("${texture.files[0].file.slice(2)}")`);
         for (const file of texture.files) {
         const bytes = readFileSync(new URL(file.file, root));
         expect(bytes.length).toBe(file.bytes);
@@ -90,8 +93,8 @@ it('uses bounded local textures in preview and play, clears them for solids, and
         }
     }
 });
-it('preserves the exact pre-photographic wood assets and definitions outside production', () => {
-    const backup = new URL('../../../assets/board-backups/paired-wood-v2-ee528fc/', import.meta.url);
+it.each(['paired-wood-v2-ee528fc', 'photographic-wood-v3-f004273'])('preserves the exact %s assets and definitions outside production', directory => {
+    const backup = new URL(`../../../assets/board-backups/${directory}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', backup), 'utf8'));
     for (const texture of manifest.filter((x: any) => x.kind === 'board-texture')) {
         for (const file of texture.files) {
