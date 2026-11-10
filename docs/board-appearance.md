@@ -58,3 +58,31 @@ at 1440x1000 and 390x844, both orientations, annotation arrow, coordinate labels
 last-move highlights and a legal capture. All 64 crop positions were unchanged
 by flip. Live site-game verification was blocked: the disposable test database
 at 127.0.0.1:55434 refused connection; no existing database was modified.
+
+## Shared Settings and Save behavior
+
+The brush and Analysis gear open the same native modal, on Appearance and Engine
+respectively. Category buttons preserve independent drafts until the dialog closes.
+Only the selected category's Save persists and applies its draft. Reset restores
+that category's defaults in the draft; closing (including Escape) discards it.
+The appearance swatch alone previews drafts. The page, pieces and boards use saved
+appearance. Account appearance retains the authorized API/CSRF/owner checks; guest
+appearance remains local. Cross-tab storage notifications refresh saved values.
+Stale drafts are rejected before saving, and failed writes retain the draft with
+an error. The account page retains its existing security-sensitive account forms;
+the modal links to those actual settings rather than duplicating authentication UI.
+
+Engine selection, threads, lines and interactive search limits are now committed
+with Save and stored together in chess-engine-settings:v1 in browser storage.
+The older engine selection preference is read as a fallback. Limits are validated
+on restore. Saving updates the mounted engine; opening, closing or switching
+categories does not remount it. On/off, Threat and continuous-analysis shortcuts
+remain immediate session actions. Full-game review limits remain separate.
+
+Verification: npm run check; transaction regression tests cover delayed/failed
+persistence, stale drafts, complete engine settings and storage errors. Browser
+checks on a local guest site game and blank analysis covered draft-close, category
+switching, Save, Reset-close, Reset-Save, engine Save/close, cross-tab appearance
+updates, refresh, Escape/focus return, desktop and 390x844 mobile. Signed-in account
+saves and forced network failures were not exercised manually in a browser.
+No schema or database migration is required.

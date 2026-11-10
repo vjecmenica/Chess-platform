@@ -30,7 +30,8 @@ it('previews all twelve themed pieces and keeps advanced controls bounded and in
     expect(html).toMatch(/aria-label="Vertical offset" min="-8" max="8"/);
     expect(html).toContain('aria-label="Reset Piece scale"');
     expect(html).toContain('aria-label="Reset Vertical offset"');
-    expect(html).toContain('>Advanced</summary>');
+    expect(html).toContain('aria-controls="appearance-advanced"');
+    expect(html).toContain('aria-expanded="false"');
 });
 it('bundles complete pinned sets with matching hashes and full license texts, without remote SVG resources', () => {
     const root = new URL('../public/pieces/', import.meta.url);

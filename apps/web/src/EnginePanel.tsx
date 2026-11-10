@@ -1,3 +1,5 @@
+import {useSettings} from './SettingsDialog';
+import {readSettings, settingsChanged, settingsKey, setRuntimeSettings} from './settings-store';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse, GameSide } from '@chess/contracts';
@@ -11,7 +13,7 @@ import { EngineCache, EngineController,
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
-import { createInteractiveSettings, depthSlider, timeSlider, updateDepthSlider, updateTimeSlider,
+import {
   scheduleInteractiveEngine, toggleContinuousSettings,
   type InteractiveSettingsState } from './interactive-engine';
 import { MoveTimes } from './MoveTimes';
@@ -19,7 +21,7 @@ import { moveTimes } from './move-times';
 import { createBrowserEngineWorker } from './browser-engine-worker';
 import { engineBestMove, type EngineBestMove } from './engine-board';
 import { browserEngineThreadCapabilities, engineThreadFailure, effectiveThreads, engineCacheIdentity, engineDescription, liteEngine, maximumEngineThreads,
-  readEnginePreference, resolveEngine, saveEnginePreference, type EnginePreference } from './engine-builds';
+  resolveEngine, type EnginePreference } from './engine-builds';
 
 function browserStorage(): Storage | undefined {
   try { return window.localStorage; } catch { return undefined; }
@@ -207,7 +209,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
 }) {
   const [enabled, setEnabled] = useState(true);
   const [engineEpoch, setEngineEpoch] = useState(0);
-  const [preference, setPreference] = useState(() => readEnginePreference(browserStorage()));
+  const [preference, setPreference] = useState(() => readSettings().preference);
   const [fallback, setFallback] = useState(false);
   const [capabilities] = useState(browserEngineThreadCapabilities);
   const threadFailure = engineThreadFailure(capabilities);
@@ -216,16 +218,15 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const variant = resolveEngine(fallback ? 'lite' : preference.choice, isolated);
   const threads = effectiveThreads(variant, preference.threads, maxThreads);
   const description = engineDescription(variant, threads);
-  const [lineCount, setLineCount] = useState<MultiPvCount>(3);
-  const [searchSettings, setSearchSettings] = useState(createInteractiveSettings);
+  const [lineCount, setLineCount] = useState<MultiPvCount>(()=>readSettings().lines);
+  const [searchSettings, setSearchSettings] = useState(()=>readSettings().search);
   const { depth, timeMs, unlimitedDepth, unlimitedTime } = searchSettings.current;
   const continuous = unlimitedDepth && unlimitedTime;
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [readVariation] = useState(() => createEngineVariationReader());
   const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
   const [reviewTab, setReviewTab] = useState<'computer' | 'times'>('computer');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
+  const {open: openSettings, isOpen: settingsOpen} = useSettings();
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
@@ -234,27 +235,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
   const hasMoveTimes = useMemo(() => moveTimes(game).some(move => move.elapsedMs !== null), [game]);
-
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!settingsRef.current?.contains(event.target as Node)
-        && !settingsButtonRef.current?.contains(event.target as Node)) setSettingsOpen(false);
-    };
-    const closeEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setSettingsOpen(false);
-        settingsButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('keydown', closeEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('keydown', closeEscape);
-    };
-  }, [settingsOpen]);
 
   useEffect(() => {
     runner.current?.cancel();
@@ -289,7 +269,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     [fen, lineCount, profile, variant.id, threads, onEvaluationChange]);
 
   function changeEngine(next: EnginePreference) {
-    setPreference(next); saveEnginePreference(browserStorage(), next); setFallback(false);
+    setPreference(next); setFallback(false);
     setState(enabled ? { kind: 'loading' } : { kind: 'off' }); onEvaluationChange(null);
   }
 
@@ -302,6 +282,17 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     onEvaluationChange(null);
   }
 
+  useEffect(() => {
+    setRuntimeSettings(()=>({preference,lineCount,searchSettings}));
+  }, [preference,lineCount,searchSettings]);
+  const syncSettings = useRef(()=>{});
+  syncSettings.current=()=>{const next=readSettings(true); if(JSON.stringify(next.preference)!==JSON.stringify(preference))changeEngine(next.preference); setLineCount(next.lines); controller.current?.setLineCount(next.lines); applySettings(next.search);};
+  useEffect(() => {
+    const sync=()=>syncSettings.current();
+    const storage=(e:StorageEvent)=>{if(e.key===settingsKey)sync();};
+    window.addEventListener(settingsChanged,sync); window.addEventListener('storage',storage);
+    return ()=>{setRuntimeSettings(null);window.removeEventListener(settingsChanged,sync);window.removeEventListener('storage',storage);};
+  }, []);
   function toggleContinuous() {
     applySettings(toggleContinuousSettings(searchSettings));
     if (!continuous && (!enabled || state.kind === 'error')) {
@@ -358,7 +349,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       <strong className="engine-panel-title">Analysis</strong>
       <button type="button" className="engine-settings-button" ref={settingsButtonRef}
         aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
-        onClick={() => setSettingsOpen(value => !value)}>
+        onClick={() => openSettings('engine')}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"
           strokeLinejoin="round" aria-hidden="true" focusable="false">
           <path d="M9.5 2h5l.5 2.7 2 .9 2.4-1.3 2.5 4.4-2 1.8v2.4l2 1.8-2.5 4.4-2.4-1.3-2 .9-.5 2.7h-5L9 18.4l-2-.9-2.4 1.3-2.5-4.4 2-1.8v-2.4l-2-1.8 2.5-4.4L7 5.3l2-.9Z" />
@@ -366,62 +357,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         </svg>
       </button>
     </div>
-    {settingsOpen && <div className="engine-settings-popover" id="engine-settings"
-      role="dialog" aria-label="Engine settings" ref={settingsRef}>
-      <div className="engine-settings-heading"><strong>Search settings</strong>
-        <button type="button" className="secondary" onClick={() => {
-          setSettingsOpen(false); settingsButtonRef.current?.focus();
-        }}>Close</button></div>
-      <label className="engine-line-setting">Engine
-        <select aria-label="Analysis engine" aria-description="Applies to Analysis and Computer Analysis."
-          value={preference.choice} onChange={event => {
-          changeEngine({ ...preference, choice: event.target.value === 'lite' ? 'lite' : 'full' });
-        }}><option value="full">Stockfish 19 Full</option><option value="lite">Stockfish 19 Lite</option></select>
-      </label>
-      {variant.multithreaded && <label className="engine-range-setting engine-thread-setting">Threads
-        <input type="range" aria-label="Engine threads" min="1" max={maxThreads} value={threads}
-          disabled={maxThreads === 1} onChange={event => changeEngine({ ...preference, threads: Number(event.target.value) })} />
-        <output>{threads}</output>
-      </label>}
-      {preference.choice === 'full' && threadFailure !== null && <small>Full single-threaded: {threadFailure}</small>}
-      {preference.choice === 'full' && <details className="engine-thread-diagnostics">
-        <summary>Thread diagnostics</summary>
-        <dl>{[
-          ['Secure context', capabilities.secure], ['Cross-origin isolated', capabilities.isolated],
-          ['Top-level document', !capabilities.embedded], ['Permissions-Policy allows isolation', capabilities.policyAllowed],
-          ['SharedArrayBuffer', capabilities.sharedArrayBuffer], ['Shared WebAssembly memory', capabilities.sharedWasmMemory],
-        ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt>
-          <dd>{value === null ? 'Not reported' : value ? 'Yes' : 'No'}</dd></div>)}</dl>
-      </details>}
-      <label className="engine-line-setting engine-line-count">Lines
-          <select value={lineCount}
-            aria-label="Candidate lines" onChange={event => {
-              const count = Number(event.target.value) as MultiPvCount;
-              setLineCount(count);
-              controller.current?.setLineCount(count);
-              onEvaluationChange(null);
-            }}>
-            {[1, 2, 3, 4, 5].map(count => <option key={count} value={count}>{count}</option>)}
-          </select>
-        </label>
-    <div className="engine-search-settings" role="group" aria-label="Interactive search limits">
-      <label className="engine-range-setting">Depth
-        <input type="range" aria-label="Depth" min={depthSlider.min} max={depthSlider.max} step={depthSlider.step}
-          value={unlimitedDepth ? depthSlider.max : depth} aria-valuetext={unlimitedDepth ? 'Unlimited depth' : `Depth ${depth}`}
-          onChange={event => applySettings(updateDepthSlider(searchSettings, Number(event.target.value)))} />
-        <output aria-label={unlimitedDepth ? 'Unlimited depth' : undefined}>{unlimitedDepth ? '∞' : depth}</output>
-      </label>
-      <label className="engine-range-setting">Search time
-        <input type="range" aria-label="Search time" min={timeSlider.min} max={timeSlider.max} step={timeSlider.step}
-          value={unlimitedTime ? timeSlider.max : timeMs}
-          aria-valuetext={unlimitedTime ? 'Unlimited search time' : `${(timeMs / 1000).toFixed(1)} seconds`}
-          onChange={event => applySettings(updateTimeSlider(searchSettings, Number(event.target.value)))} />
-        <output aria-label={unlimitedTime ? 'Unlimited search time' : undefined}>{unlimitedTime ? '∞' : `${(timeMs / 1000).toFixed(1)}s`}</output>
-      </label>
-    </div>
-    <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
-      title={`${description}, GPLv3. Runs in this browser.`}>Engine license and source</a>
-    </div>}
     <div className="engine-depth-row">
       <EngineToggle enabled={enabled && state.kind !== 'error'} onToggle={() => {
         setEngineEpoch(value => value + 1);

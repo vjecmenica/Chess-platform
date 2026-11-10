@@ -1,3 +1,4 @@
+import { SettingsProvider } from './SettingsDialog';
 import { AppearanceProvider } from './Appearance';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -13,6 +14,6 @@ if (recoveryMode && window.location.hash) window.history.replaceState(null, '', 
 
 if (/^\/my-games\/?$/.test(window.location.pathname)) window.location.replace('/account');
 
-createRoot(document.getElementById('root')!).render(<StrictMode><AppearanceProvider>
+createRoot(document.getElementById('root')!).render(<StrictMode><AppearanceProvider><SettingsProvider>
   {recoveryMode ? <RecoveryPage mode={recoveryMode} token={recoveryToken} /> : /^\/(?:account|my-games)\/?$/.test(window.location.pathname) ? <AccountPage /> : <App />}
-</AppearanceProvider></StrictMode>);
+</SettingsProvider></AppearanceProvider></StrictMode>);
