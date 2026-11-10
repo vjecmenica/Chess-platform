@@ -46,3 +46,15 @@ vertical grain direction. It does not replace Natural wood or Golden wood.
 See public/boards/PROVENANCE.md and tools/prepare-oak-squares.ps1 for the exact
 source, crop recipe and license. The data-square atlas mapping is shared by
 play, engine previews and the settings swatch; no move-time randomization occurs.
+
+Natural wood now selects the approved mixed-region oak atlas (natural-oak-v4),
+without changing theme IDs or the default. Existing Natural wood selections use
+it automatically; other choices remain unchanged. The previous Natural textures
+and settings are in assets/board-backups/natural-before-v4-2e0c4a4. No migration.
+
+Verification: npm run check passed (74 test files, 563 tests), including type
+checks and all production builds. Browser inspection covered imported analysis
+at 1440x1000 and 390x844, both orientations, annotation arrow, coordinate labels,
+last-move highlights and a legal capture. All 64 crop positions were unchanged
+by flip. Live site-game verification was blocked: the disposable test database
+at 127.0.0.1:55434 refused connection; no existing database was modified.

@@ -5,7 +5,7 @@ export const boardThemes = {
     slate: ['#e0e5e8', '#7b8c9d'], contrast: ['#ffffff', '#767676'],
     purple: ['#e9e1ee', '#92809f'], amber: ['#f4e4bb', '#b28b47'],
     burgundy: ['#efdfdc', '#a06f78'],
-    naturalwood: ['#e3cba7', '#896545'], goldenwood: ['#e8dcc4', '#927855'],
+    naturalwood: ['#e0cba8', '#8b6645'], goldenwood: ['#e8dcc4', '#927855'],
     oaksquares: ['#e0cba8', '#8b6645'],
 } as const;
 export const boardThemeNames: Record<keyof typeof boardThemes, string> = {

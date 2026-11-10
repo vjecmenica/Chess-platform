@@ -70,3 +70,16 @@ The same rules serve game, engine preview and settings boards. Custom colors
 retain the existing soft-light treatment. Original Natural/Golden assets and
 both backup directories remain unchanged. Existing preferences/defaults are not
 migrated. The new theme adds no database requirements.
+
+## Approved Natural wood — natural-oak-v4
+
+Natural wood now uses the approved Revised A mixed-source-region preview, copied
+byte-for-byte from design/wood-candidates/a-oak-squares-v2.jpg. Its 64 crop origins
+and deterministic assignment are in oak-v2-crops.json; revise-oak.mjs and
+prepare-oak-v2.ps1 reproduce it offline. Source remains the hash-pinned Oak Veneer
+01 by Jenelle van Heerden, CC0, identified above. No new source or processing was
+introduced on integration. The single 2048px atlas is 559924 bytes, with 800%
+background sizing and algebraic-square coordinates. Both colors use the atlas.
+The default and preference IDs are unchanged. Golden wood and oaksquares are
+unchanged. The previous Natural version is preserved with restoration instructions
+in assets/board-backups/natural-before-v4-2e0c4a4, in addition to older backups.

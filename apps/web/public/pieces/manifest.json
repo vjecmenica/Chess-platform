@@ -432,39 +432,25 @@
   {
     "id": "naturalwood",
     "kind": "board-texture",
-    "author": "Jenelle van Heerden (Oak Veneer 01); Dimitrios Savva (Wood Table 001 photography), Rico Cilliers (processing)",
+    "author": "Jenelle van Heerden",
     "license": "CC0-1.0",
-    "source": "https://polyhaven.com/license",
-    "revision": "photographic-wood-v3",
+    "source": "https://polyhaven.com/a/oak_veneer_01",
+    "revision": "natural-oak-v4",
     "licenseEvidence": "../boards/PROVENANCE.md",
     "files": [
       {
-        "file": "../boards/natural-light-v3.jpg",
-        "revision": "photographic-wood-v3",
+        "file": "../boards/natural-oak-v4.jpg",
+        "revision": "natural-oak-v4",
         "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
         "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
         "author": "Jenelle van Heerden",
         "license": "CC0-1.0",
         "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
-        "sha256": "1bb6a51e0a5024541cbf2f26022de9225447b1c26abde049955ee4a54aca233f",
-        "width": 512,
-        "height": 512,
-        "bytes": 43793,
-        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
-      },
-      {
-        "file": "../boards/natural-dark-v3.jpg",
-        "revision": "photographic-wood-v3",
-        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/wood_table_001/wood_table_001_diff_4k.jpg",
-        "sourcePage": "https://polyhaven.com/a/wood_table_001",
-        "author": "Dimitrios Savva (photography), Rico Cilliers (processing)",
-        "license": "CC0-1.0",
-        "originalSha256": "5da68c7ebe8732f029ecbd602cb0d86d2a271e32539df953a0f10efa052b9516",
-        "sha256": "fd64a3c1357670e4387a4be05e6a40b9d80ea96a12b752f3bce2eb66901831dd",
-        "width": 512,
-        "height": 512,
-        "bytes": 49427,
-        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+        "sha256": "b81a9f1deac758272cd195189d05bf1218650491e6f67f4589fded4cfc810e12",
+        "width": 2048,
+        "height": 2048,
+        "bytes": 559924,
+        "processing": "Approved Revised A mixed source regions, unchanged bytes from design/wood-candidates/a-oak-squares-v2.jpg. Crop map and reproduction script retained alongside preview."
       }
     ]
   },
