@@ -15,9 +15,9 @@ export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boo
   // The wide site-game grid reserves a 320px chat rail, a 440px move panel,
   // its gaps, and analysis's evaluation rail. Live ranks sit in the gap; the
   // saved frame size still includes their 14px, so the square is unchanged.
-  const reserve = stacked ? 34 : chatRail
-    ? 320 + 440 + (analysis ? 2 * 16 + 50 : 2 * 32 - 14)
-    : analysis ? 50 + 400 + 16 : 320 + 32 - 14;
+  const reserve = stacked ? 36 : chatRail
+    ? 320 + 440 + (analysis ? 2 * 16 + 52 : 2 * 32 - 14)
+    : analysis ? 52 + 400 + 16 : 320 + 32 - 14;
   return Math.max(0, workspaceWidth - reserve);
 }
 

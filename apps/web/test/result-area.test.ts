@@ -29,7 +29,7 @@ describe('finished-game result area', () => {
     expect(resizedResultHeight(84, 84, -100)).toBe(52);
   });
 
-  it('keeps the resize handle and Analysis button in the finished result area', () => {
+  it('keeps play results expanded without a handle and retains Analysis', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
       score: '0-1', explanation: 'Black won by timeout.', analysisOpen: false,
@@ -40,7 +40,8 @@ describe('finished-game result area', () => {
     expect(html).toContain('0-1');
     expect(html).toContain('Black won by timeout.');
     expect(html).toContain('aria-pressed="false"');
-    expect(html).toContain('aria-label="Resize result area"');
+    expect(html).not.toContain('Resize result area');
+    expect(html).not.toContain('style="height:');
     expect(gameView).toContain('<FinishedResultArea');
     expect(gameView).not.toContain('Refresh position</button>');
     expect(gameView).not.toContain('<summary>Challenge link</summary>');
