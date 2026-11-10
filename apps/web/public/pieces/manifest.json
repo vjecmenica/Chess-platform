@@ -432,12 +432,26 @@
   {
     "id": "naturalwood",
     "kind": "board-texture",
-    "author": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+    "author": "Jenelle van Heerden (Oak Veneer 01); Dimitrios Savva (Wood Table 001 photography), Rico Cilliers (processing)",
     "license": "CC0-1.0",
     "source": "https://polyhaven.com/license",
     "revision": "photographic-wood-v3",
     "licenseEvidence": "../boards/PROVENANCE.md",
     "files": [
+      {
+        "file": "../boards/natural-light-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
+        "author": "Jenelle van Heerden",
+        "license": "CC0-1.0",
+        "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
+        "sha256": "1bb6a51e0a5024541cbf2f26022de9225447b1c26abde049955ee4a54aca233f",
+        "width": 512,
+        "height": 512,
+        "bytes": 43793,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      },
       {
         "file": "../boards/natural-dark-v3.jpg",
         "revision": "photographic-wood-v3",
@@ -457,12 +471,26 @@
   {
     "id": "goldenwood",
     "kind": "board-texture",
-    "author": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+    "author": "Jenelle van Heerden (Oak Veneer 01); Dimitrios Savva (Wood Table 001 photography), Rico Cilliers (processing)",
     "license": "CC0-1.0",
     "source": "https://polyhaven.com/license",
     "revision": "photographic-wood-v3",
     "licenseEvidence": "../boards/PROVENANCE.md",
     "files": [
+      {
+        "file": "../boards/golden-light-v3.jpg",
+        "revision": "photographic-wood-v3",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
+        "author": "Jenelle van Heerden",
+        "license": "CC0-1.0",
+        "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
+        "sha256": "9668c34f171406aa505c89985a69903a5ff10c2ca974b282d5a744dfcffea46f",
+        "width": 512,
+        "height": 512,
+        "bytes": 43755,
+        "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      },
       {
         "file": "../boards/golden-dark-v3.jpg",
         "revision": "photographic-wood-v3",
@@ -476,6 +504,31 @@
         "height": 512,
         "bytes": 48141,
         "processing": "512px bicubic; luminance-preserving color treatment; JPEG quality 88. See tools/prepare-board-photos.ps1."
+      }
+    ]
+  },
+  {
+    "id": "oaksquares",
+    "kind": "board-texture",
+    "author": "Jenelle van Heerden",
+    "license": "CC0-1.0",
+    "source": "https://polyhaven.com/a/oak_veneer_01",
+    "revision": "oak-squares-v1",
+    "licenseEvidence": "../boards/PROVENANCE.md",
+    "files": [
+      {
+        "file": "../boards/oak-squares-v1.jpg",
+        "revision": "oak-squares-v1",
+        "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/oak_veneer_01/oak_veneer_01_diff_4k.jpg",
+        "sourcePage": "https://polyhaven.com/a/oak_veneer_01",
+        "author": "Jenelle van Heerden",
+        "license": "CC0-1.0",
+        "originalSha256": "7e8c64811e580ef6664c20524606359c739e6fe030eff5c2c06c3482ecc8b1cf",
+        "sha256": "ee2c3ce4baf15624802de77d80409dc294d4f9ce2cffa1b4f1630d1f1c82e8ce",
+        "width": 2048,
+        "height": 2048,
+        "bytes": 559464,
+        "processing": "64 distinct 320px crops, normalized luminance, 256px cells in 8x8 atlas; JPEG 84. tools/prepare-oak-squares.ps1"
       }
     ]
   }

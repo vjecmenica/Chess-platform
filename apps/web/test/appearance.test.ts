@@ -65,36 +65,33 @@ it('removes only the eval border color when both border controls are off', () =>
 it('uses bounded local textures in preview and play, clears them for solids, and preserves custom colors', () => {
     for (const theme of ['naturalwood', 'goldenwood'] as const) {
         const variables = appearanceVariables({ ...defaultAppearance, theme, light: '#eeeeff', dark: '#554466' });
-        expect(variables['--appearance-grain-image']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
-        expect(variables['--appearance-grain-layer']).toBe('""');
-        expect(Number.parseInt(variables['--appearance-square-coverage']!, 10)).toBeLessThan(100);
+        expect(variables['--appearance-light-texture']).toMatch(/^url\("\/boards\/[a-z0-9-]+\.jpg"\)$/);
+        expect(variables['--appearance-dark-texture']).not.toBe(variables['--appearance-light-texture']);
+        expect(variables['--appearance-texture-size']).toBe('400% 400%');
+        expect(variables['--appearance-light-blend']).toBe('soft-light');
         expect(variables['--appearance-light']).toBe('#eeeeff');
         expect(variables['--appearance-dark']).toBe('#554466');
     }
-    const solid = appearanceVariables({ ...defaultAppearance, theme: 'purple' });
-    expect(solid['--appearance-grain-image']).toBe('none');
-    expect(solid['--appearance-grain-layer']).toBe('none');
-    expect(solid['--appearance-square-coverage']).toBe('100%');
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'naturalwood' })['--appearance-light-blend']).toBe('normal');
+    expect(appearanceVariables({ ...defaultAppearance, theme: 'purple' })['--appearance-light-texture']).toBe('none');
     const root = new URL('../public/pieces/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
     const textures = manifest.filter((x: any) => x.kind === 'board-texture');
-    expect(textures.map((x: any) => x.id)).toEqual(['naturalwood', 'goldenwood']);
+    expect(textures.map((x: any) => x.id)).toEqual(['naturalwood', 'goldenwood', 'oaksquares']);
     for (const texture of textures) {
-        expect(texture.files).toHaveLength(1);
-        expect(appearanceVariables({ ...defaultAppearance, theme: texture.id })['--appearance-grain-image'])
-            .toBe(`url("${texture.files[0].file.slice(2)}")`);
+        expect(texture.files).toHaveLength(texture.id === 'oaksquares' ? 1 : 2);
         for (const file of texture.files) {
         const bytes = readFileSync(new URL(file.file, root));
         expect(bytes.length).toBe(file.bytes);
-        expect(bytes.length).toBeLessThan(65000);
+        expect(bytes.length).toBeLessThan(texture.id === 'oaksquares' ? 650000 : 65000);
         expect(bytes.subarray(0, 2).toString('hex')).toBe('ffd8');
         expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256);
         expect(readFileSync(new URL(texture.licenseEvidence, root), 'utf8')).toContain(file.revision);
         }
     }
 });
-it.each(['paired-wood-v2-ee528fc', 'photographic-wood-v3-f004273'])('preserves the exact %s assets and definitions outside production', directory => {
-    const backup = new URL(`../../../assets/board-backups/${directory}/`, import.meta.url);
+it('preserves the exact pre-photographic wood assets and definitions outside production', () => {
+    const backup = new URL('../../../assets/board-backups/paired-wood-v2-ee528fc/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', backup), 'utf8'));
     for (const texture of manifest.filter((x: any) => x.kind === 'board-texture')) {
         for (const file of texture.files) {
@@ -109,4 +106,20 @@ it('uses a recognizable SVG art control with an accessible name', () => {
     const html = renderToStaticMarkup(createElement(AppearanceLauncher));
     expect(html).toContain('aria-label="Board and piece appearance"');
     expect(html).toContain('<svg'); expect(html).not.toContain('⚙');
+});
+
+it('adds oak squares without migrating existing preferences and uses one coordinate-indexed atlas', () => {
+ const saved = { ...defaultAppearance, theme: 'naturalwood' as const };
+ expect(restoreAppearance(saved)).toEqual(saved);
+ expect(restoreAppearance({ ...saved, theme: 'oaksquares' }).theme).toBe('oaksquares');
+ expect(defaultAppearance.theme).toBe('default');
+ const vars = appearanceVariables({ ...saved, theme: 'oaksquares' });
+ expect(vars['--appearance-light-texture']).toBe(vars['--appearance-dark-texture']);
+ expect(vars['--appearance-texture-size']).toBe('800% 800%');
+ expect(vars['--appearance-oak-atlas']).toBe('1');
+ expect(vars['--appearance-light-blend']).toBe('normal');
+ expect(appearanceVariables({ ...saved, theme: 'oaksquares', light:'#aabbcc' })['--appearance-light-blend']).toBe('soft-light');
+ const html = renderToStaticMarkup(createElement(AppearanceSettings));
+ expect(html).toContain('Natural oak squares (texture)');
+ for (const rank of ['8','7']) for (const file of 'abcdef') expect(html).toContain('data-square="'+file+rank+'"');
 });

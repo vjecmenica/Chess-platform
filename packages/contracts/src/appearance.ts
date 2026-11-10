@@ -6,12 +6,14 @@ export const boardThemes = {
     purple: ['#e9e1ee', '#92809f'], amber: ['#f4e4bb', '#b28b47'],
     burgundy: ['#efdfdc', '#a06f78'],
     naturalwood: ['#e3cba7', '#896545'], goldenwood: ['#e8dcc4', '#927855'],
+    oaksquares: ['#e0cba8', '#8b6645'],
 } as const;
 export const boardThemeNames: Record<keyof typeof boardThemes, string> = {
     default: 'Existing default', classic: 'Classic brown', wood: 'Warm wood (solid)',
     green: 'Muted green', slate: 'Slate / blue-gray', contrast: 'High contrast',
     purple: 'Muted purple', amber: 'Warm amber', burgundy: 'Muted burgundy',
     naturalwood: 'Natural wood (texture)', goldenwood: 'Golden wood (texture)',
+    oaksquares: 'Natural oak squares (texture)',
 };
 export interface BoardAppearance {
     version: 1;
