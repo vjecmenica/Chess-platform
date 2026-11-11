@@ -7,7 +7,7 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
   unreadEntries, type ChatPermission, type ChatMuteState } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode; visible?: boolean }
+  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode; visible?: boolean; floating?: boolean; onCloseFloating?: () => void; onUnreadChange?: (count: number) => void }
 
 export function ChatUnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
@@ -58,8 +58,19 @@ export function ChatComposer({ gameId, state, text, sending, retrying, usedPrese
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info, visible = true }: Props) {
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info, visible = true, floating = false, onCloseFloating, onUnreadChange }: Props) {
   const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
+  const effectivePanel = floating ? 'chat' : activePanel;
+  const closeFloating = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (floating) {
+      setActivePanel('chat');
+      const input = document.getElementById(`chat-${gameId}`);
+      input?.focus();
+      // Muted/loading conversations have no focusable composer.
+      if (!input || document.activeElement !== input) closeFloating.current?.focus();
+    }
+  }, [floating, gameId]);
   const [unreadChat, setUnreadChat] = useState(0);
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
@@ -86,8 +97,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const mutePending = useRef<{ requestId: string; muted: boolean } | null>(null);
   const mutePosting = useRef(false);
   const [muteError, setMuteError] = useState<string | null>(null);
-  const view = useRef({ activePanel, visible });
-  view.current = { activePanel, visible };
+  const view = useRef({ activePanel: effectivePanel, visible });
+  view.current = { activePanel: effectivePanel, visible };
   const list = useRef<HTMLOListElement>(null);
   const following = useRef(true);
   const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
@@ -166,10 +177,12 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
   useLayoutEffect(() => {
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, mute.muted, activePanel]);
+  }, [messages, mute.muted, effectivePanel, visible, floating]);
   useEffect(() => {
-    if (mute.muted || visible && activePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
-  }, [mute.muted, visible, activePanel, messages, markRead]);
+    if (mute.muted || visible && effectivePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
+  }, [mute.muted, visible, effectivePanel, messages, markRead]);
+
+  useEffect(() => { onUnreadChange?.(mute.muted ? 0 : unreadChat); }, [mute.muted, unreadChat, onUnreadChange]);
 
   async function toggleMute() {
     if (mutePosting.current || !loaded) return;
@@ -220,16 +233,18 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  const tabs = <div className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
-    <button type="button" aria-pressed={activePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
-    <button type="button" aria-pressed={activePanel === 'chat'}
+  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
+    <button type="button" aria-pressed={effectivePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
+    <button type="button" aria-pressed={effectivePanel === 'chat'}
       aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
       <ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
-    <button type="button" aria-pressed={activePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
+    <button type="button" aria-pressed={effectivePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
-  return <aside className="game-chat" data-muted={mute.muted} data-analysis={analysisOpen}
+  return <aside className="game-chat" data-muted={mute.muted} data-analysis={analysisOpen} data-floating={floating}
+    onKeyDown={event => { if (floating && event.key === 'Escape') { event.stopPropagation(); onCloseFloating?.(); } }}
     aria-label="Game information, chat and private notes">
-    <div className="game-chat-header">{tabs}
+    <div className="game-chat-header">{tabs}{floating && <strong>Chat</strong>}
+      <div className="game-chat-header-actions">
       <button className="chat-mute" type="button" onClick={() => { void toggleMute(); }} aria-pressed={mute.muted}
         aria-label={mute.muted ? 'Unmute chat' : 'Mute chat'} aria-busy={mutating} disabled={mutating || !loaded}
         aria-controls={`chat-conversation-${gameId}`}>
@@ -238,14 +253,17 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
           <path d="M18 8a6 6 0 0 0-12 0c0 6-3 6-3 9h18c0-3-3-3-3-9M10 21h4" />
           {mute.muted && <path d="m3 3 18 18" />}
         </svg>
-      </button></div>
+      </button>
+      {floating && <button ref={closeFloating} className="chat-close secondary" type="button" aria-label="Close floating chat" onClick={onCloseFloating}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>}</div></div>
     {muteError && <small className="game-chat-error" role="alert">{muteError}</small>}
     <div className="game-chat-content" id={`chat-content-${gameId}`}>
-    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={activePanel !== 'info'}>
+    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={effectivePanel !== 'info'}>
       {info ?? <p>Game information unavailable.</p>}</div>
-    <div className="game-notes-tab" hidden={activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
-      active={visible && activePanel === 'notes'} /></div>
-    <div className="game-chat-tab" hidden={activePanel !== 'chat'}>
+    <div className="game-notes-tab" hidden={effectivePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
+      active={visible && effectivePanel === 'notes'} /></div>
+    <div className="game-chat-tab" hidden={effectivePanel !== 'chat'}>
       {mute.muted && <div className="game-chat-muted-notice" role="status"><em>You muted the chat</em>
         </div>}
       <div className="game-chat-conversation" id={`chat-conversation-${gameId}`} data-muted={mute.muted}

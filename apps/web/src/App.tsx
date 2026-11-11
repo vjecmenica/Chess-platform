@@ -6,7 +6,6 @@ import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
 import { AnalysisWorkspaceTabs } from './AnalysisWorkspaceTabs';
-import { CompanionPanel } from './CompanionPanel';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameRematch } from './GameRematch';
@@ -1026,6 +1025,9 @@ export function App() {
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
+  const [actionsRequest, setActionsRequest] = useState(0);
+  const [rematchNotice, setRematchNotice] = useState<string | null>(null);
+  useEffect(() => { setRematchNotice(null); }, [game?.id]);
   const boardUtilities = game === null ? null : <BoardUtilities
     downloadable={analysisOpen && canExportGame(game)}
     onDownload={() => downloadGamePgn(game, imported?.headers)}
@@ -1139,7 +1141,7 @@ export function App() {
   function resizeLimit() {
     const width = gameLayoutRef.current?.clientWidth ?? 1140;
     return availableAnalysisBoardWidth(width, window.matchMedia('(max-width: 900px)').matches,
-      imported === null && window.matchMedia('(min-width: 1400px)').matches, analysisOpen);
+      false, analysisOpen);
   }
 
   function finishResize(event: React.PointerEvent<HTMLButtonElement>) {
@@ -1409,11 +1411,18 @@ export function App() {
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
-              {imported !== null && boardUtilities}
+              {boardUtilities}
 
             </div>
             <div className="position-column">
-            <AnalysisWorkspaceTabs key={`workspace-${game.id}-${analysisOpen}`} enabled={analysisOpen} reviewHost={setReviewHost}>
+            <AnalysisWorkspaceTabs key={`workspace-${game.id}`} enabled={analysisOpen} reviewHost={setReviewHost}
+              onRevealActions={() => setActionsRequest(value => value + 1)}
+              notice={gameError ?? (submitting ? 'Waiting for server confirmation…' : pending || pendingAction ? 'A game action needs confirmation.'
+                : game.drawOffer !== null || game.claimDrawOffer !== null ? 'Draw offer awaiting a response.'
+                : imported === null && game.status !== 'finished' ? liveStatus : rematchNotice)}
+              gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
+                side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
+                playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} /> : undefined}>
               {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
@@ -1430,7 +1439,7 @@ export function App() {
                 }}
                 onBestMoveChange={setEngineMove} onThreatMoveChange={setThreatMove}
                 onEvaluationPendingChange={setEvaluationPendingFen} />}
-            <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
+            <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen} revealMovesRevision={actionsRequest}
               book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}
                 onExplore={exploreBookMove} /> : null}>
             <aside className="game-sidebar" aria-label="Game controls and moves">
@@ -1488,7 +1497,7 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
-                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
+                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision} onNotice={setRematchNotice}/>:undefined}
                   analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) {
@@ -1575,11 +1584,7 @@ export function App() {
             </AnalysisSidebarTabs>
             </AnalysisWorkspaceTabs>
             </div>
-            {imported === null && session !== null && <CompanionPanel key={game.id} analysis={analysisOpen} utilities={boardUtilities}>
-              {visible => <GameChat visible={visible} key={game.id} gameId={game.id}
-              side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />}
-            </CompanionPanel>}
+
           </div>
         </>}
       </section>}
