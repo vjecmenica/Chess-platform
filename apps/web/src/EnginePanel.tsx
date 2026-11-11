@@ -405,8 +405,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       })}
     </div>}
     {reviewHost && createPortal(<div className="review-content">
-    <div className="review-heading"><strong>Computer Analysis</strong>
-    {reviewTab === 'computer' && <div className="review-control">
+    <div className="review-heading"><strong>Game Review</strong>
+    <div className="review-control">
       <button type="button" className={review.kind === 'running' ? 'secondary' : 'primary'} disabled={game.history.length === 0} onClick={() => {
         if (review.kind === 'running') {
           runner.current?.cancel(); changeReview({ kind: 'cancelled' });
@@ -417,27 +417,26 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         {review.progress.completed} / {review.progress.total} positions
         {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
       </span>}
-    </div>}
+    </div>
     </div>
     <div className="review-tabs analysis-view-tabs" role="group" aria-label="Game analysis views">
       <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
         aria-controls="computer-analysis-view"
-        onClick={() => setReviewTab('computer')}>Computer Analysis</button>
+        onClick={() => setReviewTab('computer')}>Evaluation</button>
       <button type="button" id="move-times-button" aria-pressed={reviewTab === 'times'}
         aria-controls="move-times-view" disabled={!hasMoveTimes}
         aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
-        onClick={() => setReviewTab('times')}>Move times</button>
+        onClick={() => setReviewTab('times')}>Move Times</button>
     </div>
     <div id="move-times-view" role="region" aria-labelledby="move-times-button" hidden={reviewTab !== 'times'}>
-      {reviewTab === 'times' && <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />}
+      <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />
     </div>
-    <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button"
-      hidden={reviewTab !== 'computer'}>
+    <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button">
     <small className="review-engine">{description} · depth 14 / 1.2s per position</small>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
-      <ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
-      <small className="review-scale" title={`White perspective; nonlinear scale; mate at the graph edge. ${reviewMethodVersion}`}>White perspective · ±10 pawns</small>
+      <div hidden={reviewTab !== 'computer'}><ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
+      <small className="review-scale" title={`White perspective; nonlinear scale; mate at the graph edge. ${reviewMethodVersion}`}>White perspective · ±10 pawns</small></div>
       <div className="review-summary" aria-label="Computer Analysis summary">
         {(['white', 'black'] as const).map(side => {
           const summary = reviewSummary(review.review, side);

@@ -7,7 +7,7 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
   unreadEntries, type ChatPermission, type ChatMuteState } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode }
+  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode; visible?: boolean }
 
 export function ChatUnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
@@ -58,7 +58,7 @@ export function ChatComposer({ gameId, state, text, sending, retrying, usedPrese
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info }: Props) {
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info, visible = true }: Props) {
   const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
   const [unreadChat, setUnreadChat] = useState(0);
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
@@ -86,8 +86,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const mutePending = useRef<{ requestId: string; muted: boolean } | null>(null);
   const mutePosting = useRef(false);
   const [muteError, setMuteError] = useState<string | null>(null);
-  const view = useRef({ activePanel });
-  view.current = { activePanel };
+  const view = useRef({ activePanel, visible });
+  view.current = { activePanel, visible };
   const list = useRef<HTMLOListElement>(null);
   const following = useRef(true);
   const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
@@ -112,7 +112,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   }, [storageKey]);
   const receive = useCallback((incoming: readonly GameChatMessage[], suppressUnread = false) => {
     const muted = muteRef.current.muted || suppressUnread;
-    if (view.current.activePanel !== 'chat' || muted) {
+    if (!view.current.visible || view.current.activePanel !== 'chat' || muted) {
       const added = unreadEntries(messagesRef.current, incoming, side, readThrough.current, muted);
       setUnreadChat(count => muted ? 0 : count + added);
     }
@@ -168,8 +168,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [messages, mute.muted, activePanel]);
   useEffect(() => {
-    if (mute.muted || activePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
-  }, [mute.muted, activePanel, messages, markRead]);
+    if (mute.muted || visible && activePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
+  }, [mute.muted, visible, activePanel, messages, markRead]);
 
   async function toggleMute() {
     if (mutePosting.current || !loaded) return;
@@ -244,7 +244,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={activePanel !== 'info'}>
       {info ?? <p>Game information unavailable.</p>}</div>
     <div className="game-notes-tab" hidden={activePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
-      active={activePanel === 'notes'} /></div>
+      active={visible && activePanel === 'notes'} /></div>
     <div className="game-chat-tab" hidden={activePanel !== 'chat'}>
       {mute.muted && <div className="game-chat-muted-notice" role="status"><em>You muted the chat</em>
         </div>}

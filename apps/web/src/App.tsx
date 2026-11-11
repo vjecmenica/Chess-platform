@@ -5,6 +5,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
+import { AnalysisWorkspaceTabs } from './AnalysisWorkspaceTabs';
+import { CompanionPanel } from './CompanionPanel';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameRematch } from './GameRematch';
@@ -1109,7 +1111,10 @@ export function App() {
         const frame = boardFrameRef.current?.getBoundingClientRect();
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
-          window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY,
+          // Retain the previous horizontal header budget for the automatic default.
+          // Moving navigation must not implicitly enlarge an unsized board.
+          window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY
+            + (window.matchMedia('(min-width: 701px)').matches ? 62 : 0),
           play && frame ? play.height - frame.height : 180, 320, stacked));
       });
     };
@@ -1408,6 +1413,7 @@ export function App() {
 
             </div>
             <div className="position-column">
+            <AnalysisWorkspaceTabs key={`workspace-${game.id}-${analysisOpen}`} enabled={analysisOpen} reviewHost={setReviewHost}>
               {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
@@ -1567,16 +1573,13 @@ export function App() {
 
             </aside>
             </AnalysisSidebarTabs>
+            </AnalysisWorkspaceTabs>
             </div>
-            {imported === null && session !== null && <div className="game-companion-column">
-              <GameChat key={game.id} gameId={game.id}
+            {imported === null && session !== null && <CompanionPanel key={game.id} analysis={analysisOpen} utilities={boardUtilities}>
+              {visible => <GameChat visible={visible} key={game.id} gameId={game.id}
               side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />
-              {boardUtilities}
-            </div>}
-            {analysisOpen && <>
-              <div className="computer-analysis-card" ref={setReviewHost} />
-            </>}
+              playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} />}
+            </CompanionPanel>}
           </div>
         </>}
       </section>}
