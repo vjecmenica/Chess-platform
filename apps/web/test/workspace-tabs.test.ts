@@ -53,6 +53,43 @@ it('docks the same chat on selecting Game Room', () => {
   expect(floatedFromRoom).toEqual({ active: 'room', floating: true });
   expect(workspaceView(floatedFromRoom, { type: 'close-chat' })).toEqual(room);
 });
+it.each([
+  { enabled: false, tab: 'main', label: 'Moves' },
+  { enabled: false, tab: 'room', label: 'Game Room' },
+  { enabled: true, tab: 'main', label: 'Analysis' },
+  { enabled: true, tab: 'review', label: 'Game Review' },
+  { enabled: true, tab: 'room', label: 'Game Room' },
+] as const)('keeps $label selected while chat floats (analysis=$enabled)', ({ enabled, tab, label }) => {
+  const original = { ...initialWorkspaceView };
+  const selected = workspaceView(original, { type: 'select', tab });
+  const floating = workspaceView(selected, { type: 'float' });
+  const render = (view: typeof original) => {
+    // Seed the reducer to exercise the real pane and pressed-button rendering.
+    Object.assign(initialWorkspaceView, view);
+    try {
+      return renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, {
+        enabled, children: 'Moves', reviewHost: () => {}, gameInfo: createElement('p', null, 'Game facts'),
+        gameRoom: presentation => createElement(GameChat, {
+          ...presentation, gameId: 'test-game', side: 'white', gameStatus: 'active', csrfToken: 'test', revision: 0,
+        }),
+      }));
+    } finally {
+      Object.assign(initialWorkspaceView, original);
+    }
+  };
+  const overlay = render(floating);
+  expect(overlay).toContain(`aria-pressed="true">${label}`);
+  expect(overlay.match(/id="chat-conversation-test-game"/g)).toHaveLength(1);
+  expect(overlay).toContain(`data-overlay-only="${tab !== 'room'}"`);
+  if (tab === 'room') {
+    expect(overlay).toMatch(/class="workspace-(analysis|play)-pane"[^>]*hidden=""/);
+    expect(overlay).toContain('Return chat to Game Room');
+    if (enabled) expect(overlay).toContain('<div class="workspace-room-info"><p>Game facts</p></div>');
+  }
+  const closed = render(workspaceView(floating, { type: 'close-chat' }));
+  expect(closed).toContain(`aria-pressed="true">${label}`);
+  expect(closed).not.toContain('Close floating chat');
+});
 it.each([false, true])('renders game actions once in a footer outside the switchable panes (analysis=%s)', enabled => {
   const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled, reviewHost: () => {},
     children: 'Game moves', gameRoom: () => 'Game chat',

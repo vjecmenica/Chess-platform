@@ -38,9 +38,9 @@ chat history, and short viewports can scroll the room independently of the foote
 Game Room mounts one GameChat with the existing Notes editor.
 The floating launcher changes that same mounted component's CSS presentation;
 there is no second chat controller, history, composer, poll timer or subscription.
-Opening the overlay preserves the selected views. If opened from Game Room,
-the main pane appears behind it temporarily. Selecting Game Room docks the
-conversation. Escape or Close restores the room view and focuses the launcher.
+Opening the overlay preserves the selected views. When it opens from Game Room,
+the room reserves the chat's space and offers a return control. Selecting Game Room
+docks the conversation. Escape or Close docks it and focuses the launcher.
 Drafts, history, mute and quick-chat state survive.
 Notes remain mounted and use their existing inactive-view/blur autosave behavior.
 

@@ -20,10 +20,15 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
   const [view, dispatch] = useReducer(workspaceView, initialWorkspaceView);
   const [unread, setUnread] = useState(0);
   const launcher = useRef<HTMLButtonElement>(null);
+  const roomLayout = useRef<HTMLDivElement>(null);
+  const [dockedChatHeight, setDockedChatHeight] = useState(0);
   const id = useId();
-  // Temporarily expose the board tools behind a floating chat opened from the room.
-  const active = (!enabled && view.active === 'review') || (view.floating && view.active === 'room')
-    ? 'main' : view.active;
+  const active = !enabled && view.active === 'review' ? 'main' : view.active;
+  const inRoom = active === 'room';
+  function closeFloating() {
+    dispatch({ type: 'close-chat' });
+    requestAnimationFrame(() => launcher.current?.focus());
+  }
   const tabs = [
     { id: 'main' as const, label: enabled ? 'Analysis' : 'Moves' },
     ...(enabled ? [{ id: 'review' as const, label: 'Game Review' }] : []),
@@ -44,24 +49,28 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     </div>}
     {gameRoom && <>
       <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
-        data-floating={view.floating} hidden={active !== 'room' && !view.floating}>
-        <div className="workspace-room-layout" data-analysis={enabled}>
+        data-overlay-only={!inRoom && view.floating} hidden={!inRoom && !view.floating}>
+        <div ref={roomLayout} className="workspace-room-layout" data-analysis={enabled}>
           {gameRoom({
-            visible: active === 'room' || view.floating,
+            visible: inRoom || view.floating,
             floating: view.floating,
             info: enabled ? undefined : gameInfo,
-            onCloseFloating: () => {
-              dispatch({ type: 'close-chat' });
-              requestAnimationFrame(() => launcher.current?.focus());
-            },
+            onCloseFloating: closeFloating,
             onUnreadChange: setUnread,
           })}
-          {enabled && <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>}
+          {inRoom && view.floating && <div className="workspace-room-dock" style={{ height: dockedChatHeight }}>
+            <button type="button" onClick={closeFloating}>Return chat to Game Room</button>
+          </div>}
+          {enabled && <div className="workspace-room-info" hidden={!inRoom && view.floating}>{gameInfo}</div>}
         </div>
       </div>
       <button ref={launcher} className="floating-chat-launcher secondary" type="button" aria-label="Open floating chat"
         aria-expanded={view.floating} aria-controls={`${id}-room`} hidden={view.floating}
-        onClick={() => dispatch({ type: 'float' })}>
+        onClick={() => {
+          // Keep the docked slot in the layout while the single chat is positioned over it.
+          setDockedChatHeight(inRoom ? roomLayout.current?.firstElementChild?.getBoundingClientRect().height ?? 0 : 0);
+          dispatch({ type: 'float' });
+        }}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8M8 12h5"/></svg>
         <ChatUnreadBadge count={unread} />
