@@ -10,11 +10,10 @@ export function ClosedRematchStatus({ offer }: { offer: GameRematchOffer }) {
     {offer.newGameId && <a className="secondary rematch-open" href={'/challenge/' + offer.newGameId}>Open game</a>}
   </span>;
 }
-export function GameRematch({ game, csrfToken, revision, onNotice }: {
+export function GameRematch({ game, csrfToken, revision }: {
   game: GameReadResponse;
   csrfToken: string;
   revision: number;
-  onNotice?: (notice: string | null) => void;
 }) {
   const [offer, setOffer] = useState<GameRematchOffer | null>(null), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -25,9 +24,6 @@ export function GameRematch({ game, csrfToken, revision, onNotice }: {
   const mounted = useRef(false);
   const mutation = useRef(0);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => {
-    onNotice?.(offer?.status === 'pending' ? (offer.side === game.yourSeat ? 'Rematch offered. Waiting for opponent.' : 'Your opponent offered a rematch.') : null);
-  }, [offer, game.yourSeat, onNotice]);
   const marker = 'chess.rematch.pending:' + game.id;
   function receive(next: GameRematchOffer | null) {
     setOffer(next);

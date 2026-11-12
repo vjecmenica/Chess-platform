@@ -81,9 +81,9 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.captured-row \{[^}]*height: 33px/);
     expect(css).toMatch(/\.player-material-row \{ position: absolute/);
     expect(css).toMatch(/\.player-material-top > \.player-material-row \{ bottom: calc\(100% \+ 16px\)/);
-    expect(css).toMatch(/\.player-material-bottom > \.player-material-row \{ top: calc\(100% \+ 16px\)/);
-    expect(css).toMatch(/\.game-sidebar \{[^}]*margin-top: var\(--board-top-offset\)/);
-    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.game-sidebar \{[^}]*margin-top: 33px/);
+    expect(css).toMatch(/\.player-material-bottom > \.player-material-row \{ position: static/);
+    expect(css).toMatch(/\.position-column \{[^}]*margin-top: var\(--board-alignment-offset/);
+    expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.position-column \{ grid-column: 1; margin-top: 0/);
     expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
     expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
     expect(css).toMatch(/\.player-rating \{[^}]*font-size: var\(--text-body\); font-weight: 700/);

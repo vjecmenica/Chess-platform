@@ -10,15 +10,15 @@ export interface GameRoomPresentation {
 }
 
 /** Every pane stays mounted; the single GameChat moves visually, never between React roots. */
-export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, notice, onRevealActions }: {
+export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, gameInfo, footer }: {
   enabled: boolean; children: ReactNode; reviewHost: (element: HTMLDivElement | null) => void;
   gameRoom?: ((presentation: GameRoomPresentation) => ReactNode) | undefined;
-  notice?: string | null; onRevealActions?: () => void;
+  gameInfo?: ReactNode;
+  footer?: ReactNode;
 }) {
   const [view, dispatch] = useReducer(workspaceView, initialWorkspaceView);
   const [unread, setUnread] = useState(0);
   const launcher = useRef<HTMLButtonElement>(null);
-  const mainButton = useRef<HTMLButtonElement>(null);
   const id = useId();
   const active = !enabled && view.active === 'review' ? 'main' : view.active;
   const tabs = [
@@ -26,18 +26,12 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     ...(enabled ? [{ id: 'review' as const, label: 'Game Review' }] : []),
     ...(gameRoom ? [{ id: 'room' as const, label: 'Game Room' }] : []),
   ];
-  function revealActions() {
-    dispatch({ type: 'actions' }); onRevealActions?.(); mainButton.current?.focus();
-  }
   return <div className="workspace-tabs-shell">
     <div className="workspace-tabs analysis-view-tabs" role="group" aria-label={enabled ? 'Analysis workspace' : 'Game workspace'}>
-      {tabs.map(tab => <button key={tab.id} type="button" ref={tab.id === 'main' ? mainButton : undefined}
+      {tabs.map(tab => <button key={tab.id} type="button"
         id={`${id}-${tab.id}-button`} aria-controls={`${id}-${tab.id}`} aria-pressed={active === tab.id}
         onClick={() => dispatch({ type: 'select', tab: tab.id })}>{tab.label}
         {tab.id === 'room' && <ChatUnreadBadge count={unread} />}</button>)}
-    </div>
-    <div className="workspace-action-notice" hidden={!notice} role="status">
-      <span>{notice}</span><button className="secondary" type="button" onClick={revealActions}>View game actions</button>
     </div>
     <div className={enabled ? 'workspace-analysis-pane' : 'workspace-play-pane'} id={`${id}-main`} role="region"
       aria-labelledby={`${id}-main-button`} hidden={active !== 'main'}>{children}</div>
@@ -48,8 +42,18 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     {gameRoom && <>
       <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
         data-floating={view.floating} hidden={active !== 'room' && !view.floating}>
-        {gameRoom({ visible: active === 'room' || view.floating, floating: view.floating,
-          onCloseFloating: () => { dispatch({ type: 'close-chat' }); requestAnimationFrame(() => launcher.current?.focus()); }, onUnreadChange: setUnread })}
+        <div className="workspace-room-layout">
+          <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>
+          {gameRoom({
+            visible: active === 'room' || view.floating,
+            floating: view.floating,
+            onCloseFloating: () => {
+              dispatch({ type: 'close-chat' });
+              requestAnimationFrame(() => launcher.current?.focus());
+            },
+            onUnreadChange: setUnread,
+          })}
+        </div>
       </div>
       <button ref={launcher} className="floating-chat-launcher secondary" type="button" aria-label="Open floating chat"
         aria-expanded={view.floating} aria-controls={`${id}-room`} hidden={view.floating}
@@ -59,5 +63,6 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
         <ChatUnreadBadge count={unread} />
       </button>
     </>}
+    {footer && <footer className="workspace-footer" aria-label="Game status and actions">{footer}</footer>}
   </div>;
 }

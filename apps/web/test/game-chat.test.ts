@@ -53,8 +53,7 @@ it('waits for server permission without flashing a read-only notice, including f
   const props = { gameId: 'game', side: 'white' as const, gameStatus: 'active' as const, csrfToken: 'token', revision: 0 };
   const html = renderToStaticMarkup(createElement(GameChat, props));
   expect(html).toContain('Loading chat');
-  expect(html).toContain('aria-label="Game information, chat and private notes"');
-  expect(html).toMatch(/>Info<\/button>[\s\S]*>Chat<\/button>[\s\S]*>Notes<\/button>/);
+  expect(html).toContain('aria-label="Game chat and private notes"');
   expect(html).toMatch(/aria-pressed="true"[^>]*>Chat/);
   expect(html).toMatch(/aria-pressed="false"[^>]*>Notes/);
   expect(html).toContain('Private notes');
@@ -94,7 +93,7 @@ it('follows server permission across finalization and renders an enabled post-ga
   expect(chatComposerState(null, 'finished')).toBe('loading');
   expect(chatComposerState({ status: 'finished', canSend: false }, 'finished')).toBe('read_only');
 });
-it('scopes muting to this game and player without hiding Info or Notes or collapsing the panel', () => {
+it('scopes muting to this game and player while keeping Notes available', () => {
   const getItem = vi.fn((key: string) => key === 'game-chat-muted:game:white' ? 'true' : null);
   vi.stubGlobal('localStorage', { getItem });
   try {
@@ -108,10 +107,9 @@ it('scopes muting to this game and player without hiding Info or Notes or collap
     expect(html).not.toContain('data-hidden=');
     expect(html).not.toContain('chat-unread');
     expect(html).not.toContain('<form');
-    // Only the conversation is inert; both other views remain outside it.
+    // Only the conversation is inert.
     expect(html).toContain('role="log"');
     const conversation = html.indexOf('class="game-chat-conversation"');
-    expect(html.indexOf('class="game-info-tab"')).toBeLessThan(conversation);
     expect(html.indexOf('class="game-notes-tab"')).toBeLessThan(conversation);
     expect(html.slice(0, conversation)).not.toContain('inert=');
     const opponent = renderToStaticMarkup(createElement(GameChat, { ...props, side: 'black' }));
@@ -138,12 +136,11 @@ it('does not inherit the removed collapse preference and keeps game actions outs
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'game-chat-muted:game:white' ? 'true' : null });
     const game = { id: 'game', status: 'finished', yourSeat: 'white', timeControl: { initialMs: 300000, incrementMs: 3000 } } as GameReadResponse;
     const html = renderToStaticMarkup(createElement('section', null,
-      createElement(GameChat, { ...props, info: createElement('p', null, 'Saved game facts') }),
+      createElement(GameChat, props),
       createElement(FinishedResultArea, { score: '1-0', explanation: 'White won.', analysisOpen: false,
         analysisHref: '/challenge/game?analysis=1', onToggleAnalysis: () => {},
         beforeAnalysis: createElement(GameRematch, { game, csrfToken: 'token', revision: 0 }) })));
     const actions = html.slice(html.indexOf('</aside>'));
-    expect(html).toContain('Saved game facts');
     expect(html).toContain('Private notes');
     expect(actions).toContain('>Rematch</button>');
     expect(actions).toContain('Open game Analysis in a new tab');

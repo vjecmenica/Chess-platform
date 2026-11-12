@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { GameChatPreset, GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
@@ -7,7 +7,7 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
   unreadEntries, type ChatPermission, type ChatMuteState } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined; analysisOpen?: boolean; info?: ReactNode; visible?: boolean; floating?: boolean; onCloseFloating?: () => void; onUnreadChange?: (count: number) => void }
+  playerNames?: GamePlayerNames | undefined; visible?: boolean; floating?: boolean; onCloseFloating?: () => void; onUnreadChange?: (count: number) => void }
 
 export function ChatUnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
@@ -58,8 +58,8 @@ export function ChatComposer({ gameId, state, text, sending, retrying, usedPrese
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, analysisOpen = false, info, visible = true, floating = false, onCloseFloating, onUnreadChange }: Props) {
-  const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, visible = true, floating = false, onCloseFloating, onUnreadChange }: Props) {
+  const [activePanel, setActivePanel] = useState<'chat' | 'notes'>('chat');
   const effectivePanel = floating ? 'chat' : activePanel;
   const closeFloating = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -233,16 +233,15 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label="Game information, chat and private notes">
-    <button type="button" aria-pressed={effectivePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>
+  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label="Chat and private notes">
     <button type="button" aria-pressed={effectivePanel === 'chat'}
       aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
       <ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
     <button type="button" aria-pressed={effectivePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
   </div>;
-  return <aside className="game-chat" data-muted={mute.muted} data-analysis={analysisOpen} data-floating={floating}
+  return <aside className="game-chat" data-muted={mute.muted} data-floating={floating}
     onKeyDown={event => { if (floating && event.key === 'Escape') { event.stopPropagation(); onCloseFloating?.(); } }}
-    aria-label="Game information, chat and private notes">
+    aria-label={floating ? 'Floating game chat' : 'Game chat and private notes'}>
     <div className="game-chat-header">{tabs}{floating && <strong>Chat</strong>}
       <div className="game-chat-header-actions">
       <button className="chat-mute" type="button" onClick={() => { void toggleMute(); }} aria-pressed={mute.muted}
@@ -259,8 +258,6 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       </button>}</div></div>
     {muteError && <small className="game-chat-error" role="alert">{muteError}</small>}
     <div className="game-chat-content" id={`chat-content-${gameId}`}>
-    <div className="game-info-tab" tabIndex={0} role="region" aria-label="Game facts" hidden={effectivePanel !== 'info'}>
-      {info ?? <p>Game information unavailable.</p>}</div>
     <div className="game-notes-tab" hidden={effectivePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
       active={visible && effectivePanel === 'notes'} /></div>
     <div className="game-chat-tab" hidden={effectivePanel !== 'chat'}>

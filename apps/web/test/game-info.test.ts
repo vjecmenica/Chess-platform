@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import type { GameReadResponse, SiteGameInfo } from '@chess/contracts';
 import { GameInfo, gameInfoTimestamp, liveGameStatus } from '../src/GameInfo';
-import { GameChat } from '../src/GameChat';
 import { importPgn } from '../src/pgn-import';
 
 const at = '2026-11-02T13:18:36.000Z';
@@ -53,14 +52,14 @@ it('handles live, waiting, pending, finished and aborted games without implying 
   expect(render({ ...game, status: 'aborted', result: { outcome: 'aborted', reason: 'first_move_deadline', missedSide: 'black' } }))
     .toContain('Black did not make a first move in time. No win or loss was recorded.');
 });
-it('keeps Chat selected by default in both workspaces, with Info first and all content preserved while hidden', () => {
-  for (const analysisOpen of [true, false]) {
-    const html = renderToStaticMarkup(createElement(GameChat, { gameId: game.id, side: 'white', gameStatus: 'active',
-      csrfToken: 'csrf', revision: 0, analysisOpen, info: createElement(GameInfo, { game }) }));
-    expect(html).toMatch(/aria-pressed="false"[^>]*>Info<\/button>[\s\S]*aria-pressed="true"[^>]*>Chat<\/button>[\s\S]*>Notes<\/button>/);
-    expect(html).toMatch(/class="game-info-tab"[^>]*tabindex="0"[^>]*hidden=""/); expect(html).toContain('Game information');
-    expect(html).toContain('Private notes'); expect(html).not.toContain('>Game chat</h2>');
-  }
+it('keeps players, status and time control in the compact summary with additional facts behind a disclosure', () => {
+  const html = render(game);
+  const summary = html.slice(0, html.indexOf('class="game-info-toggle'));
+  expect(summary).toContain('walnut');
+  expect(summary).toContain('In progress');
+  expect(summary).toContain('3+2');
+  expect(html).toMatch(/aria-expanded="false">More game details<\/button>/);
+  expect(html).toMatch(/class="game-info-details" data-expanded="false">[\s\S]*Started \(local time\)/);
 });
 it('removes passive turn copy while preserving actionable adjudication, readiness and history guidance', () => {
   expect(liveGameStatus(game, false)).toBeNull();

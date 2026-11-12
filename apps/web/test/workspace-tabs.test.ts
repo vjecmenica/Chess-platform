@@ -7,7 +7,9 @@ import { initialWorkspaceView, workspaceView } from '../src/workspace-view';
 
 it.each([false, true])('mounts one Game Room with the proper primary tabs (analysis=%s)', enabled => {
   const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled, reviewHost: () => {},
-    children: createElement('div', null, 'Existing moves and engine'), gameRoom: presentation => createElement(GameChat, {
+    children: createElement('div', null, 'Existing moves and engine'),
+    gameInfo: createElement('p', null, 'Game facts'),
+    gameRoom: presentation => createElement(GameChat, {
       ...presentation, gameId: 'test-game', side: 'white', gameStatus: 'active', csrfToken: 'test', revision: 0,
     }) }));
   expect(html).toContain(`aria-pressed="true">${enabled ? 'Analysis' : 'Moves'}`);
@@ -18,6 +20,8 @@ it.each([false, true])('mounts one Game Room with the proper primary tabs (analy
   expect(html).toMatch(/class="workspace-room-pane"[^>]*hidden=""/);
   expect(html.match(/class="game-chat"/g)).toHaveLength(1);
   expect(html.match(/id="notes-test-game"/g)).toHaveLength(1);
+  expect(html).toContain('<div class="workspace-room-info"><p>Game facts</p></div><aside class="game-chat"');
+  expect(html).not.toContain('>Info</button>');
   expect(html).toContain('Open floating chat');
   expect(html).not.toContain('role="tablist"'); // Left/Right remain board-navigation keys.
 });
@@ -34,20 +38,19 @@ it('keeps the primary view when floating chat opens and closes', () => {
   expect(workspaceView(floating, { type: 'close-chat' })).toEqual(review);
   expect(workspaceView(floating, { type: 'select', tab: 'main' })).toEqual({ active: 'main', floating: true });
 });
-it('docks the same chat on selecting Game Room and reveals actions without an obstructing overlay', () => {
+it('docks the same chat on selecting Game Room', () => {
   const floating = workspaceView(initialWorkspaceView, { type: 'float' });
   const room = workspaceView(floating, { type: 'select', tab: 'room' });
   expect(room).toEqual({ active: 'room', floating: false });
   expect(workspaceView(room, { type: 'float' })).toEqual({ active: 'main', floating: true });
-  expect(workspaceView(room, { type: 'actions' })).toEqual(initialWorkspaceView);
-  expect(workspaceView(floating, { type: 'actions' })).toEqual(initialWorkspaceView);
 });
-it('keeps actionable notices outside the hidden panes', () => {
-  const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled: false, reviewHost: () => {},
-    children: 'Existing game actions', notice: 'Draw offer awaiting a response.' }));
-  expect(html).toContain('class="workspace-action-notice" role="status"');
-  expect(html).toContain('Draw offer awaiting a response.');
-  expect(html).toContain('>View game actions</button>');
+it.each([false, true])('renders game actions once in a footer outside the switchable panes (analysis=%s)', enabled => {
+  const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled, reviewHost: () => {},
+    children: 'Game moves', gameRoom: () => 'Game chat',
+    footer: createElement('button', null, 'Accept draw') }));
+  expect(html).toContain('</button><footer class="workspace-footer" aria-label="Game status and actions"><button>Accept draw</button></footer>');
+  expect(html.match(/Accept draw/g)).toHaveLength(1);
+  expect(html).not.toContain('View game actions');
 });
 it('floating presentation retains one conversation and Notes, with accessible close and mute controls', () => {
   const html = renderToStaticMarkup(createElement(GameChat, { gameId: 'game', side: 'black', gameStatus: 'finished',

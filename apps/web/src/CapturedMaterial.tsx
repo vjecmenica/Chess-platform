@@ -8,14 +8,15 @@ const names: Readonly<Record<CapturedPiece, string>> = {
   q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn',
 };
 
-export function PlayerMaterialPanel({ side, pieces, advantage, placement, children }: {
+export function PlayerMaterialPanel({ side, pieces, advantage, placement, children, utilities }: {
   side: GameSide; pieces: readonly CapturedPiece[];
   advantage: { side: GameSide; points: number } | null;
-  placement: 'top' | 'bottom'; children: ReactNode;
+  placement: 'top' | 'bottom'; children: ReactNode; utilities?: ReactNode;
 }) {
   const row = <div className="player-material-row">
     <CapturedRow side={side} pieces={pieces} placement={placement} />
     {placement === 'bottom' && <MaterialTotal advantage={advantage} bottomSide={side} />}
+    {placement === 'bottom' && utilities}
   </div>;
   return <div className={`player-material-panel player-material-${placement}`}>
     {placement === 'top' && row}

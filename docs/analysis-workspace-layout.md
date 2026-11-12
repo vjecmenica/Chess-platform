@@ -2,15 +2,17 @@
 
 The navigation uses the existing icons and dark wood palette. At widths of 1400px
 and above it is a 176px labelled sidebar; narrower desktops use the existing
-64px icon rail, and screens below 701px use the compact disclosure menu. Georgia
-is reserved for navigation labels and selected headings. Moves, clocks, charts,
-chat, form controls and numerical data retain the sans-serif typography.
+64px icon rail, and screens below 701px use the compact disclosure menu.
+Fraunces is reserved for navigation labels, primary tabs, and prominent headings.
+Source Sans 3 serves the functional interface. The Latin and Latin Extended
+WOFF2 subsets are self-hosted, use swap loading, and include their OFL notices
+in `apps/web/public/fonts`.
 
-The desktop grid has two columns: the board/player strips and the right workspace.
-The separate companion column and its collapse state are removed. Board utilities
-remain beneath the board. The saved size, resize gestures, initial height budget
-and square geometry are unchanged. The width bound no longer reserves space for
-the removed companion column; this does not automatically enlarge the board.
+The desktop grid centers the board and workspace together. The right panel can
+shrink with available space and stops growing at 550px. Board utilities sit at
+the right end of the material row directly below the lower player strip. The
+initial sizing budget retains its previous spacing allowance, so the shorter
+tool row does not change the automatic board size.
 
 `AnalysisWorkspaceTabs` owns presentation only:
 
@@ -29,7 +31,10 @@ outer desktop height. Play retains its board-aligned sidebar height. All primary
 views share their shell's dimensions; extensive content scrolls inside it. Mobile
 and very short viewports use natural page flow.
 
-Game Room renders one GameChat, including the existing Info and Notes views.
+Game Room pairs Chat/Notes with a Game Info summary. At 480px of panel width
+the summary sits alongside the conversation, and narrower panels show it above
+the conversation with a disclosure for date, rating status, and variant.
+Game Room mounts one GameChat with the existing Notes editor.
 The floating launcher changes that same mounted component's CSS presentation;
 there is no second chat controller, history, composer, poll timer or subscription.
 Opening the overlay preserves the current primary view (opening from Game Room
@@ -43,10 +48,9 @@ its existing server rules and suppresses badges. The launcher and Game Room tab
 share the same count. The floating panel is viewport-bounded and never participates
 in the workspace grid.
 
-A compact notice outside the hidden panes exposes draw offers, pending actions,
-connection errors and rematch offers. View game actions closes the overlay,
-selects the main workspace and its Moves view, and focuses the primary button.
-The original action controls and their logic are reused, not duplicated.
+The workspace footer is a sibling of the tab panes. The existing results,
+game actions, rematch controls, and retry messages stay mounted at the bottom
+while the middle region switches views. Long footer states scroll internally.
 
 No game contracts, backend services, review calculations, or database schemas
 are changed.

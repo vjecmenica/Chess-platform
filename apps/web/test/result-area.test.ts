@@ -35,7 +35,7 @@ describe('finished-game result area', () => {
       score: '0-1', explanation: 'Black won by timeout.', analysisOpen: false,
       onToggleAnalysis: () => {},
     }));
-    const gameView = app.slice(app.indexOf('<aside className="game-sidebar"'));
+    const gameView = app.slice(app.indexOf('<AnalysisWorkspaceTabs key='));
     expect(html).toContain('class="finished-result-area"');
     expect(html).toContain('0-1');
     expect(html).toContain('Black won by timeout.');

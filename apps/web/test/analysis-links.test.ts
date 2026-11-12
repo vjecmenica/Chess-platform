@@ -50,7 +50,7 @@ it('reports explorer authorization or loading failures on the destination page',
 
 it('puts conversation tabs and Hide in the analysis header without a duplicate heading', () => {
   const html = renderToStaticMarkup(createElement(GameChat, { gameId: 'demo', side: 'white',
-    gameStatus: 'finished', csrfToken: 'token', revision: 0, analysisOpen: true }));
+    gameStatus: 'finished', csrfToken: 'token', revision: 0 }));
   expect(html).not.toContain('>Game chat</h2>');
   const header = html.slice(html.indexOf('class="game-chat-header"'), html.indexOf('class="game-chat-content"'));
   expect(header).toContain('>Chat</button>'); expect(header).toContain('>Notes</button>');

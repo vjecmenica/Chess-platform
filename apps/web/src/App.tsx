@@ -1025,9 +1025,6 @@ export function App() {
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
-  const [actionsRequest, setActionsRequest] = useState(0);
-  const [rematchNotice, setRematchNotice] = useState<string | null>(null);
-  useEffect(() => { setRematchNotice(null); }, [game?.id]);
   const boardUtilities = game === null ? null : <BoardUtilities
     downloadable={analysisOpen && canExportGame(game)}
     onDownload={() => downloadGamePgn(game, imported?.headers)}
@@ -1111,13 +1108,16 @@ export function App() {
         const stacked = window.matchMedia('(max-width: 900px)').matches;
         const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
         const frame = boardFrameRef.current?.getBoundingClientRect();
+        const tools = workspace.querySelector('.player-material-bottom > .player-material-row')?.getBoundingClientRect();
+        // Retain the original 26px material gap, 22px tool gap and 40px tool row in the default sizing budget.
+        const upperChrome = play && frame && tools ? play.height - frame.height - tools.height + 88 : 180;
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           // Retain the previous horizontal header budget for the automatic default.
           // Moving navigation must not implicitly enlarge an unsized board.
           window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY
             + (window.matchMedia('(min-width: 701px)').matches ? 62 : 0),
-          play && frame ? play.height - frame.height : 180, 320, stacked));
+          upperChrome, 320, stacked));
       });
     };
     const observer = new ResizeObserver(update);
@@ -1398,7 +1398,7 @@ export function App() {
                   }
                 }} />}
               <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
-                advantage={material} placement="bottom">
+                advantage={material} placement="bottom" utilities={boardUtilities}>
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
                   historicalMs={importedHistoricalMs(bottomSide)} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
@@ -1411,93 +1411,16 @@ export function App() {
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
-              {boardUtilities}
-
             </div>
             <div className="position-column">
             <AnalysisWorkspaceTabs key={`workspace-${game.id}`} enabled={analysisOpen} reviewHost={setReviewHost}
-              onRevealActions={() => setActionsRequest(value => value + 1)}
-              notice={gameError ?? (submitting ? 'Waiting for server confirmation…' : pending || pendingAction ? 'A game action needs confirmation.'
-                : game.drawOffer !== null || game.claimDrawOffer !== null ? 'Draw offer awaiting a response.'
-                : imported === null && game.status !== 'finished' ? liveStatus : rematchNotice)}
-              gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
-                side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
-                playerNames={game.playerNames} analysisOpen={analysisOpen} info={<GameInfo game={game} />} /> : undefined}>
-              {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
-                sessionOnly={imported !== null}
-                fen={displayedFen} reviewHost={reviewHost}
-                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
-                orientation={orientation} onExploreLine={(rootFen, moves) => {
-                  const current = gameRef.current, tree = analysisRef.current;
-                  if (!analysisOpenRef.current || !current || !tree || promotion !== null) return;
-                  const next = applyEngineVariation(tree, current, rootFen, moves);
-                  if (next) { setAnalysis(next); setSelected(null); setAnalysisError(null); }
-                }}
-                onBestMoveChange={setEngineMove} onThreatMoveChange={setThreatMove}
-                onEvaluationPendingChange={setEvaluationPendingFen} />}
-            <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen} revealMovesRevision={actionsRequest}
-              book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}
-                onExplore={exploreBookMove} /> : null}>
-            <aside className="game-sidebar" aria-label="Game controls and moves">
-
-
-              <div className="move-panel">
-                {replaying && <div className="replay" aria-label="Saved game replay">
-                  <p className="replay-position visually-hidden" aria-live="polite">{analysisOpen && activeBranchId !== null
-                    ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
-                    : displayedPly === 0 ? 'Starting position'
-                      : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
-                  <div className="replay-controls">
-                    <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
-                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
-                        else setSelectedReplayPly(0); setSelected(null); }} aria-label="First move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14m13-14-7 7 7 7" /></svg></button>
-                    <button type="button" className="secondary"
-                      disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
-                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
-                        else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
-                      aria-label="Previous move">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                        <path d="m15 5-7 7 7 7" />
-                      </svg></button>
-                    <button type="button" className="secondary"
-                      disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
-                        : displayedPly === game.history.length}
-                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
-                        else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
-                      aria-label="Next move">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                        <path d="m9 5 7 7-7 7" />
-                      </svg></button>
-                    <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
-                      onClick={() => { if (analysisOpen && analysis !== null)
-                        setAnalysis(lastMainPosition(analysis, game));
-                      else setSelectedReplayPly(game.history.length); setSelected(null); }}
-                      aria-label="Last move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M6 5l7 7-7 7" /></svg></button>
-                  </div>
-                </div>}
-                {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
-                <div className="analysis-pane">
-                <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
-                  review={analysisOpen ? gameReview : null}
-                  selected={analysisOpen && analysis !== null ? analysis.cursor
-                    : { kind: 'main', ply: displayedPly }}
-                  onSelect={selectMove} onDelete={removeVariation}
-                  onPromote={promoteMove} onNote={noteMove} />
-                </div>
-
-              </div>
+              footer={!game.id.startsWith('blank-') || gameError !== null || gameInfo !== null ?
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} analysisOpen={analysisOpen}
-                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision} onNotice={setRematchNotice}/>:undefined}
+                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
                   analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   onToggleAnalysis={() => {
                     if (analysisOpen && analysis !== null) {
@@ -1578,9 +1501,77 @@ export function App() {
                   <button type="button" className="primary" onClick={() => void submitAction(pendingAction, true)}>Retry action</button>
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
-              </div>
+              </div> : null}
+              gameInfo={<GameInfo game={game} />}
+              gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
+                side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
+                playerNames={game.playerNames} /> : undefined}>
+              {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
+                sessionOnly={imported !== null}
+                fen={displayedFen} reviewHost={reviewHost}
+                selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
+                onSelectPly={ply => {
+                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
+                  setSelected(null);
+                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                orientation={orientation} onExploreLine={(rootFen, moves) => {
+                  const current = gameRef.current, tree = analysisRef.current;
+                  if (!analysisOpenRef.current || !current || !tree || promotion !== null) return;
+                  const next = applyEngineVariation(tree, current, rootFen, moves);
+                  if (next) { setAnalysis(next); setSelected(null); setAnalysisError(null); }
+                }}
+                onBestMoveChange={setEngineMove} onThreatMoveChange={setThreatMove}
+                onEvaluationPendingChange={setEvaluationPendingFen} />}
+            <AnalysisSidebarTabs key={`sidebar-${game.id}`} enabled={analysisOpen}
+              book={analysisOpen && analysis !== null ? <MastersPanel game={game} tree={analysis}
+                onExplore={exploreBookMove} /> : null}>
+            <section className="move-panel workspace-moves" aria-label="Game moves">
+                {replaying && <div className="replay" aria-label="Saved game replay">
+                  <p className="replay-position visually-hidden" aria-live="polite">{analysisOpen && activeBranchId !== null
+                    ? `Variation after ${analysis?.nodes.find(item => item.id === activeBranchId)?.san}`
+                    : displayedPly === 0 ? 'Starting position'
+                      : `After ${Math.ceil(displayedPly / 2)}${displayedPly % 2 === 1 ? '.' : '...'} ${game.history[displayedPly - 1]?.san}`}</p>
+                  <div className="replay-controls">
+                    <button type="button" className="secondary" disabled={displayedPly === 0 && !analysisOpen}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(selectMain(analysis, game, 0));
+                        else setSelectedReplayPly(0); setSelected(null); }} aria-label="First move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M5 5v14m13-14-7 7 7 7" /></svg></button>
+                    <button type="button" className="secondary"
+                      disabled={analysisOpen ? analysis?.cursor.kind === 'main' && analysis.cursor.ply === 0 : displayedPly === 0}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(previousPosition(analysis));
+                        else setSelectedReplayPly(displayedPly - 1); setSelected(null); }}
+                      aria-label="Previous move">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="m15 5-7 7 7 7" />
+                      </svg></button>
+                    <button type="button" className="secondary"
+                      disabled={analysisOpen ? analysis !== null && nextPosition(analysis, game) === analysis
+                        : displayedPly === game.history.length}
+                      onClick={() => { if (analysisOpen && analysis !== null) setAnalysis(nextPosition(analysis, game));
+                        else setSelectedReplayPly(displayedPly + 1); setSelected(null); }}
+                      aria-label="Next move">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="m9 5 7 7-7 7" />
+                      </svg></button>
+                    <button type="button" className="secondary" disabled={displayedPly === game.history.length && !analysisOpen}
+                      onClick={() => { if (analysisOpen && analysis !== null)
+                        setAnalysis(lastMainPosition(analysis, game));
+                      else setSelectedReplayPly(game.history.length); setSelected(null); }}
+                      aria-label="Last move"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M19 5v14M6 5l7 7-7 7" /></svg></button>
+                  </div>
+                </div>}
+                {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
+                <div className="analysis-pane">
+                <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
+                  review={analysisOpen ? gameReview : null}
+                  selected={analysisOpen && analysis !== null ? analysis.cursor
+                    : { kind: 'main', ply: displayedPly }}
+                  onSelect={selectMove} onDelete={removeVariation}
+                  onPromote={promoteMove} onNote={noteMove} />
+                </div>
 
-            </aside>
+            </section>
             </AnalysisSidebarTabs>
             </AnalysisWorkspaceTabs>
             </div>
