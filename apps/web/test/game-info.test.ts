@@ -52,14 +52,10 @@ it('handles live, waiting, pending, finished and aborted games without implying 
   expect(render({ ...game, status: 'aborted', result: { outcome: 'aborted', reason: 'first_move_deadline', missedSide: 'black' } }))
     .toContain('Black did not make a first move in time. No win or loss was recorded.');
 });
-it('keeps players, status and time control in the compact summary with additional facts behind a disclosure', () => {
+it('shows game details alongside the rest of the compact summary', () => {
   const html = render(game);
-  const summary = html.slice(0, html.indexOf('class="game-info-toggle'));
-  expect(summary).toContain('walnut');
-  expect(summary).toContain('In progress');
-  expect(summary).toContain('3+2');
-  expect(html).toMatch(/aria-expanded="false">More game details<\/button>/);
-  expect(html).toMatch(/class="game-info-details" data-expanded="false">[\s\S]*Started \(local time\)/);
+  expect(html).toMatch(/<dl>[\s\S]*walnut[\s\S]*In progress[\s\S]*3\+2[\s\S]*Started \(local time\)[\s\S]*Unrated[\s\S]*Standard[\s\S]*<\/dl>/);
+  expect(html).not.toContain('More game details');
 });
 it('removes passive turn copy while preserving actionable adjudication, readiness and history guidance', () => {
   expect(liveGameStatus(game, false)).toBeNull();

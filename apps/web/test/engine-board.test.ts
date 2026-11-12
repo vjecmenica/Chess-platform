@@ -73,14 +73,14 @@ it('tracks actual engine updates, position replacement and stop without persisti
   expect(arrows.at(-1)).toMatchObject({ fen: position, from: 'e7', to: 'e5' });
   controller.stop(); expect(arrows.at(-1)).toBeNull();
 });
-it('keeps only Analysis and settings in the header, with the switch before Depth and continuous control below', () => {
+it('keeps the switch, depth, continuous control and settings together without a duplicate Analysis heading', () => {
   const game = importPgn('[Result "*"]\n\n*', 'blank-game').game;
   const html = renderToStaticMarkup(createElement(EnginePanel, { game, fen, selectedPly: 0,
     onSelectPly() {}, onReviewChange() {}, onEvaluationChange() {} }));
-  const heading = html.slice(html.indexOf('class="engine-heading"'), html.indexOf('class="engine-depth-row"'));
-  expect(heading).toContain('>Analysis</strong>'); expect(heading).toContain('aria-label="Engine settings"');
-  expect(heading).not.toContain('role="switch"'); expect(heading).not.toContain('>Engine Evaluation</strong>');
-  expect(html.slice(html.indexOf('class="engine-depth-row"'))).toMatch(/role="switch"[\s\S]*Depth[\s\S]*aria-label="Continuous analysis"/);
+  expect(html).not.toContain('>Analysis</strong>');
+  expect(html).not.toContain('class="engine-heading"');
+  expect(html.slice(html.indexOf('class="engine-depth-row"'))).toMatch(
+    /role="switch"[\s\S]*Depth[\s\S]*aria-label="Continuous analysis"[\s\S]*class="engine-build"[\s\S]*aria-label="Engine settings"/);
 });
 
 it('shares identical user, best and threat geometry in both orientations, with only color differing', () => {

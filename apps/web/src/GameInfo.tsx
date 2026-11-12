@@ -1,4 +1,3 @@
-import { useId, useState } from 'react';
 import type { GameReadResponse, GameState, SiteGameInfo } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { resultDisplay } from './result-display';
@@ -26,8 +25,6 @@ export function liveGameStatus(game: GameState, browsingHistory: boolean): strin
 }
 
 export function GameInfo({ game }: { game: GameReadResponse }) {
-  const [expanded, setExpanded] = useState(false);
-  const detailsId = useId();
   const timestamp = gameInfoTimestamp(game.siteInfo);
   const result = game.status === 'finished' || game.status === 'aborted' ? resultDisplay(game.result) : null;
   const status = game.status === 'waiting' ? 'Waiting for players to be ready'
@@ -45,10 +42,6 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
       <div className="game-info-outcome"><dt>{result || game.status === 'finished' || game.status === 'aborted' ? 'Result' : 'Status'}</dt>
         <dd>{result ? <><strong>{result.score}</strong>{' · '}{result.explanation}</> : status}</dd></div>
       <div><dt>Time control</dt><dd><InfoTimeControl game={game} /></dd></div>
-    </dl>
-    <button className="game-info-toggle secondary" type="button" aria-controls={detailsId} aria-expanded={expanded}
-      onClick={() => setExpanded(value => !value)}>{expanded ? 'Fewer game details' : 'More game details'}</button>
-    <dl id={detailsId} className="game-info-details" data-expanded={expanded}>
       <div className="game-info-date"><dt>{timestamp?.label ?? 'Start time'}</dt><dd>{timestamp
         ? <time dateTime={timestamp.at}>{timestamp.text}</time> : 'Unavailable'}</dd></div>
       <div className="game-info-mode"><dt>Rated status</dt><dd>{game.rated === false ? 'Unrated' : 'Unavailable'}</dd></div>

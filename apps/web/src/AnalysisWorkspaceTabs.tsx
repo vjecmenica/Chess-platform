@@ -43,7 +43,6 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
       <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
         data-floating={view.floating} hidden={active !== 'room' && !view.floating}>
         <div className="workspace-room-layout">
-          <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>
           {gameRoom({
             visible: active === 'room' || view.floating,
             floating: view.floating,
@@ -53,6 +52,7 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
             },
             onUnreadChange: setUnread,
           })}
+          <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>
         </div>
       </div>
       <button ref={launcher} className="floating-chat-launcher secondary" type="button" aria-label="Open floating chat"

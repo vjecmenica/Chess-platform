@@ -71,8 +71,6 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toContain('Search limit mode');
     expect(html).toContain('role="switch" aria-checked="true"');
     expect(html).toContain('aria-label="Interactive engine"');
-    expect(html.indexOf('engine-toggle-status')).toBeLessThan(html.indexOf('engine-panel-title'));
-    expect(html.indexOf('engine-panel-title')).toBeLessThan(html.indexOf('engine-settings-button'));
     expect(html).toContain('aria-controls="engine-settings"');
     expect(html).toContain('aria-label="Continuous analysis" aria-pressed="false"');
     expect(html).not.toMatch(/>Settings<\/button>/);

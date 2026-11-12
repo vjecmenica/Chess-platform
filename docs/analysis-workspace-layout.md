@@ -4,7 +4,7 @@ The navigation uses the existing icons and dark wood palette. At widths of 1400p
 and above it is a 176px labelled sidebar; narrower desktops use the existing
 64px icon rail, and screens below 701px use the compact disclosure menu.
 Fraunces is reserved for navigation labels, primary tabs, and prominent headings.
-Source Sans 3 serves the functional interface. The Latin and Latin Extended
+The functional interface uses the system font stack. Fraunces's Latin and Latin Extended
 WOFF2 subsets are self-hosted, use swap loading, and include their OFL notices
 in `apps/web/public/fonts`.
 
@@ -27,13 +27,14 @@ cancel workers, clear reports, rebuild the tree or request the explorer again.
 Pressed buttons reserve Left/Right keys for existing board navigation.
 
 The existing measured `--analysis-sidebar-height` remains the Analysis panel's
-outer desktop height. Play retains its board-aligned sidebar height. All primary
+outer desktop height. Play aligns the sidebar with the measured upper and lower
+clock edges. All primary
 views share their shell's dimensions; extensive content scrolls inside it. Mobile
 and very short viewports use natural page flow.
 
-Game Room pairs Chat/Notes with a Game Info summary. At 480px of panel width
-the summary sits alongside the conversation, and narrower panels show it above
-the conversation with a disclosure for date, rating status, and variant.
+Game Room stacks a compact Chat/Notes area above the full Game Info summary.
+Long conversations scroll inside the chat history, and the room scrolls when
+both sections exceed the space above the footer.
 Game Room mounts one GameChat with the existing Notes editor.
 The floating launcher changes that same mounted component's CSS presentation;
 there is no second chat controller, history, composer, poll timer or subscription.

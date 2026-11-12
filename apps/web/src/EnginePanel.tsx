@@ -345,18 +345,6 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   useEffect(() => () => onEvaluationPendingChange?.(null), [onEvaluationPendingChange]);
 
   return <section className="engine-panel" aria-label="Stockfish analysis">
-    <div className="engine-heading">
-      <strong className="engine-panel-title">Analysis</strong>
-      <button type="button" className="engine-settings-button" ref={settingsButtonRef}
-        aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
-        onClick={() => openSettings('engine')}>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"
-          strokeLinejoin="round" aria-hidden="true" focusable="false">
-          <path d="M9.5 2h5l.5 2.7 2 .9 2.4-1.3 2.5 4.4-2 1.8v2.4l2 1.8-2.5 4.4-2.4-1.3-2 .9-.5 2.7h-5L9 18.4l-2-.9-2.4 1.3-2.5-4.4 2-1.8v-2.4l-2-1.8 2.5-4.4L7 5.3l2-.9Z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      </button>
-    </div>
     <div className="engine-depth-row">
       <EngineToggle enabled={enabled && state.kind !== 'error'} onToggle={() => {
         setEngineEpoch(value => value + 1);
@@ -376,7 +364,18 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         requestKey={`${variant.id}:${threads}:${lineCount}:${profile}:${engineEpoch}`}
         available={enabled && state.kind !== 'error'}
         reviewing={review.kind === 'running'} onMove={onThreatMoveChange} />
-      <small className="engine-build">{description}</small>
+      <div className="engine-build-controls">
+        <small className="engine-build">{description}</small>
+        <button type="button" className="engine-settings-button" ref={settingsButtonRef}
+          aria-label="Engine settings" aria-expanded={settingsOpen} aria-controls="engine-settings"
+          onClick={() => openSettings('engine')}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"
+            strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <path d="M9.5 2h5l.5 2.7 2 .9 2.4-1.3 2.5 4.4-2 1.8v2.4l2 1.8-2.5 4.4-2.4-1.3-2 .9-.5 2.7h-5L9 18.4l-2-.9-2.4 1.3-2.5-4.4 2-1.8v-2.4l-2-1.8 2.5-4.4L7 5.3l2-.9Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+      </div>
     </div>
     {fallback && <div className="engine-fallback" role="status">Full could not run. Using Stockfish 19 Lite.
       <button type="button" className="secondary" onClick={() => {

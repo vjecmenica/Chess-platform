@@ -159,8 +159,6 @@ export function App() {
     if (initialAnalysisEntry?.kind === 'site' && initialAnalysisEntry.boardSize !== undefined) return initialAnalysisEntry.boardSize;
     try { return readBoardSizePreference(window.localStorage); } catch { return null; }
   });
-  const [boardAlignmentOffset, setBoardAlignmentOffset] = useState(90);
-  const [playerWorkspace, setPlayerWorkspace] = useState({ top: 22, height: 480 });
   const [boardRowHeight, setBoardRowHeight] = useState<number | null>(null);
   const [analysisBoard, setAnalysisBoard] = useState<AnalysisBoardState | null>(null);
   const [annotationFrom, setAnnotationFrom] = useState<Square | null>(null);
@@ -1072,26 +1070,28 @@ export function App() {
 
   useLayoutEffect(() => {
     const frame = boardFrameRef.current;
-    if (frame === null) return;
+    const layout = gameLayoutRef.current;
+    if (frame === null || layout === null) return;
+    const upperClock = layout.querySelector('.player-material-top > .clock');
+    const lowerClock = layout.querySelector('.player-material-bottom > .clock');
     const update = () => {
+      if (upperClock && lowerClock) {
+        const top = upperClock.getBoundingClientRect().top;
+        const bottom = lowerClock.getBoundingClientRect().bottom;
+        layout.style.setProperty('--player-alignment-offset', `${top - layout.getBoundingClientRect().top}px`);
+        layout.style.setProperty('--player-workspace-height', `${bottom - top}px`);
+        if (!resizeGesture.current) {
+          layout.style.setProperty('--analysis-sidebar-height', `${analysisSidebarHeight(window.innerHeight, top, window.scrollY)}px`);
+        }
+      }
       if (resizeGesture.current) return;
       setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
-      const layout = gameLayoutRef.current;
-      const top = layout?.querySelector('.play-column > .player-material-top')?.getBoundingClientRect();
-      const bottom = layout?.querySelector('.play-column > .player-material-bottom')?.getBoundingClientRect();
-      if (layout && top && bottom) {
-        layout.style.setProperty('--analysis-sidebar-height', `${analysisSidebarHeight(window.innerHeight, top.top, window.scrollY)}px`);
-        setPlayerWorkspace({
-          top: Math.round(top.top - layout.getBoundingClientRect().top),
-          height: Math.round(bottom.bottom - top.top),
-        });
-      }
-      setBoardAlignmentOffset(Math.round(frame.getBoundingClientRect().top
-        - (gameLayoutRef.current?.getBoundingClientRect().top ?? 0)));
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(frame);
+    if (upperClock) observer.observe(upperClock);
+    if (lowerClock) observer.observe(lowerClock);
     if (frame.parentElement?.parentElement) observer.observe(frame.parentElement.parentElement);
     window.addEventListener('resize', update);
     return () => { observer.disconnect(); window.removeEventListener('resize', update); };
@@ -1249,14 +1249,8 @@ export function App() {
             ref={gameLayoutRef}
             style={{
               '--analysis-board-column': `min(${(boardSize ?? automaticBoardSize ?? 440) + 50}px, calc(100% - 320px))`,
-              '--board-alignment-offset': `${boardAlignmentOffset}px`,
-              '--player-alignment-offset': `${playerWorkspace.top}px`,
-              '--player-workspace-height': `${playerWorkspace.height}px`,
               ...((boardSize ?? (analysisOpen ? automaticBoardSize : null)) === null ? {} : {
                 '--board-size': `${boardSize ?? automaticBoardSize}px`,
-              }),
-              ...(boardRowHeight === null ? {} : {
-                '--board-row-height': `${boardRowHeight}px`,
               }),
             } as CSSProperties}>
             <div className="play-column">
@@ -1353,7 +1347,6 @@ export function App() {
                       if (!layout) return;
                       layout.style.setProperty('--board-size', `${size}px`);
                       layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
-                      layout.style.setProperty('--board-row-height', `${size}px`);
                     }, size => { commitBoardSize(size); setBoardRowHeight(size); }, limit);
                     event.currentTarget.setPointerCapture(event.pointerId);
                   }}

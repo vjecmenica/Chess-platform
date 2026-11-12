@@ -20,7 +20,7 @@ it.each([false, true])('mounts one Game Room with the proper primary tabs (analy
   expect(html).toMatch(/class="workspace-room-pane"[^>]*hidden=""/);
   expect(html.match(/class="game-chat"/g)).toHaveLength(1);
   expect(html.match(/id="notes-test-game"/g)).toHaveLength(1);
-  expect(html).toContain('<div class="workspace-room-info"><p>Game facts</p></div><aside class="game-chat"');
+  expect(html).toContain('</aside><div class="workspace-room-info"><p>Game facts</p></div>');
   expect(html).not.toContain('>Info</button>');
   expect(html).toContain('Open floating chat');
   expect(html).not.toContain('role="tablist"'); // Left/Right remain board-navigation keys.
