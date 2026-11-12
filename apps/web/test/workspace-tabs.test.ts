@@ -20,8 +20,15 @@ it.each([false, true])('mounts one Game Room with the proper primary tabs (analy
   expect(html).toMatch(/class="workspace-room-pane"[^>]*hidden=""/);
   expect(html.match(/class="game-chat"/g)).toHaveLength(1);
   expect(html.match(/id="notes-test-game"/g)).toHaveLength(1);
-  expect(html).toContain('</aside><div class="workspace-room-info"><p>Game facts</p></div>');
-  expect(html).not.toContain('>Info</button>');
+  expect(html.match(/Game facts/g)).toHaveLength(1);
+  if (enabled) {
+    expect(html).toContain('</aside><div class="workspace-room-info"><p>Game facts</p></div>');
+    expect(html).not.toContain('>Info</button>');
+  } else {
+    expect(html).toMatch(/>Info<\/button>[\s\S]*>Chat<\/button>[\s\S]*>Notes<\/button>/);
+    expect(html).toMatch(/class="game-chat-info"[^>]*hidden=""><p>Game facts<\/p>/);
+    expect(html).not.toContain('class="workspace-room-info"');
+  }
   expect(html).toContain('Open floating chat');
   expect(html).not.toContain('role="tablist"'); // Left/Right remain board-navigation keys.
 });
@@ -42,7 +49,9 @@ it('docks the same chat on selecting Game Room', () => {
   const floating = workspaceView(initialWorkspaceView, { type: 'float' });
   const room = workspaceView(floating, { type: 'select', tab: 'room' });
   expect(room).toEqual({ active: 'room', floating: false });
-  expect(workspaceView(room, { type: 'float' })).toEqual({ active: 'main', floating: true });
+  const floatedFromRoom = workspaceView(room, { type: 'float' });
+  expect(floatedFromRoom).toEqual({ active: 'room', floating: true });
+  expect(workspaceView(floatedFromRoom, { type: 'close-chat' })).toEqual(room);
 });
 it.each([false, true])('renders game actions once in a footer outside the switchable panes (analysis=%s)', enabled => {
   const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled, reviewHost: () => {},

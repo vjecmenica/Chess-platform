@@ -404,34 +404,33 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
       })}
     </div>}
     {reviewHost && createPortal(<div className="review-content">
-    <div className="review-heading"><strong>Game Review</strong>
-    <div className="review-control">
-      <button type="button" className={review.kind === 'running' ? 'secondary' : 'primary'} disabled={game.history.length === 0} onClick={() => {
-        if (review.kind === 'running') {
-          runner.current?.cancel(); changeReview({ kind: 'cancelled' });
-        } else startReview();
-      }}>{review.kind === 'running' ? 'Cancel analysis'
+    <div className="review-toolbar">
+      <div className="review-tabs analysis-view-tabs" role="group" aria-label="Game analysis views">
+        <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
+          aria-controls="computer-analysis-view"
+          onClick={() => setReviewTab('computer')}>Evaluation</button>
+        <button type="button" id="move-times-button" aria-pressed={reviewTab === 'times'}
+          aria-controls="move-times-view" disabled={!hasMoveTimes}
+          aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
+          onClick={() => setReviewTab('times')}>Move Times</button>
+      </div>
+      <button type="button" className={`review-action ${review.kind === 'running' ? 'secondary' : 'primary'}`}
+        disabled={game.history.length === 0} onClick={() => {
+          if (review.kind === 'running') {
+            runner.current?.cancel(); changeReview({ kind: 'cancelled' });
+          } else startReview();
+        }}>{review.kind === 'running' ? 'Cancel analysis'
           : review.kind === 'complete' ? 'Analyze again' : 'Analyze game'}</button>
-      {review.kind === 'running' && <span role="status">
-        {review.progress.completed} / {review.progress.total} positions
-        {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
-      </span>}
     </div>
-    </div>
-    <div className="review-tabs analysis-view-tabs" role="group" aria-label="Game analysis views">
-      <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
-        aria-controls="computer-analysis-view"
-        onClick={() => setReviewTab('computer')}>Evaluation</button>
-      <button type="button" id="move-times-button" aria-pressed={reviewTab === 'times'}
-        aria-controls="move-times-view" disabled={!hasMoveTimes}
-        aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
-        onClick={() => setReviewTab('times')}>Move Times</button>
-    </div>
+    <small className="review-engine">{description} · depth 14 / 1.2s per position</small>
+    {review.kind === 'running' && <small className="review-progress" role="status">
+      {review.progress.completed} / {review.progress.total} positions
+      {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
+    </small>}
     <div id="move-times-view" role="region" aria-labelledby="move-times-button" hidden={reviewTab !== 'times'}>
       <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />
     </div>
     <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button">
-    <small className="review-engine">{description} · depth 14 / 1.2s per position</small>
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
       <div hidden={reviewTab !== 'computer'}><ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />

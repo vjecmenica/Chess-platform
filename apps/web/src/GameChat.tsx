@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { GameChatPreset, GameChatHistory, GameChatMessage, GamePlayerNames, GameSide, GameState } from '@chess/contracts';
 import { sitePlayerName } from './PlayerIdentity';
 import { GameNotes } from './GameNotes';
@@ -7,7 +7,8 @@ import { chatComposerState, chatEnterSubmits, chatMessageLimit, chatPresets, cha
   unreadEntries, type ChatPermission, type ChatMuteState } from './game-chat';
 
 interface Props { gameId: string; side: GameSide; gameStatus: GameState['status']; csrfToken: string; revision: number;
-  playerNames?: GamePlayerNames | undefined; visible?: boolean; floating?: boolean; onCloseFloating?: () => void; onUnreadChange?: (count: number) => void }
+  playerNames?: GamePlayerNames | undefined; visible?: boolean; floating?: boolean; info?: ReactNode;
+  onCloseFloating?: () => void; onUnreadChange?: (count: number) => void }
 
 export function ChatUnreadBadge({ count }: { count: number }) {
   return count > 0 ? <span className="chat-unread" aria-label={`${count} unread entries`}>{count}</span> : null;
@@ -58,13 +59,12 @@ export function ChatComposer({ gameId, state, text, sending, retrying, usedPrese
   </form>;
 }
 
-export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, visible = true, floating = false, onCloseFloating, onUnreadChange }: Props) {
-  const [activePanel, setActivePanel] = useState<'chat' | 'notes'>('chat');
-  const effectivePanel = floating ? 'chat' : activePanel;
+export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, visible = true, floating = false, info, onCloseFloating, onUnreadChange }: Props) {
+  const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
+  const effectivePanel = floating || (activePanel === 'info' && !info) ? 'chat' : activePanel;
   const closeFloating = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (floating) {
-      setActivePanel('chat');
       const input = document.getElementById(`chat-${gameId}`);
       input?.focus();
       // Muted/loading conversations have no focusable composer.
@@ -233,7 +233,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label="Chat and private notes">
+  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label={info ? 'Game Room views' : 'Chat and private notes'}>
+    {info && <button type="button" aria-pressed={effectivePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>}
     <button type="button" aria-pressed={effectivePanel === 'chat'}
       aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
       <ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
@@ -258,6 +259,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       </button>}</div></div>
     {muteError && <small className="game-chat-error" role="alert">{muteError}</small>}
     <div className="game-chat-content" id={`chat-content-${gameId}`}>
+    {info && <div className="game-chat-info" tabIndex={0} hidden={effectivePanel !== 'info'}>{info}</div>}
     <div className="game-notes-tab" hidden={effectivePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
       active={visible && effectivePanel === 'notes'} /></div>
     <div className="game-chat-tab" hidden={effectivePanel !== 'chat'}>

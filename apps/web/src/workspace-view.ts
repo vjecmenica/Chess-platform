@@ -7,7 +7,7 @@ export const initialWorkspaceView: WorkspaceView = { active: 'main', floating: f
 export function workspaceView(state: WorkspaceView, action: WorkspaceViewAction): WorkspaceView {
   switch (action.type) {
     case 'select': return { active: action.tab, floating: action.tab === 'room' ? false : state.floating };
-    case 'float': return { active: state.active === 'room' ? 'main' : state.active, floating: true };
+    case 'float': return { ...state, floating: true };
     case 'close-chat': return { ...state, floating: false };
   }
 }

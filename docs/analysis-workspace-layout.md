@@ -32,15 +32,16 @@ clock edges. All primary
 views share their shell's dimensions; extensive content scrolls inside it. Mobile
 and very short viewports use natural page flow.
 
-Game Room stacks a compact Chat/Notes area above the full Game Info summary.
-Long conversations scroll inside the chat history, and the room scrolls when
-both sections exceed the space above the footer.
+Play's Game Room switches between Info, Chat, and Notes. Analysis lets Chat/Notes
+fill the space above the Game Info summary. Long conversations scroll inside the
+chat history, and short viewports can scroll the room independently of the footer.
 Game Room mounts one GameChat with the existing Notes editor.
 The floating launcher changes that same mounted component's CSS presentation;
 there is no second chat controller, history, composer, poll timer or subscription.
-Opening the overlay preserves the current primary view (opening from Game Room
-returns to the main pane). Selecting Game Room docks Chat again. Escape or Close
-returns focus to the launcher. Drafts, history, mute and quick-chat state survive.
+Opening the overlay preserves the selected views. If opened from Game Room,
+the main pane appears behind it temporarily. Selecting Game Room docks the
+conversation. Escape or Close restores the room view and focuses the launcher.
+Drafts, history, mute and quick-chat state survive.
 Notes remain mounted and use their existing inactive-view/blur autosave behavior.
 
 Unread counts follow actual chat visibility: hidden Game Room keeps receiving

@@ -5,6 +5,7 @@ import { initialWorkspaceView, workspaceView } from './workspace-view';
 export interface GameRoomPresentation {
   visible: boolean;
   floating: boolean;
+  info?: ReactNode;
   onCloseFloating: () => void;
   onUnreadChange: (count: number) => void;
 }
@@ -20,7 +21,9 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
   const [unread, setUnread] = useState(0);
   const launcher = useRef<HTMLButtonElement>(null);
   const id = useId();
-  const active = !enabled && view.active === 'review' ? 'main' : view.active;
+  // Temporarily expose the board tools behind a floating chat opened from the room.
+  const active = (!enabled && view.active === 'review') || (view.floating && view.active === 'room')
+    ? 'main' : view.active;
   const tabs = [
     { id: 'main' as const, label: enabled ? 'Analysis' : 'Moves' },
     ...(enabled ? [{ id: 'review' as const, label: 'Game Review' }] : []),
@@ -42,17 +45,18 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     {gameRoom && <>
       <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
         data-floating={view.floating} hidden={active !== 'room' && !view.floating}>
-        <div className="workspace-room-layout">
+        <div className="workspace-room-layout" data-analysis={enabled}>
           {gameRoom({
             visible: active === 'room' || view.floating,
             floating: view.floating,
+            info: enabled ? undefined : gameInfo,
             onCloseFloating: () => {
               dispatch({ type: 'close-chat' });
               requestAnimationFrame(() => launcher.current?.focus());
             },
             onUnreadChange: setUnread,
           })}
-          <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>
+          {enabled && <div className="workspace-room-info" hidden={view.floating}>{gameInfo}</div>}
         </div>
       </div>
       <button ref={launcher} className="floating-chat-launcher secondary" type="button" aria-label="Open floating chat"
