@@ -132,7 +132,7 @@ describe('display clocks', () => {
     expect(history).toContain('clock-warning');
     expect(history).toContain('<span>00:29</span><span class="clock-hundredths">.45</span>');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.clock-warning[^}]*background: #fff0e9/);
+    expect(css).toMatch(/\.clock-warning[^}]*background: var\(--color-danger-surface\)/);
     expect(css).toMatch(/\.clock-hundredths[^}]*font-size: \.58em/);
   });
 });

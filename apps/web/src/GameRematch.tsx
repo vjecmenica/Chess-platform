@@ -106,7 +106,7 @@ export function GameRematch({ game, csrfToken, revision }: {
   }
   const tc = game.timeControl && 'initialMs' in game.timeControl ? timeControlLabel(game.timeControl.initialMs, game.timeControl.incrementMs) : 'game';
   return <div className="rematch-actions"><button type="button" className="secondary" disabled aria-describedby={'matchmaking-' + game.id}><ActionIcon kind="new" />New {tc}</button><small id={'matchmaking-' + game.id}>Matchmaking coming later</small>
-    <button type="button" className="secondary" disabled={busy || offer?.status === 'pending'} onClick={() => void act('offer')}><ActionIcon kind="rematch" />Rematch</button>
+    <button type="button" className="accent-action" disabled={busy || offer?.status === 'pending'} onClick={() => void act('offer')}><ActionIcon kind="rematch" />Rematch</button>
     {offer?.status === 'pending' && <span className="rematch-status" role="status">{offer.side === game.yourSeat ? 'Rematch offered. Waiting for opponent (up to two minutes).' : <>Opponent offered a rematch. <button type="button" disabled={busy} onClick={() => void act('accept')}>Accept</button><button type="button" disabled={busy} onClick={() => void act('decline')}>Decline</button></>}</span>}
     {offer && offer.status !== 'pending' && <ClosedRematchStatus offer={offer} />}
     {connectionError && <span className="rematch-status" role="status">{connectionError}</span>}

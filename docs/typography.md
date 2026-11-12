@@ -14,8 +14,7 @@ introducing smaller analysis-only or mobile-only overrides:
 
 The scale uses rem units with the browser's default root size (normally 16px), a
 1.5 body line height, and the existing system font. Custom browser font defaults
-are respected. Muted readable text uses `--text-muted`; wood surfaces retain their
-existing high-contrast cream labels. Controls use a compact line height. Mobile
+are respected. Muted readable text uses `--color-text-muted`. Controls use a compact line height. Mobile
 layouts should wrap or reflow rather than reduce body or table text to 10–11px.
 
 Opening Book outcomes show a proportional color bar with separate White/Draw/Black
@@ -32,8 +31,8 @@ engine output scrollable only where their content actually needs it.
 
 Info/Chat/Notes, Moves/Opening Book and Computer Analysis/Move times share
 `.analysis-view-tabs`: use `--tab-height`, `--tab-padding`, and `--tab-gap` rather
-than panel-specific button dimensions. Their active underline and text use wood
-neutrals, with the same inset keyboard-focus outline. Game Info uses 16px player
+than panel-specific button dimensions. Their active underline and focus outline use
+the interface theme's accent and focus colors. Game Info uses 16px player
 names and result scores, 14px values and 13px labels. Missing player ratings use
 an accessible dash; the game's Unrated status is stated once.
 
@@ -45,13 +44,15 @@ and PGN source label; multi-stage controls remain raw metadata.
 
 ## Button hierarchy
 
-Buttons default to a quiet cream surface with a wood-neutral border. Use the explicit
-`primary` class for the main action within a form or task (create/accept challenge,
-authentication, save settings, send, start engine, request analysis). It uses a blue
-surface, white text, a short lower edge, hover/pressed feedback, and a light-blue
-keyboard focus ring. Use `secondary` for cancel, stop, close, retry navigation and
-supporting actions. Use `danger` for resignation and deletion. Move links, tabs,
-board controls and charts keep their own interaction styling and never receive
-`primary`. Disabled primary actions lose their shadow and saturation. Reduced-motion
-preferences disable button translation and transition. Component rules should set
-layout and spacing without overriding semantic button colors.
+Use `primary` for the main action within a form or task, such as creating a
+challenge, signing in, saving settings, or requesting analysis. Use
+`accent-action` for supporting actions such as Rematch, the neutral treatment
+for close and cancel, and `danger` for resignation and deletion. Move links,
+tabs, board controls, and charts have their own interaction states.
+
+Interface colors are defined in `apps/web/src/interface-themes.css`. Use its
+semantic tokens for surfaces, text, borders, controls, and status. Add palettes
+there and add their identifiers to `apps/web/src/interface-theme.ts`. Settings
+applies the selected palette immediately and saves it under
+`chess.interface-theme.v1` in local storage. Board & Pieces has its own saved
+appearance and uses the separate `--appearance-*` variables.

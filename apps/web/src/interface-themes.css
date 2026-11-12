@@ -1,0 +1,177 @@
+/* Interface palettes also scope to the settings swatches. Board appearance uses its own variables. */
+:root,
+[data-theme="classic-chess-club"] {
+  color-scheme: light;
+  --color-page-bg: #f5f2eb;
+  --color-surface: #fffcf6;
+  --color-surface-raised: #f1ece2;
+  --color-input: #fffdf9;
+  --color-text: #282923;
+  --color-text-secondary: #414b41;
+  --color-text-muted: #5d625a;
+  --color-text-disabled: #716b62;
+  --color-border: #ded5c7;
+  --color-border-strong: #8e7d69;
+  --color-accent: #8b6545;
+  --color-accent-text: #755035;
+  --color-link: #355c4a;
+  --color-focus: #916023;
+  --color-primary: #355c4a;
+  --color-primary-hover: #294b3c;
+  --color-danger: #a03932;
+  --color-success: #286247;
+  --color-warning: #77521c;
+  --color-mistake: #9a501e;
+  --color-error: #9c2929;
+  --color-info: #315e80;
+  --color-nav-bg: #30271f;
+  --color-nav-text: #f7efe1;
+  --color-nav-muted: #c6b6a4;
+  --color-nav-hover: #4a3a2e;
+  --color-nav-active: #574331;
+  --color-nav-indicator: #dac4a4;
+  --color-scrollbar-thumb: #958674;
+  --color-scrollbar-hover: #806f5d;
+  --color-scrollbar-track: transparent;
+  --color-chart-clock-white: #2d64a4;
+  --color-chart-clock-black: #04759d;
+  --color-piece-tray: #f1ece2;
+}
+
+[data-theme="old-library-dark"] {
+  color-scheme: dark;
+  --color-page-bg: #211b19;
+  --color-surface: #302722;
+  --color-surface-raised: #3b312b;
+  --color-input: #251f1c;
+  --color-text: #f0e7da;
+  --color-text-secondary: #ddd0c2;
+  --color-text-muted: #bbae9e;
+  --color-text-disabled: #aa9a8d;
+  --color-border: #584b40;
+  --color-border-strong: #8f7d6d;
+  --color-accent: #b58a74;
+  --color-accent-text: #d9ad95;
+  --color-link: #e1b79c;
+  --color-focus: #e6b590;
+  --color-primary: #52735c;
+  --color-primary-hover: #486652;
+  --color-danger: #a43f37;
+  --color-success: #aac9a8;
+  --color-warning: #e8c38c;
+  --color-mistake: #eab090;
+  --color-error: #f6a89c;
+  --color-info: #aecae1;
+  --color-nav-bg: #171310;
+  --color-nav-text: #f0e7da;
+  --color-nav-muted: #bbae9e;
+  --color-nav-hover: #302620;
+  --color-nav-active: #43342c;
+  --color-nav-indicator: #d3a28a;
+  --color-scrollbar-thumb: #857364;
+  --color-scrollbar-hover: #a08b79;
+  --color-scrollbar-track: #27201c;
+  --color-chart-clock-white: #94baff;
+  --color-chart-clock-black: #62c1dd;
+  --color-piece-tray: #9e8d7a;
+}
+
+[data-theme="modern-heritage-dark"] {
+  color-scheme: dark;
+  --color-page-bg: #172629;
+  --color-surface: #243638;
+  --color-surface-raised: #304548;
+  --color-input: #1c2c2f;
+  --color-text: #edf4f1;
+  --color-text-secondary: #d7e5e1;
+  --color-text-muted: #b5c9c5;
+  --color-text-disabled: #9fb3af;
+  --color-border: #496164;
+  --color-border-strong: #7b9391;
+  --color-accent: #79a9a1;
+  --color-accent-text: #a1cec5;
+  --color-link: #a8d9cf;
+  --color-focus: #a6dad3;
+  --color-primary: #376e67;
+  --color-primary-hover: #2d6059;
+  --color-danger: #a43f37;
+  --color-success: #9ed3b5;
+  --color-warning: #e6cb96;
+  --color-mistake: #e6af90;
+  --color-error: #f4a8a0;
+  --color-info: #a6cfeb;
+  --color-nav-bg: #101e21;
+  --color-nav-text: #edf4f1;
+  --color-nav-muted: #a9c0bd;
+  --color-nav-hover: #273c40;
+  --color-nav-active: #365052;
+  --color-nav-indicator: #92beb6;
+  --color-scrollbar-thumb: #6d8485;
+  --color-scrollbar-hover: #839c9b;
+  --color-scrollbar-track: #213336;
+  --color-chart-clock-white: #9ebeff;
+  --color-chart-clock-black: #62c6e4;
+  --color-piece-tray: #8d9d9a;
+}
+
+[data-theme="minimalist-dark"] {
+  color-scheme: dark;
+  --color-page-bg: #1d211f;
+  --color-surface: #2b302d;
+  --color-surface-raised: #363d38;
+  --color-input: #222824;
+  --color-text: #e9ece8;
+  --color-text-secondary: #d6dfd7;
+  --color-text-muted: #abb7ae;
+  --color-text-disabled: #9daaa0;
+  --color-border: #4b564e;
+  --color-border-strong: #838e84;
+  --color-accent: #91a398;
+  --color-accent-text: #bacabe;
+  --color-link: #c4d9ca;
+  --color-focus: #b9d1bd;
+  --color-primary: #526f5c;
+  --color-primary-hover: #455e4e;
+  --color-danger: #a43f37;
+  --color-success: #a8cbad;
+  --color-warning: #e6c899;
+  --color-mistake: #e5ad91;
+  --color-error: #f2a8a1;
+  --color-info: #b5c9df;
+  --color-nav-bg: #151916;
+  --color-nav-text: #e9ece8;
+  --color-nav-muted: #abb7ae;
+  --color-nav-hover: #2c332e;
+  --color-nav-active: #3b453e;
+  --color-nav-indicator: #a8baac;
+  --color-scrollbar-thumb: #6d7b71;
+  --color-scrollbar-hover: #8e9b91;
+  --color-scrollbar-track: #252b27;
+  --color-chart-clock-white: #a4bdff;
+  --color-chart-clock-black: #72bedb;
+  --color-piece-tray: #949c94;
+}
+
+:root {
+  --color-surface-hover: color-mix(in srgb, var(--color-accent) 13%, var(--color-surface));
+  --color-surface-selected: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface));
+  --color-border-subtle: color-mix(in srgb, var(--color-border) 65%, var(--color-surface));
+  --color-nav-border: color-mix(in srgb, var(--color-nav-muted) 70%, var(--color-nav-bg));
+  --color-on-action: #fffaf2;
+  --color-primary-pressed: color-mix(in srgb, var(--color-primary-hover) 84%, #000);
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 80%, #000);
+  --color-danger-surface: color-mix(in srgb, var(--color-error) 12%, var(--color-surface));
+  --color-backdrop: rgb(0 0 0 / .55);
+  --color-shadow: rgb(0 0 0 / .2);
+
+  /* These fills represent the chess sides in both evaluation and time displays. */
+  --evaluation-white: #fff;
+  --evaluation-black: #333b36;
+  --evaluation-white-text: #28231f;
+  --evaluation-black-text: #fffdf8;
+  --color-book-white: #eee6d7;
+  --color-book-draw: #a7a79e;
+  --color-book-black: #496252;
+  --color-review-line: #805322;
+  --color-review-outline: #fff4dd;
+}

@@ -5,7 +5,10 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { AccountPage } from './MyGames';
 import { RecoveryPage, type RecoveryMode } from './AccountRecovery';
+import { initializeInterfaceTheme } from './interface-theme';
 import './style.css';
+
+initializeInterfaceTheme();
 
 const recoveryMode = /^\/account\/(recover|verify-email|reset-password)\/?$/.exec(window.location.pathname)?.[1] as RecoveryMode | undefined;
 // Fragments never reach HTTP logs. Remove the token from browser history before rendering anything.

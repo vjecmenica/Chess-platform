@@ -189,7 +189,7 @@ describe('analysis move list', () => {
     expect(live).not.toContain('<button');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(css).toContain('.move-cell .move-link');
-    expect(css).toMatch(/\.move-link\[aria-current="step"\] \{ background: #e8ddca/);
+    expect(css).toMatch(/\.move-link\[aria-current="step"\] \{ background: var\(--color-surface-selected\)/);
     expect(css).not.toMatch(/\.move-link[^}]*text-decoration:\s*underline/);
   });
 
