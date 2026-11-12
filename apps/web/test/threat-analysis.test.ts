@@ -93,7 +93,7 @@ it('bounds Full Threat to one UCI thread and 8MB Hash, independent of the main e
 });
 it('renders a named, pressed-state crosshair instead of a text Threat button', () => {
   const html = renderToStaticMarkup(createElement(ThreatControl, {fen, gameId:'game', requestKey:'key',
-    available:true, reviewing:false, selected:fullEngine}));
+    available:true, reviewing:false, selected:fullEngine, renderToolbar: toggle => toggle}));
   expect(html).toContain('aria-label="Show threat"');
   expect(html).toContain('aria-pressed="false"');
   expect(html).toContain('<svg'); expect(html).not.toContain('>Threat</button>');

@@ -186,8 +186,19 @@ it('labels Masters as the sole available source and expands examples outside the
   expect(html).toMatch(/disabled=""[^>]*Your personal opening statistics are not available/);
   expect(html).toContain('Site games<small>Coming soon</small>');
   expect(html).toContain('Player<small>Coming soon</small>');
+  expect(html).toMatch(/role="separator" tabindex="0" hidden="" aria-label="Resize Example Games" aria-orientation="horizontal"/);
   expect(html).toMatch(/aria-expanded="true"[^>]*>Example games/);
   expect(html).toContain('Example replay content');
   expect(html.indexOf('Example replay content')).toBeGreaterThan(html.indexOf('book-examples'));
   expect(html.indexOf('Source: licensed TWIC')).toBeGreaterThan(html.indexOf('Example replay content'));
+});
+
+it('keeps examples available without offering a split for empty statistics', () => {
+  const html = renderToStaticMarkup(createElement(ExplorerContent, {
+    result: { kind: 'ok', data: { moves: [], opening: null } },
+    onExplore: () => {}, onRetry: () => {}, examples: createElement('p', null, 'No games available.'),
+  }));
+  expect(html).toContain('No indexed games found for this position.');
+  expect(html).toMatch(/aria-expanded="true"[^>]*>Example games/);
+  expect(html).not.toContain('role="separator"');
 });

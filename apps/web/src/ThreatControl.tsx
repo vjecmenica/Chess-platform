@@ -1,14 +1,15 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createBrowserEngineWorker } from './browser-engine-worker';
 import { engineDescription, liteEngine, type EngineVariant } from './engine-builds';
 import type { EngineBestMove } from './engine-board';
 import { ThreatController, type ThreatState } from './threat-analysis';
 import { browserThreatDevice, threatEnginePlan } from './threat-engine';
 
-export function ThreatControl({ fen, gameId, requestKey, available, reviewing, selected, onMove }: {
+export function ThreatControl({ fen, gameId, requestKey, available, reviewing, selected, onMove, renderToolbar }: {
   fen: string; gameId: string; requestKey: string; available: boolean; reviewing: boolean;
   selected: EngineVariant;
   onMove?: ((move: EngineBestMove | null) => void) | undefined;
+  renderToolbar: (threatToggle: ReactNode) => ReactNode;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [state, setState] = useState<ThreatState>({ kind: 'off' });
@@ -54,13 +55,13 @@ export function ThreatControl({ fen, gameId, requestKey, available, reviewing, s
           : state.kind === 'loading' || state.kind === 'off' ? `Loading Threat · ${label}…`
             : `Threat · ${label}`;
   return <>
-    <button type="button" className="engine-threat-toggle" aria-pressed={enabled}
+    {renderToolbar(<button type="button" className="engine-threat-toggle" aria-pressed={enabled}
       aria-label="Show threat" aria-description="Opponent's move after a hypothetical pass. Unavailable in check."
       onClick={() => { if (!enabled) setFailed(null); setEnabled(value => !value); }}>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"
         aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>
         <path d="M12 2v5m0 10v5M2 12h5m10 0h5"/></svg>
-    </button>
+    </button>)}
     {enabled && <small className="engine-threat-status" role="status">{message}
       {available && !reviewing && plan.reason ? ` · ${plan.reason}` : ''}
     </small>}
