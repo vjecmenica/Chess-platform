@@ -11,8 +11,8 @@ function Icon({ path }: { path: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg>;
 }
 /** Unavailable destinations remain explicitly disabled, with no invented routes. */
-export function AnalysisNavigation({ imported = false, accountControl, section = 'analysis' }: {
-  imported?: boolean; accountControl?: ReactNode; section?: 'play' | 'analysis' | 'account';
+export function AnalysisNavigation({ accountControl, section = 'analysis' }: {
+  accountControl?: ReactNode; section?: 'play' | 'analysis' | 'account';
 }) {
   const [expanded, setExpanded] = useState(false);
   return <header className="analysis-navigation" data-expanded={expanded}>
@@ -29,8 +29,6 @@ export function AnalysisNavigation({ imported = false, accountControl, section =
             : <span key={label} tabIndex={0} aria-disabled="true" aria-label={`${label} (not available yet)`}>{content}</span>;
         })}
       </nav>
-      <a className="open-game" href="/" aria-label={imported ? 'Open another game' : 'Create another challenge'}>
-        <Icon path="M12 4v16M4 12h16"/><span className="rail-tooltip">{imported ? 'Open another game' : 'Create another challenge'}</span></a>
       <div className="rail-account">{accountControl}</div>
     </div>
   </header>;

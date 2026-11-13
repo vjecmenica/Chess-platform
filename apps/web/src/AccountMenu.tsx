@@ -89,7 +89,7 @@ export function AccountMenu({ csrfToken, current = false }: { csrfToken: string 
   }
 
   return <>
-    {state?.account ? <a className="account-trigger secondary" href="/account" aria-current={current ? 'page' : undefined}>{state.account.username}</a> :
+    {state?.account ? <a className="account-trigger secondary player-name" href="/account" aria-current={current ? 'page' : undefined}>{state.account.username}</a> :
       <button className="account-trigger secondary" aria-current={current ? 'page' : undefined} disabled={!csrfToken} onClick={() => {
         dialog.current?.showModal(); void load();
       }}>Account</button>}

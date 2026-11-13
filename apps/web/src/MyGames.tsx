@@ -56,7 +56,7 @@ export function GameArchive({ page }: { page: AccountGames }) {
             aria-label={`White: ${white}. Black: ${black}. ${result}. Opens in a new tab.`}>
             <span className="archive-players">{[['White', white], ['Black', black]].map(([side, name]) =>
               <span className="archive-player" key={side}><span className={`archive-side archive-side-${side!.toLowerCase()}`} aria-hidden="true" />
-                <span className="visually-hidden">{side}: </span><strong>{name}</strong>
+                <span className="visually-hidden">{side}: </span><strong className="player-name">{name}</strong>
                 <span className="archive-rating" title="Site rating unavailable" aria-label="Site rating unavailable">—</span></span>)}</span>
             <span className="archive-control"><span className="visually-hidden">Time control: </span>{game.timeControl ?? 'Unavailable'}</span>
             <span className="archive-result" title={game.result?.reason.replaceAll('_', ' ')}>{result}</span>
@@ -72,7 +72,7 @@ export function AccountProfileHeader({ state, section }: { state: AccountState; 
   return <div className="account-profile-header">
     <div className="account-profile-identity">
       <span className="account-avatar" aria-hidden="true">{state.account!.username.slice(0, 2).toUpperCase()}</span>
-      <div className="account-profile-name"><p>Private account</p><h1>{state.account!.username}</h1>
+      <div className="account-profile-name"><p>Private account</p><h1 className="player-name">{state.account!.username}</h1>
         <p>Joined {state.createdAt ? <time dateTime={state.createdAt}>{new Date(state.createdAt).toLocaleDateString(undefined,
           { dateStyle: 'long' })}</time> : 'Unavailable'}</p></div>
       <a className="account-edit" href="#settings">Edit profile</a>

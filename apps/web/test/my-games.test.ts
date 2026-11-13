@@ -37,8 +37,8 @@ it('renders private results, linked names, guest and unknown-time fallbacks, and
   const html = renderToStaticMarkup(createElement(GameArchive, { page: { ...page,
     games: [game, { ...game, id: 'game-2', side: 'black', opponent: 'linked_player', timeControl: null }] } }));
   expect(html).toContain('href="/challenge/game-1"');
-  expect(html).toContain('<strong>Guest</strong>');
-  expect(html).toContain('<strong>linked_player</strong>');
+  expect(html).toContain('<strong class="player-name">Guest</strong>');
+  expect(html).toContain('<strong class="player-name">linked_player</strong>');
   expect(html).toContain('Unavailable');
   expect(html).toContain('5+3');
   expect(html).toContain('aria-label="Your linked games, newest first"');
@@ -50,7 +50,7 @@ it('puts White above Black and makes each entire row a native new-tab link with 
       games: [{ ...game, side, opponent: 'opponent' }] } }));
     const white = side === 'white' ? 'player' : 'opponent';
     const black = side === 'black' ? 'player' : 'opponent';
-    expect(html.indexOf(`<strong>${white}</strong>`)).toBeLessThan(html.indexOf(`<strong>${black}</strong>`));
+    expect(html.indexOf(`<strong class="player-name">${white}</strong>`)).toBeLessThan(html.indexOf(`<strong class="player-name">${black}</strong>`));
     expect(html).toContain(`aria-label="White: ${white}. Black: ${black}. In progress. Opens in a new tab."`);
     expect(html).toContain('<li><a class="archive-game" href="/challenge/game-1" target="_blank" rel="noopener"');
     expect(html).toContain('</time></a></li>');
@@ -67,7 +67,7 @@ it('uses refreshable section links with one accessible current section and an Ed
     expect(html).toContain(`<a href="#${section}" aria-current="location">`);
     expect(html.match(/aria-current=/g)).toHaveLength(1);
     expect(html).toContain('href="#settings">Edit profile');
-    expect(html).toContain('<h1>player</h1>');
+    expect(html).toContain('<h1 class="player-name">player</h1>');
     expect(html).toContain('dateTime="2026-10-28T10:00:00Z"');
     expect(html).not.toContain('role="tab"');
   }

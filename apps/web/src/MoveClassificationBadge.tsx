@@ -4,13 +4,14 @@ import { moveClassifications, type MoveClassification } from './move-classificat
 export function MoveClassificationBadge({ classification, placement }: {
   classification: MoveClassification; placement: 'list' | 'board';
 }) {
-  const { color, label, path } = moveClassifications[classification];
+  const visual = moveClassifications[classification];
   return <span className={`move-classification move-classification-${placement}`}
-    data-classification={classification} aria-hidden="true" title={placement === 'list' ? label : undefined}
-    style={{ '--move-classification-color': color } as CSSProperties}>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-      strokeLinecap="round" strokeLinejoin="round" focusable="false">
-      <path d={path} />
-    </svg>
+    data-classification={classification} aria-hidden="true" title={placement === 'list' ? visual.label : undefined}
+    style={{ '--move-classification-color': visual.color } as CSSProperties}>
+    {'glyph' in visual ? <span className="move-classification-glyph">{visual.glyph}</span>
+      : <svg viewBox="0 0 24 24" fill={'solid' in visual ? 'currentColor' : 'none'} stroke="currentColor"
+        strokeWidth={'solid' in visual ? '1' : '2.8'} strokeLinecap="round" strokeLinejoin="round" focusable="false">
+        <path d={visual.path} />
+      </svg>}
   </span>;
 }

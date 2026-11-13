@@ -15,8 +15,8 @@ it('labels existing chat messages from their linked seat rather than the viewer 
   const playerNames = { white: 'walnut_white', black: 'cream_black' };
   const render = (sender: 'white' | 'black', names = playerNames) => renderToStaticMarkup(
     createElement(ChatMessage, { item: { ...message('1'), side: sender }, side: 'black', playerNames: names }));
-  expect(render('white')).toContain('<strong aria-label="walnut_white, opponent">walnut_white</strong>');
-  expect(render('black')).toContain('<strong aria-label="cream_black, you">cream_black</strong>');
+  expect(render('white')).toContain('<strong aria-label="walnut_white, opponent"><span class="player-name">walnut_white</span></strong>');
+  expect(render('black')).toContain('<strong aria-label="cream_black, you"><span class="player-name">cream_black</span></strong>');
   const guest = renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'black',
     playerNames: { white: null, black: 'cream_black' } }));
   expect(guest).toContain('Guest (White)');
@@ -35,9 +35,9 @@ it('only follows new messages when the reader is near the bottom', () => {
 });
 it('escapes message markup, disambiguates guest senders, and includes a readable timestamp', () => {
   const html = renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'black' }));
-  expect(html).toContain('<p><strong aria-label="Guest (White), opponent">Guest (White)</strong>: <span>&lt;b&gt;Plain text&lt;/b&gt;</span></p>');
+  expect(html).toContain('<p><strong aria-label="Guest (White), opponent"><span class="player-name">Guest</span> (White)</strong>: <span>&lt;b&gt;Plain text&lt;/b&gt;</span></p>');
   expect(renderToStaticMarkup(createElement(ChatMessage, { item: message('1'), side: 'white' })))
-    .toContain('<strong aria-label="Guest (White), you">Guest (White)</strong>');
+    .toContain('<strong aria-label="Guest (White), you"><span class="player-name">Guest</span> (White)</strong>');
   expect(html).toContain('&lt;b&gt;Plain text&lt;/b&gt;');
   expect(html).not.toContain('<b>Plain text</b>');
   expect(html).toContain('dateTime="2026-10-24T10:00:00Z"');
@@ -46,7 +46,7 @@ it('escapes message markup, disambiguates guest senders, and includes a readable
 it('keeps long message text together with its sender and the timestamp in a separate column', () => {
   const text = `A longer message\n${'UnbrokenText'.repeat(25)}`;
   const html = renderToStaticMarkup(createElement(ChatMessage, { item: { ...message('2'), text }, side: 'white' }));
-  expect(html).toContain(`<p><strong aria-label="Guest (White), you">Guest (White)</strong>: <span>${text}</span></p><time`);
+  expect(html).toContain(`<p><strong aria-label="Guest (White), you"><span class="player-name">Guest</span> (White)</strong>: <span>${text}</span></p><time`);
   expect(html).toContain('class="game-chat-message"');
 });
 it('waits for server permission without flashing a read-only notice, including finished games', () => {
@@ -200,6 +200,6 @@ it('disables only confirmed used phrases for this player, preserving other quick
 it('renders mute and unmute system events as plain italic chronological entries without periods', () => {
   for(const text of ['has muted the chat','has unmuted the chat']) {
     const html=renderToStaticMarkup(createElement(ChatMessage,{item:{...message('10'),kind:'system',text},side:'black',playerNames:{white:'Alice',black:'Bob'}}));
-    expect(html).toContain(`<em>Alice ${text}</em>`);
+    expect(html).toContain(`<em><span class="player-name">Alice</span> ${text}</em>`);
   }
 });

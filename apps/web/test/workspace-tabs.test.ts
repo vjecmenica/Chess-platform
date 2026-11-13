@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import { AnalysisWorkspaceTabs } from '../src/AnalysisWorkspaceTabs';
 import { GameChat } from '../src/GameChat';
+import { PgnGameInfo } from '../src/GameInfo';
 import { initialWorkspaceView, workspaceView } from '../src/workspace-view';
 
 it.each([false, true])('mounts one Game Room with the proper primary tabs (analysis=%s)', enabled => {
@@ -32,11 +33,27 @@ it.each([false, true])('mounts one Game Room with the proper primary tabs (analy
   expect(html).toContain('Open floating chat');
   expect(html).not.toContain('role="tablist"'); // Left/Right remain board-navigation keys.
 });
-it('omits unsupported online room/launcher for imported and blank analysis', () => {
+it('omits Game Room for a blank board', () => {
   const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, { enabled: true, reviewHost: () => {}, children: 'Engine' }));
   expect(html).not.toContain('Game Room');
   expect(html).not.toContain('Open floating chat');
   expect(html).toMatch(/class="workspace-review-pane"[^>]*hidden=""/);
+});
+it('offers imported PGN information in Game Room without mounting chat or notes', () => {
+  const html = renderToStaticMarkup(createElement(AnalysisWorkspaceTabs, {
+    enabled: true, reviewHost: () => {}, children: 'Engine',
+    gameInfo: createElement(PgnGameInfo, { headers: {
+      Annotator: 'Test annotation', Opening: 'Ruy Lopez', WhiteElo: '2400', White: 'Example Player', Result: '1-0',
+    } }),
+  }));
+  expect(html).toContain('>Game Room</button>');
+  expect(html).toContain('data-info-only="true"');
+  expect(html).toContain('<dt>White</dt><dd><strong class="player-name">Example Player</strong></dd>');
+  expect(html).toContain('<dt>WhiteElo</dt><dd>2400</dd>');
+  expect(html).toContain('<dt>Opening</dt><dd>Ruy Lopez</dd>');
+  expect(html).toContain('<dt>Annotator</dt><dd>Test annotation</dd>');
+  expect(html.indexOf('<dt>White</dt>')).toBeLessThan(html.indexOf('<dt>Annotator</dt>'));
+  expect(html).not.toMatch(/game-chat|game-notes|floating-chat-launcher|<dt>Black<\/dt>/);
 });
 it('keeps the primary view when floating chat opens and closes', () => {
   const review = workspaceView(initialWorkspaceView, { type: 'select', tab: 'review' });

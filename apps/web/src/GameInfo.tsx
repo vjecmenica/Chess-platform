@@ -36,7 +36,7 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
     <dl>
       {(['white', 'black'] as const).map(side => <div className="game-info-player" key={side}>
         <dt>{side === 'white' ? 'White' : 'Black'}</dt>
-        <dd><strong>{sitePlayerName(game.playerNames, side)}</strong>{' '}<small><span aria-hidden="true">—</span>
+        <dd><strong className="player-name">{sitePlayerName(game.playerNames, side)}</strong>{' '}<small><span aria-hidden="true">—</span>
           <span className="visually-hidden">Rating unavailable</span></small></dd>
       </div>)}
       <div className="game-info-outcome"><dt>{result || game.status === 'finished' || game.status === 'aborted' ? 'Result' : 'Status'}</dt>
@@ -47,5 +47,22 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
       <div className="game-info-mode"><dt>Rated status</dt><dd>{game.rated === false ? 'Unrated' : 'Unavailable'}</dd></div>
       <div className="game-info-mode"><dt>Variant</dt><dd>{game.siteInfo ? variantLabels[game.siteInfo.variant] : 'Unavailable'}</dd></div>
     </dl>
+  </section>;
+}
+
+const preferredPgnTags = ['White', 'Black', 'Result', 'Event', 'Site', 'Date', 'Round',
+  'WhiteElo', 'BlackElo', 'TimeControl', 'ECO', 'Opening'];
+
+export function PgnGameInfo({ headers }: { headers: Readonly<Record<string, string>> }) {
+  const entries = new Map(Object.entries(headers));
+  const ordered = [...preferredPgnTags.filter(tag => entries.has(tag)),
+    ...[...entries.keys()].filter(tag => !preferredPgnTags.includes(tag))];
+  return <section className="game-info pgn-game-info" aria-label="PGN game information">
+    <h3>Game Info</h3>
+    {ordered.length > 0 ? <dl>{ordered.map(tag =>
+      <div key={tag}>
+        <dt>{tag}</dt>
+        <dd>{tag === 'White' || tag === 'Black' ? <strong className="player-name">{entries.get(tag)}</strong> : entries.get(tag)}</dd>
+      </div>)}</dl> : <p>No PGN headers are available.</p>}
   </section>;
 }

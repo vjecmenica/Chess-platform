@@ -41,7 +41,7 @@ export function reviewForGame(game: GameReadResponse | null, review: GameReview 
     && game.history.length === review.moves.length && review.evaluations.at(-1)?.fen === game.position.fen ? review : null;
 }
 
-export function reviewedDestination(game: GameReadResponse, review: GameReview | null,
+export function reviewedBoardMove(game: GameReadResponse, review: GameReview | null,
   cursor: AnalysisCursor | null, displayedFen: string | null) {
   review = reviewForGame(game, review);
   if (!review || cursor?.kind !== 'main' || cursor.ply < 1) return null;
@@ -49,7 +49,7 @@ export function reviewedDestination(game: GameReadResponse, review: GameReview |
   const move = review.moves[cursor.ply - 1];
   if (!saved || !move || saved.afterFen !== displayedFen
     || review.evaluations[cursor.ply]?.fen !== displayedFen) return null;
-  return { square: saved.to, move };
+  return { from: saved.from, to: saved.to, move };
 }
 
 export function reviewSummary(review: GameReview, side: 'white' | 'black') {

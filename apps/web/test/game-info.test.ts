@@ -14,8 +14,8 @@ const render = (value: GameReadResponse) => renderToStaticMarkup(createElement(G
 
 it('shows actual seat names, honest rating placeholders, time control and supported variant', () => {
   const html = render(game);
-  expect(html).toContain('<dt>White</dt><dd><strong>walnut</strong>');
-  expect(html).toContain('<dt>Black</dt><dd><strong>Guest</strong>');
+  expect(html).toContain('<dt>White</dt><dd><strong class="player-name">walnut</strong>');
+  expect(html).toContain('<dt>Black</dt><dd><strong class="player-name">Guest</strong>');
   expect(html.match(/Rating unavailable/g)).toHaveLength(2);
   expect(html.match(/>Unrated</g)).toHaveLength(1);
   expect(html).toContain('<dt>Rated status</dt><dd>Unrated</dd>');

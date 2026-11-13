@@ -19,7 +19,7 @@ describe('workspace utility presentation', () => {
     'rematch offer expired (no acceptance received).'])('omits only the final system period: %s', text => {
     const item = { id: '1', side: 'white' as const, kind: 'system' as const, text, sentAt: '2026-11-03T12:00:00Z' };
     const html = renderToStaticMarkup(createElement(ChatMessage, { item, side: 'black', playerNames: { white: 'Alice', black: 'Bob' } }));
-    expect(html).toContain(`<em>Alice ${text.slice(0, -1)}</em>`);
+    expect(html).toContain(`<em><span class="player-name">Alice</span> ${text.slice(0, -1)}</em>`);
     expect(item.text).toBe(text);
     const typed = renderToStaticMarkup(createElement(ChatMessage, {
       item: { id: item.id, side: item.side, text, sentAt: item.sentAt }, side: 'black',

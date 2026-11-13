@@ -12,7 +12,7 @@ import { GameRematch } from './GameRematch';
 import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
-import { GameInfo, liveGameStatus } from './GameInfo';
+import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
@@ -52,7 +52,7 @@ import { EvaluationBar } from './EvaluationBar';
 import { createResizePreview } from './board-resize';
 import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
-import { describeReviewedMove, reviewedDestination, reviewForGame, type GameReview } from './game-review';
+import { describeReviewedMove, reviewedBoardMove, reviewForGame, type GameReview } from './game-review';
 import { moveClassifications } from './move-classification';
 import { MoveClassificationBadge } from './MoveClassificationBadge';
 import { FinishedResultArea } from './FinishedResultArea';
@@ -1026,7 +1026,7 @@ export function App() {
     analysisOpen ? analysis : null);
   const completedReview = analysisOpen ? reviewForGame(game, gameReview) : null;
   const reviewHighlight = game && completedReview
-    ? reviewedDestination(game, completedReview, analysis?.cursor ?? null, displayedFen) : null;
+    ? reviewedBoardMove(game, completedReview, analysis?.cursor ?? null, displayedFen) : null;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
@@ -1162,7 +1162,7 @@ export function App() {
 
   const liveStatus = game ? liveGameStatus(game, liveBrowsingHistory) : null;
   if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <>
-    <AnalysisNavigation imported accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
+    <AnalysisNavigation accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <main className="challenge-page">
       <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
       {error && <a href={window.location.href}>Retry</a>}
@@ -1171,7 +1171,7 @@ export function App() {
 
   return (
     <>
-    <AnalysisNavigation imported={imported !== null} section={analysisOpen ? 'analysis' : 'play'}
+    <AnalysisNavigation section={analysisOpen ? 'analysis' : 'play'}
       accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
@@ -1279,14 +1279,18 @@ export function App() {
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
                     const ghost = planned !== null && planned !== piece ? planned : null;
-                    const reviewed = reviewHighlight?.square === square ? reviewHighlight.move : null;
+                    const reviewSquare = reviewHighlight?.to === square ? 'destination'
+                      : reviewHighlight?.from === square ? 'origin' : undefined;
+                    const reviewed = reviewSquare ? reviewHighlight?.move : undefined;
+                    const badge = reviewSquare === 'destination' ? reviewed : undefined;
+                    const ordinaryHighlight = !reviewHighlight && (lastMove?.from === square || lastMove?.to === square);
                     return <button key={square} type="button"
-                      className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${annotationFrom === square && analysisOpen ? 'annotation-origin' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
+                      className={`square ${dark ? 'dark' : 'light'} ${ordinaryHighlight ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${annotationFrom === square && analysisOpen ? 'annotation-origin' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
                       data-square={square}
-                      data-reviewed-destination={reviewed ? '' : undefined}
+                      data-reviewed-square={reviewSquare}
                       style={reviewed ? { '--move-classification-color': moveClassifications[reviewed.classification].color } as CSSProperties : undefined}
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}${marks.has(square) ? ', marked' : ''}`}
-                      aria-description={reviewed ? describeReviewedMove(reviewed) : undefined}
+                      aria-description={badge ? describeReviewedMove(badge) : undefined}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
                       onPointerDown={event => {
@@ -1328,7 +1332,7 @@ export function App() {
                       {piece !== null && <img className="piece" src={pieceImage(piece, appearance.pieceSet)} alt="" draggable={false} />}
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost, appearance.pieceSet)} alt=""
                         aria-hidden="true" draggable={false} />}
-                      {reviewed && <MoveClassificationBadge classification={reviewed.classification} placement="board" />}
+                      {badge && <MoveClassificationBadge classification={badge.classification} placement="board" />}
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
                     && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
@@ -1440,11 +1444,6 @@ export function App() {
                     setAnnotationFrom(null);
                     setSelected(null); setPromotion(null); setAnalysisError(null);
                   }} /> : liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
-                {imported !== null && !game.id.startsWith('blank-') && <details className="pgn-details">
-                  <summary>PGN details</summary>
-                  <dl>{Object.entries(imported.headers).map(([key, value]) =>
-                    <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>
-                </details>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
@@ -1498,7 +1497,9 @@ export function App() {
                 </div>}
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div> : null}
-              gameInfo={<GameInfo game={game} />}
+              gameInfo={imported !== null
+                ? !game.id.startsWith('blank-') && <PgnGameInfo headers={imported.headers} />
+                : session !== null && <GameInfo game={game} />}
               gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
                 side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
                 playerNames={game.playerNames} /> : undefined}>

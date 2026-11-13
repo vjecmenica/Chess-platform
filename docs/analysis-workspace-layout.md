@@ -18,7 +18,8 @@ tool row does not change the automatic board size.
 
 - Play: Moves / Game Room.
 - Analysis: Analysis / Game Review / Game Room.
-- Imported and blank analysis: Analysis / Game Review, without online Game Room.
+- Imported games, including Opening Book examples: Analysis / Game Review / Game Room with PGN information.
+- Blank analysis: Analysis / Game Review.
 
 Every primary pane stays mounted. The Analysis pane retains EnginePanel and
 Moves/Opening Book. Game Review retains its stable portal host; EnginePanel still

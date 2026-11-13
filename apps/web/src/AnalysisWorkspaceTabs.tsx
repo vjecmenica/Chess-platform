@@ -21,6 +21,7 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
   const [unread, setUnread] = useState(0);
   const launcher = useRef<HTMLButtonElement>(null);
   const id = useId();
+  const hasRoom = Boolean(gameRoom || gameInfo);
   const active = !enabled && view.active === 'review' ? 'main' : view.active;
   const inRoom = active === 'room';
   function closeFloating() {
@@ -30,7 +31,7 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
   const tabs = [
     { id: 'main' as const, label: enabled ? 'Analysis' : 'Moves' },
     ...(enabled ? [{ id: 'review' as const, label: 'Game Review' }] : []),
-    ...(gameRoom ? [{ id: 'room' as const, label: 'Game Room' }] : []),
+    ...(hasRoom ? [{ id: 'room' as const, label: 'Game Room' }] : []),
   ];
   return <div className="workspace-tabs-shell">
     <div className="workspace-tabs analysis-view-tabs" role="group" aria-label={enabled ? 'Analysis workspace' : 'Game workspace'}>
@@ -45,20 +46,22 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
       aria-labelledby={`${id}-review-button`} hidden={active !== 'review'}>
       <div ref={reviewHost} className="review-host" />
     </div>}
-    {gameRoom && <>
+    {hasRoom && (
       <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
         data-overlay-only={!inRoom && view.floating} hidden={!inRoom && !view.floating}>
-        <div className="workspace-room-layout" data-analysis={enabled}>
-          {gameRoom({
+        <div className="workspace-room-layout" data-analysis={enabled} data-info-only={!gameRoom}>
+          {gameRoom?.({
             visible: inRoom,
             floating: view.floating,
             info: enabled ? undefined : gameInfo,
             onCloseFloating: closeFloating,
             onUnreadChange: setUnread,
           })}
-          {enabled && <div className="workspace-room-info" hidden={!inRoom && view.floating}>{gameInfo}</div>}
+          {(enabled || !gameRoom) && <div className="workspace-room-info" hidden={!inRoom && view.floating}>{gameInfo}</div>}
         </div>
       </div>
+    )}
+    {gameRoom && (
       <button ref={launcher} className="floating-chat-launcher secondary" type="button"
         aria-label={view.floating ? 'Close floating chat' : 'Open floating chat'} aria-expanded={view.floating}
         onClick={() => dispatch({ type: 'toggle-chat' })}>
@@ -66,7 +69,7 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
           <path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8M8 12h5"/></svg>
         <ChatUnreadBadge count={unread} />
       </button>
-    </>}
+    )}
     {footer && <footer className="workspace-footer" aria-label="Game status and actions">{footer}</footer>}
   </div>;
 }

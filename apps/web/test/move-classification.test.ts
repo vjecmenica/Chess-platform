@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import { createPositionFromFen } from '@chess/domain';
 import { boardRows } from '../src/board-model';
 import type { EngineEvaluation } from '../src/engine-analysis';
-import { buildGameReview, describeReviewedMove, reviewedDestination, reviewPositions } from '../src/game-review';
+import { buildGameReview, describeReviewedMove, reviewedBoardMove, reviewPositions } from '../src/game-review';
 import { moveClassifications } from '../src/move-classification';
 import { MoveClassificationBadge } from '../src/MoveClassificationBadge';
 import { importPgn } from '../src/pgn-import';
@@ -54,40 +54,42 @@ it('keeps the CPL or neutral mate result when the Best evidence is missing or in
   expect(() => first({ ...best, fen: end })).toThrow('saved main line');
 });
 
-it('resolves only the displayed, reviewed main-line destination of this finished game', () => {
+it('resolves both squares of the displayed, reviewed main-line move of this finished game', () => {
   const fens = reviewPositions(game);
   const review = buildGameReview(game, fens.map((fen, index) =>
     score(fen, index === 0 ? 'e2e4' : null)));
   const first = { kind: 'main', ply: 1 } as const;
-  const destination = reviewedDestination(game, review, first, fens[1]!);
-  expect(destination).toEqual({ square: 'e4', move: review.moves[0] });
-  expect(reviewedDestination(game, review, { kind: 'main', ply: 2 }, fens[2]!)?.square).toBe('e5');
+  const highlighted = reviewedBoardMove(game, review, first, fens[1]!);
+  expect(highlighted).toEqual({ from: 'e2', to: 'e4', move: review.moves[0] });
+  expect(reviewedBoardMove(game, review, { kind: 'main', ply: 2 }, fens[2]!)).toMatchObject({ from: 'e7', to: 'e5' });
   for (const orientation of ['white', 'black'] as const) {
-    const squares = boardRows(fens[1]!, orientation).flat().filter(square => square.square === destination?.square);
-    expect(squares).toMatchObject([{ square: 'e4', piece: 'P' }]);
+    const squares = boardRows(fens[1]!, orientation).flat().filter(({ square }) => square === highlighted?.to || square === highlighted?.from);
+    expect(squares).toEqual(expect.arrayContaining([
+      expect.objectContaining({ square: 'e2', piece: null }), expect.objectContaining({ square: 'e4', piece: 'P' }),
+    ]));
   }
-  expect(reviewedDestination(game, review, { kind: 'main', ply: 0 }, fens[0]!)).toBeNull();
-  expect(reviewedDestination(game, review, { kind: 'branch', id: 1 }, fens[1]!)).toBeNull();
-  expect(reviewedDestination(game, review, first, fens[2]!)).toBeNull();
-  expect(reviewedDestination({ ...game, id: 'another-game' }, review, first, fens[1]!)).toBeNull();
-  expect(reviewedDestination({ ...game, status: 'active' }, review, first, fens[1]!)).toBeNull();
-  expect(reviewedDestination(game, null, first, fens[1]!)).toBeNull();
+  expect(reviewedBoardMove(game, review, { kind: 'main', ply: 0 }, fens[0]!)).toBeNull();
+  expect(reviewedBoardMove(game, review, { kind: 'branch', id: 1 }, fens[1]!)).toBeNull();
+  expect(reviewedBoardMove(game, review, first, fens[2]!)).toBeNull();
+  expect(reviewedBoardMove({ ...game, id: 'another-game' }, review, first, fens[1]!)).toBeNull();
+  expect(reviewedBoardMove({ ...game, status: 'active' }, review, first, fens[1]!)).toBeNull();
+  expect(reviewedBoardMove(game, null, first, fens[1]!)).toBeNull();
   const replacement = buildGameReview(game, fens.map((fen, index) => score(fen, null, index === 1 ? 300 : 0)));
-  expect(reviewedDestination(game, replacement, first, fens[1]!)?.move.classification).toBe('blunder');
-  expect(describeReviewedMove(destination!.move)).toBe('Engine: Best move, 0 centipawn loss');
+  expect(reviewedBoardMove(game, replacement, first, fens[1]!)?.move.classification).toBe('blunder');
+  expect(describeReviewedMove(highlighted!.move)).toBe('Engine: Best move, 0 centipawn loss');
 });
 
 it('shares unique theme-independent colors and symbols between board and list badges', () => {
   const visuals = Object.entries(moveClassifications);
   expect(new Set(visuals.map(([, visual]) => visual.color)).size).toBe(visuals.length);
-  expect(new Set(visuals.map(([, visual]) => visual.path)).size).toBe(visuals.length);
+  expect(new Set(visuals.map(([, visual]) => 'glyph' in visual ? visual.glyph : visual.path)).size).toBe(visuals.length);
   for (const classification of Object.keys(moveClassifications) as (keyof typeof moveClassifications)[]) {
     const visual = moveClassifications[classification];
     for (const placement of ['board', 'list'] as const) {
       const html = renderToStaticMarkup(createElement(MoveClassificationBadge, { classification, placement }));
       expect(html).toContain(`data-classification="${classification}"`);
       expect(html).toContain(`--move-classification-color:${visual.color}`);
-      expect(html).toContain(`d="${visual.path}"`);
+      expect(html).toContain('glyph' in visual ? `>${visual.glyph}</span>` : `d="${visual.path}"`);
     }
   }
 });

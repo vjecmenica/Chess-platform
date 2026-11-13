@@ -39,8 +39,8 @@ export function ExplorerGameList({ data, page, fen, onPage }: {
     <div className="explorer-game-list">{data?.games.map(game => <a className="secondary explorer-game"
       key={game.id} href={explorerAnalysisUrl(game.id, fen, game.ply)} target="_blank" rel="noopener noreferrer"
       aria-label={`Open ${game.white_name ?? 'Unknown White'} versus ${game.black_name ?? 'Unknown Black'} in Analysis, new tab`}>
-      <span className="explorer-game-heading">{game.white_name ?? 'Unknown White'}
-        {' — '}{game.black_name ?? 'Unknown Black'} · <span className="explorer-game-result">{game.result}</span>
+      <span className="explorer-game-heading"><span className="player-name">{game.white_name ?? 'Unknown White'}</span>
+        {' — '}<span className="player-name">{game.black_name ?? 'Unknown Black'}</span> · <span className="explorer-game-result">{game.result}</span>
         {' · '}{game.game_date ?? 'Date unavailable'}</span>
       <small>{game.event ?? 'Event unavailable'} · Round {game.round ?? 'unavailable'}
         {game.eco ? ` · ${game.eco}` : ''}</small>

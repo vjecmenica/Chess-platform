@@ -25,10 +25,12 @@ export function QuickChatPresets({ disabled, used = [], onSend }: { disabled: bo
 export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage; side: GameSide;
   playerNames?: GamePlayerNames | undefined }) {
   const name = sitePlayerName(playerNames, item.side);
-  const label = playerNames?.[item.side] ? name : `${name} (${item.side === 'white' ? 'White' : 'Black'})`;
-  if (item.kind === 'system') return <li className="game-chat-system"><em>{label} {item.text.replace(/\.$/, '')}</em><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></li>;
+  const seat = playerNames?.[item.side] ? '' : ` (${item.side === 'white' ? 'White' : 'Black'})`;
+  const label = `${name}${seat}`;
+  const sender = <><span className="player-name">{name}</span>{seat}</>;
+  if (item.kind === 'system') return <li className="game-chat-system"><em>{sender} {item.text.replace(/\.$/, '')}</em><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></li>;
   return <li className="game-chat-message">
-    <p><strong aria-label={`${label}, ${item.side === side ? 'you' : 'opponent'}`}>{label}</strong>{': '}<span>{item.text}</span></p>
+    <p><strong aria-label={`${label}, ${item.side === side ? 'you' : 'opponent'}`}>{sender}</strong>{': '}<span>{item.text}</span></p>
     <time dateTime={item.sentAt} title={new Date(item.sentAt).toLocaleString()}>
       {new Date(item.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
   </li>;
