@@ -75,9 +75,9 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
   const menuEntry = useCallback((move: MoveView, x: number, y: number, trigger: HTMLElement) =>
     actions.current.openMenu(move, x, y, trigger), []);
 
-  return <nav className={`moves${tree !== null ? ' analysis-moves'
-    : interactive ? ' saved-replay-moves' : ' live-moves'}`}
-    aria-label={interactive ? 'Saved moves and local variations' : 'Confirmed move list'}>
+  const live = game.status !== 'finished' && tree === null;
+  return <nav className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
+    aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
     <h3>Moves</h3>
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
       selection={selection} interactive={interactive} editable={tree !== null} review={review} bookMoves={bookMoves}

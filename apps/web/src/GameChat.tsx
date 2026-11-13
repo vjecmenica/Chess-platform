@@ -34,9 +34,9 @@ export function ChatMessage({ item, side, playerNames }: { item: GameChatMessage
   </li>;
 }
 
-export function ChatComposer({ gameId, state, text, sending, retrying, usedPresets = [], onSend, onText }: {
+export function ChatComposer({ gameId, state, text, sending, retrying, usedPresets = [], announce = true, onSend, onText }: {
   gameId: string; state: ReturnType<typeof chatComposerState>; text: string; sending: boolean; retrying: boolean;
-  usedPresets?: readonly GameChatPreset[];
+  usedPresets?: readonly GameChatPreset[]; announce?: boolean;
   onSend: (preset?: string) => void; onText: (text: string) => void;
 }) {
   const composing = useRef(false);
@@ -53,24 +53,63 @@ export function ChatComposer({ gameId, state, text, sending, retrying, usedPrese
           event.preventDefault(); onSend();
         }
       }} />
-    <small id={`chat-send-status-${gameId}`} className={sending || retrying ? 'game-chat-send-status' : 'visually-hidden'} role="status">
+    <small id={`chat-send-status-${gameId}`} className={sending || retrying ? 'game-chat-send-status' : 'visually-hidden'} role={announce ? 'status' : undefined}>
       {sending ? 'Sending…' : retrying ? 'Delivery uncertain. Press Enter in the input to retry the same message.' : 'Press Enter to send.'}</small>
     <QuickChatPresets used={usedPresets} disabled={sending || retrying || state !== 'allowed'} onSend={onSend} />
   </form>;
 }
 
+function ChatConversation({ id, active, announce, muted, messages, loaded, error, sendError, side, playerNames, refresh, children }: {
+  id: string; active: boolean; announce: boolean; muted: boolean; messages: readonly GameChatMessage[];
+  loaded: boolean; error: string | null; sendError: string | null; side: GameSide;
+  playerNames: GamePlayerNames | undefined; refresh: () => Promise<void>; children: ReactNode;
+}) {
+  const list = useRef<HTMLOListElement>(null);
+  const [pausedAt, setPausedAt] = useState<string | null>(null);
+  const latest = messages.at(-1)?.id ?? '0';
+  useLayoutEffect(() => {
+    if (muted) setPausedAt(null);
+    if (active && !muted && pausedAt === null && list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [active, messages, muted, pausedAt]);
+
+  return <>
+    {muted && <div className="game-chat-muted-notice" role={announce ? 'status' : undefined}><em>You muted the chat</em></div>}
+    <div className="game-chat-conversation" id={`chat-conversation-${id}`} data-muted={muted} inert={muted} aria-hidden={muted}>
+      <ol className="game-chat-messages" aria-label="Game chat messages" role={announce ? 'log' : undefined}
+        aria-live={announce ? 'polite' : undefined} aria-relevant={announce ? 'additions' : undefined}
+        tabIndex={0} ref={list} onScroll={event => {
+          const nearBottom = nearChatBottom(event.currentTarget);
+          setPausedAt(current => nearBottom ? null : current ?? latest);
+        }}>
+        {!loaded && !error && <li className="game-chat-empty">Loading chat…</li>}
+        {loaded && messages.length === 0 && <li className="game-chat-empty">No messages yet.</li>}
+        {messages.map(item => <ChatMessage key={item.id} item={item} side={side} playerNames={playerNames} />)}
+      </ol>
+      {pausedAt !== null && pausedAt !== latest && <button className="secondary" type="button" onClick={() => setPausedAt(null)}>
+        New messages ↓</button>}
+      {error && <div className="game-chat-error"><p role={announce ? 'alert' : undefined}>{error}</p>
+        <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
+      {sendError && <small className="game-chat-error" role={announce ? 'alert' : undefined}>{sendError}</small>}
+      {children}
+    </div>
+  </>;
+}
+
 export function GameChat({ gameId, side, gameStatus, csrfToken, revision, playerNames, visible = true, floating = false, info, onCloseFloating, onUnreadChange }: Props) {
   const [activePanel, setActivePanel] = useState<'info' | 'chat' | 'notes'>('chat');
-  const effectivePanel = floating || (activePanel === 'info' && !info) ? 'chat' : activePanel;
+  const panel = activePanel === 'info' && !info ? 'chat' : activePanel;
+  const dockedChatVisible = visible && panel === 'chat';
+  const chatVisible = floating || dockedChatVisible;
+  const floatingId = `${gameId}-floating`;
   const closeFloating = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (floating) {
-      const input = document.getElementById(`chat-${gameId}`);
+      const input = document.getElementById(`chat-${floatingId}`);
       input?.focus();
       // Muted/loading conversations have no focusable composer.
       if (!input || document.activeElement !== input) closeFloating.current?.focus();
     }
-  }, [floating, gameId]);
+  }, [floating, floatingId]);
   const [unreadChat, setUnreadChat] = useState(0);
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const messagesRef = useRef(messages);
@@ -87,7 +126,6 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const statusRef = useRef(gameStatus);
   statusRef.current = gameStatus;
   const composerState = chatComposerState(permission, gameStatus);
-  const [newMessages, setNewMessages] = useState(false);
   const storageKey = chatMuteKey(gameId, side);
   const [mute, setMute] = useState(() => {
     try { return { muted: localStorage.getItem(storageKey) === 'true', version: -1 }; } catch { return { muted: false, version: -1 }; }
@@ -97,10 +135,8 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   const mutePending = useRef<{ requestId: string; muted: boolean } | null>(null);
   const mutePosting = useRef(false);
   const [muteError, setMuteError] = useState<string | null>(null);
-  const view = useRef({ activePanel: effectivePanel, visible });
-  view.current = { activePanel: effectivePanel, visible };
-  const list = useRef<HTMLOListElement>(null);
-  const following = useRef(true);
+  const chatVisibleRef = useRef(chatVisible);
+  chatVisibleRef.current = chatVisible;
   const pending = useRef<{ requestId: string; text: string; preset: boolean } | null>(null);
   const posting = useRef(false);
   const mounted = useRef(false);
@@ -123,16 +159,14 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
   }, [storageKey]);
   const receive = useCallback((incoming: readonly GameChatMessage[], suppressUnread = false) => {
     const muted = muteRef.current.muted || suppressUnread;
-    if (!view.current.visible || view.current.activePanel !== 'chat' || muted) {
+    if (!chatVisibleRef.current || muted) {
       const added = unreadEntries(messagesRef.current, incoming, side, readThrough.current, muted);
       setUnreadChat(count => muted ? 0 : count + added);
     }
     const next = mergeChatMessages(messagesRef.current, incoming);
-    const changed = next.at(-1)?.id !== messagesRef.current.at(-1)?.id;
     messagesRef.current = next;
     setMessages(next);
     if (muted) markRead(next.at(-1)?.id);
-    if (!muted && changed && !following.current) setNewMessages(true);
   }, [side, markRead]);
   const receiveHistory = useCallback((history: GameChatHistory) => {
     const nextMute = syncChatMute(muteRef.current, { muted: history.muted, version: history.muteVersion });
@@ -175,12 +209,9 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       document.removeEventListener('visibilitychange', onVisible); };
   }, [refresh]);
   useEffect(() => { void refresh(); }, [revision, gameStatus, refresh]);
-  useLayoutEffect(() => {
-    if (following.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, mute.muted, effectivePanel, visible, floating]);
   useEffect(() => {
-    if (mute.muted || visible && effectivePanel === 'chat') { setUnreadChat(0); markRead(messages.at(-1)?.id); }
-  }, [mute.muted, visible, effectivePanel, messages, markRead]);
+    if (mute.muted || chatVisible) { setUnreadChat(0); markRead(messages.at(-1)?.id); }
+  }, [mute.muted, chatVisible, messages, markRead]);
 
   useEffect(() => { onUnreadChange?.(mute.muted ? 0 : unreadChat); }, [mute.muted, unreadChat, onUnreadChange]);
 
@@ -196,7 +227,7 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
       mutePending.current = null;
       if (!mounted.current) return;
       receiveHistory(history);
-      setUnreadChat(0); setNewMessages(false); markRead(history.messages.at(-1)?.id);
+      setUnreadChat(0); markRead(history.messages.at(-1)?.id);
     } catch (cause) {
       if (typeof cause === 'object' && cause !== null && 'definitive' in cause && cause.definitive) mutePending.current = null;
       if (mounted.current) setMuteError('Chat preference could not be confirmed. Use the bell to retry.');
@@ -233,60 +264,61 @@ export function GameChat({ gameId, side, gameStatus, csrfToken, revision, player
     }
   }
 
-  const tabs = <div hidden={floating} className="analysis-view-tabs" role="group" aria-label={info ? 'Game Room views' : 'Chat and private notes'}>
-    {info && <button type="button" aria-pressed={effectivePanel === 'info'} onClick={() => setActivePanel('info')}>Info</button>}
-    <button type="button" aria-pressed={effectivePanel === 'chat'}
-      aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>Chat
-      <ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
-    <button type="button" aria-pressed={effectivePanel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
-  </div>;
-  return <aside className="game-chat" data-muted={mute.muted} data-floating={floating}
-    onKeyDown={event => { if (floating && event.key === 'Escape') { event.stopPropagation(); onCloseFloating?.(); } }}
-    aria-label={floating ? 'Floating game chat' : 'Game chat and private notes'}>
-    <div className="game-chat-header">{tabs}{floating && <strong>Chat</strong>}
-      <div className="game-chat-header-actions">
-      <button className="chat-mute" type="button" onClick={() => { void toggleMute(); }} aria-pressed={mute.muted}
+  function muteButton(id: string) {
+    return <button className="chat-mute" type="button" onClick={() => { void toggleMute(); }} aria-pressed={mute.muted}
         aria-label={mute.muted ? 'Unmute chat' : 'Mute chat'} aria-busy={mutating} disabled={mutating || !loaded}
-        aria-controls={`chat-conversation-${gameId}`}>
+        aria-controls={`chat-conversation-${id}`}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
           strokeLinejoin="round" aria-hidden="true" focusable="false">
           <path d="M18 8a6 6 0 0 0-12 0c0 6-3 6-3 9h18c0-3-3-3-3-9M10 21h4" />
           {mute.muted && <path d="m3 3 18 18" />}
         </svg>
-      </button>
-      {floating && <button ref={closeFloating} className="chat-close secondary" type="button" aria-label="Close floating chat" onClick={onCloseFloating}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
-      </button>}</div></div>
-    {muteError && <small className="game-chat-error" role="alert">{muteError}</small>}
-    <div className="game-chat-content" id={`chat-content-${gameId}`}>
-    {info && <div className="game-chat-info" tabIndex={0} hidden={effectivePanel !== 'info'}>{info}</div>}
-    <div className="game-notes-tab" hidden={effectivePanel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
-      active={visible && effectivePanel === 'notes'} /></div>
-    <div className="game-chat-tab" hidden={effectivePanel !== 'chat'}>
-      {mute.muted && <div className="game-chat-muted-notice" role="status"><em>You muted the chat</em>
-        </div>}
-      <div className="game-chat-conversation" id={`chat-conversation-${gameId}`} data-muted={mute.muted}
-        inert={mute.muted} aria-hidden={mute.muted}>
-      <ol className="game-chat-messages" aria-label="Game chat messages" role="log" aria-live="polite"
-        aria-relevant="additions" tabIndex={0} ref={list} onScroll={event => {
-          following.current = nearChatBottom(event.currentTarget);
-          if (following.current) setNewMessages(false);
-        }}>
-        {!loaded && !error && <li className="game-chat-empty">Loading chat…</li>}
-        {loaded && messages.length === 0 && <li className="game-chat-empty">No messages yet.</li>}
-        {messages.map(item => <ChatMessage key={item.id} item={item} side={side} playerNames={playerNames} />)}
-      </ol>
-      {newMessages && <button className="secondary" type="button" onClick={() => {
-        following.current = true; setNewMessages(false);
-        if (list.current) list.current.scrollTop = list.current.scrollHeight;
-      }}>New messages ↓</button>}
-      {error && <div className="game-chat-error"><p role="alert">{error}</p>
-        <button className="secondary" type="button" onClick={() => { void refresh(); }}>Reconnect chat</button></div>}
-      {sendError && <small className="game-chat-error" role="alert">{sendError}</small>}
-      <ChatComposer gameId={gameId} state={composerState} text={pending.current?.text ?? text} usedPresets={usedPresets} sending={sending} retrying={pending.current !== null}
+      </button>;
+  }
+
+  function conversation(id: string, active: boolean, announce: boolean) {
+    return <ChatConversation id={id} active={active} announce={announce} muted={mute.muted} messages={messages}
+      loaded={loaded} error={error} sendError={sendError} side={side} playerNames={playerNames} refresh={refresh}>
+      <ChatComposer gameId={id} state={composerState} text={pending.current?.text ?? text} usedPresets={usedPresets}
+        sending={sending} retrying={pending.current !== null} announce={announce}
         onSend={preset => { void send(preset); }} onText={value => { if (!pending.current) setText(value); }} />
+    </ChatConversation>;
+  }
+
+  return <>
+    <aside className="game-chat" data-muted={mute.muted} data-floating={false} hidden={!visible}
+      aria-label="Game chat and private notes">
+      <div className="game-chat-header">
+        <div className="analysis-view-tabs" role="group" aria-label={info ? 'Game Room views' : 'Chat and private notes'}>
+          {info && <button type="button" aria-pressed={panel === 'info'} onClick={() => setActivePanel('info')}>Info</button>}
+          <button type="button" aria-pressed={panel === 'chat'}
+            aria-label={!mute.muted && unreadChat > 0 ? `Chat, ${unreadChat} unread entries` : 'Chat'} onClick={() => setActivePanel('chat')}>
+            Chat<ChatUnreadBadge count={mute.muted ? 0 : unreadChat} /></button>
+          <button type="button" aria-pressed={panel === 'notes'} onClick={() => setActivePanel('notes')}>Notes</button>
+        </div>
+        <div className="game-chat-header-actions">{muteButton(gameId)}</div>
       </div>
-    </div>
-    </div>
-  </aside>;
+      {muteError && <small className="game-chat-error" role={floating ? undefined : 'alert'}>{muteError}</small>}
+      <div className="game-chat-content">
+        {info && <div className="game-chat-info" tabIndex={0} hidden={panel !== 'info'}>{info}</div>}
+        <div className="game-notes-tab" hidden={panel !== 'notes'}><GameNotes gameId={gameId} csrfToken={csrfToken}
+          active={visible && panel === 'notes'} /></div>
+        <div className="game-chat-tab" hidden={panel !== 'chat'}>
+          {conversation(gameId, dockedChatVisible, !floating)}
+        </div>
+      </div>
+    </aside>
+    {floating && <aside className="game-chat" data-muted={mute.muted} data-floating={true} aria-label="Floating game chat"
+      onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onCloseFloating?.(); } }}>
+      <div className="game-chat-header"><strong>Chat</strong>
+        <div className="game-chat-header-actions">{muteButton(floatingId)}
+          <button ref={closeFloating} className="chat-close secondary" type="button" aria-label="Close floating chat" onClick={onCloseFloating}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      {muteError && <small className="game-chat-error" role="alert">{muteError}</small>}
+      <div className="game-chat-content"><div className="game-chat-tab">{conversation(floatingId, true, true)}</div></div>
+    </aside>}
+  </>;
 }

@@ -45,13 +45,11 @@ it('keeps the primary view when floating chat opens and closes', () => {
   expect(workspaceView(floating, { type: 'close-chat' })).toEqual(review);
   expect(workspaceView(floating, { type: 'select', tab: 'main' })).toEqual({ active: 'main', floating: true });
 });
-it('docks the same chat on selecting Game Room', () => {
+it('allows Game Room selection independently of the floating chat', () => {
   const floating = workspaceView(initialWorkspaceView, { type: 'float' });
   const room = workspaceView(floating, { type: 'select', tab: 'room' });
-  expect(room).toEqual({ active: 'room', floating: false });
-  const floatedFromRoom = workspaceView(room, { type: 'float' });
-  expect(floatedFromRoom).toEqual({ active: 'room', floating: true });
-  expect(workspaceView(floatedFromRoom, { type: 'close-chat' })).toEqual(room);
+  expect(room).toEqual({ active: 'room', floating: true });
+  expect(workspaceView(room, { type: 'close-chat' })).toEqual({ active: 'room', floating: false });
 });
 it.each([
   { enabled: false, tab: 'main', label: 'Moves' },
@@ -78,15 +76,21 @@ it.each([
     }
   };
   const overlay = render(floating);
+  const closed = render(workspaceView(floating, { type: 'close-chat' }));
   expect(overlay).toContain(`aria-pressed="true">${label}`);
   expect(overlay.match(/id="chat-conversation-test-game"/g)).toHaveLength(1);
+  expect(overlay.match(/id="chat-conversation-test-game-floating"/g)).toHaveLength(1);
+  expect(overlay.match(/id="notes-test-game"/g)).toHaveLength(1);
+  expect(overlay.match(/role="log"/g)).toHaveLength(1);
+  expect(overlay).not.toContain('Return chat to Game Room');
   expect(overlay).toContain(`data-overlay-only="${tab !== 'room'}"`);
   if (tab === 'room') {
     expect(overlay).toMatch(/class="workspace-(analysis|play)-pane"[^>]*hidden=""/);
-    expect(overlay).toContain('Return chat to Game Room');
+    const docked = (html: string) => html.match(/<aside[^>]*data-floating="false"[\s\S]*?<\/aside>/)?.[0]
+      ?.replace(' role="log" aria-live="polite" aria-relevant="additions"', '');
+    expect(docked(overlay)).toBe(docked(closed));
     if (enabled) expect(overlay).toContain('<div class="workspace-room-info"><p>Game facts</p></div>');
   }
-  const closed = render(workspaceView(floating, { type: 'close-chat' }));
   expect(closed).toContain(`aria-pressed="true">${label}`);
   expect(closed).not.toContain('Close floating chat');
 });
@@ -98,13 +102,14 @@ it.each([false, true])('renders game actions once in a footer outside the switch
   expect(html.match(/Accept draw/g)).toHaveLength(1);
   expect(html).not.toContain('View game actions');
 });
-it('floating presentation retains one conversation and Notes, with accessible close and mute controls', () => {
+it('gives each chat presentation a separate accessible mute target and renders one Notes editor', () => {
   const html = renderToStaticMarkup(createElement(GameChat, { gameId: 'game', side: 'black', gameStatus: 'finished',
     csrfToken: 'test', revision: 0, floating: true }));
   expect(html).toContain('data-floating="true"');
   expect(html.match(/id="chat-conversation-game"/g)).toHaveLength(1);
   expect(html).toContain('aria-label="Close floating chat"');
   expect(html).toContain('aria-label="Mute chat"');
-  expect(html).toContain('id="notes-game"');
-  expect(html).toMatch(/hidden="" class="analysis-view-tabs"/);
+  expect(html).toContain('aria-controls="chat-conversation-game-floating"');
+  expect(html.match(/id="notes-game"/g)).toHaveLength(1);
+  expect(html).toContain('aria-pressed="true" aria-label="Chat">Chat');
 });

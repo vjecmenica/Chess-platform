@@ -6,7 +6,7 @@ export const initialWorkspaceView: WorkspaceView = { active: 'main', floating: f
 /** Presentation only: no game, engine, chat or notes state lives in this reducer. */
 export function workspaceView(state: WorkspaceView, action: WorkspaceViewAction): WorkspaceView {
   switch (action.type) {
-    case 'select': return { active: action.tab, floating: action.tab === 'room' ? false : state.floating };
+    case 'select': return { ...state, active: action.tab };
     case 'float': return { ...state, floating: true };
     case 'close-chat': return { ...state, floating: false };
   }

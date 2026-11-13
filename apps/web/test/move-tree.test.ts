@@ -209,11 +209,12 @@ describe('analysis move list', () => {
     expect(game.history.map(move => move.san)).toEqual(['e4', 'e5']);
   });
 
-  it('renders a live move list as noninteractive paired text', () => {
-    const html = markup({ ...savedGame(), status: 'active', result: null }, null, false);
-    expect(html).toContain('>e4</span>');
-    expect(html).toContain('>e5</span>');
-    expect(html).not.toContain('<button');
-    expect(html).not.toContain('aria-current');
+  it('renders live confirmed moves as replay buttons without editing controls', () => {
+    const html = markup({ ...savedGame(), status: 'active', result: null }, null);
+    expect(html).toContain('aria-label="Confirmed move list"');
+    expect(html).toMatch(/<button[^>]*aria-label="1\. e4"[^>]*><span class="move-content">e4<\/span><\/button>/);
+    expect(html).toMatch(/<button[^>]*aria-current="step"[^>]*aria-label="1\.\.\. e5"/);
+    expect(html).not.toContain('Shift+F10');
+    expect(html).not.toContain('Add comment');
   });
 });

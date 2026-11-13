@@ -12,6 +12,7 @@ import { GameRematch } from './GameRematch';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
 import { GameInfo, liveGameStatus } from './GameInfo';
+import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
 import { MastersPanel } from './MastersPanel';
@@ -949,7 +950,7 @@ export function App() {
       if (analysis !== null) setAnalysis(selectBranch(analysis, cursor.id));
     } else if (analysisOpen && analysis !== null && game !== null) {
       setAnalysis(selectMain(analysis, game, cursor.ply));
-    } else setSelectedReplayPly(cursor.ply);
+    } else setSelectedReplayPly(game?.status === 'active' && cursor.ply === game.history.length ? null : cursor.ply);
     setSelected(null);
     setAnnotationFrom(null);
     setAnalysisError(null);
@@ -1035,8 +1036,6 @@ export function App() {
   const moveHints = useMemo(() => showHints && selected !== null && displayedFen !== null
     && hintSide !== null ? legalMoveHints(displayedFen, hintSide, selected) : new Map<Square, boolean>(),
   [showHints, selected, displayedFen, hintSide]);
-  const offerNextPly = game?.drawOfferNextEligiblePly[game.yourSeat] ?? 2;
-  const offerPliesRemaining = game === null ? 0 : Math.max(0, offerNextPly - game.history.length);
   const selectedEvaluation = displayedFen === null || !analysisOpen ? null
     : positionEvaluation?.fen === displayedFen ? positionEvaluation
       : gameReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
@@ -1460,12 +1459,9 @@ export function App() {
                       <button type="button" className="secondary" disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => beginAction('decline_draw')}>Decline</button>
                     </div>}
-                    {game.drawOffer === null && game.claimDrawOffer === null
-                      && game.history.length >= 2 && (offerPliesRemaining === 0
-                      ? <button type="button" className="secondary"
-                        disabled={submitting || pending !== null || pendingAction !== null}
-                        onClick={() => beginAction('offer_draw')}>Offer draw</button>
-                      : <p className="draw-offer" role="status">You can offer another draw after {offerPliesRemaining} more half-move{offerPliesRemaining === 1 ? '' : 's'}.</p>)}
+                    {game.drawOffer === null && game.claimDrawOffer === null && <DrawOfferControl ply={game.history.length}
+                      nextEligiblePly={game.drawOfferNextEligiblePly[game.yourSeat] ?? 2}
+                      busy={submitting || pending !== null || pendingAction !== null} onOffer={() => beginAction('offer_draw')} />}
                     {availableClaimForPlayer(game) !== null && <button type="button" className="secondary"
                       disabled={submitting || pending !== null || pendingAction !== null}
                       onClick={beginClaim}>Claim draw</button>}
@@ -1556,7 +1552,7 @@ export function App() {
                 </div>}
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <div className="analysis-pane">
-                <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying}
+                <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying || game.status === 'active'}
                   review={analysisOpen ? gameReview : null}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}

@@ -35,13 +35,11 @@ and very short viewports use natural page flow.
 Play's Game Room switches between Info, Chat, and Notes. Analysis lets Chat/Notes
 fill the space above the Game Info summary. Long conversations scroll inside the
 chat history, and short viewports can scroll the room independently of the footer.
-Game Room mounts one GameChat with the existing Notes editor.
-The floating launcher changes that same mounted component's CSS presentation;
-there is no second chat controller, history, composer, poll timer or subscription.
-Opening the overlay preserves the selected views. When it opens from Game Room,
-the room reserves the chat's space and offers a return control. Selecting Game Room
-docks the conversation. Escape or Close docks it and focuses the launcher.
-Drafts, history, mute and quick-chat state survive.
+Game Room mounts one GameChat controller with the existing Notes editor.
+The launcher opens a second chat view with its own scroll position. Both chat
+views share the same history, draft, mute state, quick-chat state, and poll timer.
+The docked view and selected tabs stay in place while the overlay is open.
+Escape or Close dismisses the overlay and focuses the launcher.
 Notes remain mounted and use their existing inactive-view/blur autosave behavior.
 
 Unread counts follow actual chat visibility: hidden Game Room keeps receiving
