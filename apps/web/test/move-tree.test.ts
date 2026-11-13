@@ -49,20 +49,21 @@ describe('analysis move list', () => {
     expect(html).toContain('PGN $1');
     expect(html).toContain('Prepared opening choice');
     expect(html).toContain('Engine: Inaccuracy, 100 centipawn loss');
-    expect(html).toContain('engine-glyph engine-inaccuracy');
-    expect(html).toContain('engine-glyph engine-mistake');
-    expect(html).toContain('engine-glyph engine-blunder');
-    expect((html.match(/engine-glyph/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('data-classification="inaccuracy"');
+    expect(html).toContain('data-classification="mistake"');
+    expect(html).toContain('data-classification="blunder"');
+    expect((html.match(/move-classification-list/g) ?? [])).toHaveLength(3);
     expect(html).toContain('1. d4');
     expect(game.history.map(move => move.san)).toEqual(['e4', 'e5', 'Nf3']);
     const quiet = buildGameReview(game, fens.map(fen => ({ fen, depth: 14,
       score: { kind: 'cp' as const, value: 0 }, bestMove: null, variation: [] })));
-    expect(markup(game, tree, true, quiet)).not.toContain('engine-glyph');
-    expect(markup(game, tree, true, quiet)).not.toContain('Engine: Strong');
+    expect(markup(game, tree, true, quiet)).toContain('data-classification="excellent"');
+    expect(markup(game, tree, true, quiet)).toContain('Engine: Excellent, 0 centipawn loss');
+    expect(markup({ ...game, status: 'active' }, null, true, quiet)).not.toContain('data-classification');
     const mate = buildGameReview(game, quiet.evaluations.map((evaluation, index) => index === 1
       ? { ...evaluation, score: { kind: 'mate' as const, value: 1 } } : evaluation));
     expect(markup(game, tree, true, mate)).toContain('Engine: Mate score, no numeric centipawn loss');
-    expect(markup(game, tree, true, mate)).toContain('>Mate eval</span>');
+    expect(markup(game, tree, true, mate)).toContain('data-classification="mate"');
   });
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);

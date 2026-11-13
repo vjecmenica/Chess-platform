@@ -193,6 +193,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .board .square { touch-action: none; }
 .board .square.last-move::before { content: ''; position: absolute; inset: 0;
   background: rgba(214, 190, 78, .42); box-shadow:var(--appearance-last-move-outline,none); pointer-events: none; }
+.board .square[data-reviewed-destination]::before { content: ''; position: absolute; inset: 0;
+  background: color-mix(in srgb, var(--move-classification-color) 40%, transparent);
+  box-shadow: inset 0 0 0 1px var(--move-classification-color); pointer-events: none; }
 .board .square.legal-destination::after { content: ''; position: absolute; width: 22%; aspect-ratio: 1;
   border-radius: 50%; background: rgba(93, 64, 36, .52); box-shadow:var(--appearance-hint-shadow,none); pointer-events: none; }
 .board .square.legal-capture::after { content: ''; position: absolute; inset: 5%;
@@ -475,11 +478,13 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .inline-number { flex: none; color: var(--color-text-muted); font-size: var(--text-caption); margin-left: 3px; }
 .nag-symbol { margin-left: 2px; color: var(--color-accent-text); font-size: var(--text-caption); white-space: nowrap;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.engine-glyph { margin-left: 3px; font-size: var(--text-caption); font-weight: 750; white-space: nowrap; }
-.engine-inaccuracy { color: var(--color-warning); }
-.engine-mistake { color: var(--color-mistake); }
-.engine-blunder { color: var(--color-error); }
-.engine-mate-score { color: var(--color-text-muted); }
+.move-classification { display: inline-grid; place-items: center; aspect-ratio: 1;
+  border-radius: 50%; border: 1px solid #161313; color: #161313;
+  background: var(--move-classification-color); }
+.move-classification svg { display: block; width: 78%; height: 78%; }
+.move-classification-list { width: 18px; margin-inline-start: 5px; vertical-align: middle; }
+.move-classification-board { position: absolute; inset: 3% 3% auto auto; width: 36%; max-width: 28px;
+  z-index: 3; box-shadow: 0 0 0 1px #fff8; pointer-events: none; }
 .move-comment { display: block; flex-basis: 100%; font-size: var(--text-compact); font-weight: 400; color: var(--color-text-muted); overflow-wrap: anywhere; }
 .move-link { font-size: var(--text-body); display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 32px; min-width: 32px; padding: 4px 7px; border: 0; border-radius: 3px; background: transparent; color: var(--color-link); font-weight: 600; text-align: left; white-space: normal; }
 .move-pair-row .move-text,

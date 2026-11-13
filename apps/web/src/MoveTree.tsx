@@ -5,7 +5,8 @@ import { MoveSelection } from './move-selection';
 import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
-import { reviewBadge, type GameReview } from './game-review';
+import { describeReviewedMove, reviewForGame, type GameReview } from './game-review';
+import { MoveClassificationBadge } from './MoveClassificationBadge';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -80,7 +81,7 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
     <h3>Moves</h3>
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
-      selection={selection} interactive={interactive} editable={tree !== null} review={review} bookMoves={bookMoves}
+      selection={selection} interactive={interactive} editable={tree !== null} review={reviewForGame(game, review)} bookMoves={bookMoves}
       selectEntry={selectEntry} menuEntry={menuEntry} />}
     {menu !== null && tree !== null && <div className="analysis-menu" ref={menuRef} role="dialog"
       aria-label={`Options for ${menu.move.notation}`}
@@ -217,7 +218,6 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
   const snapshot = useCallback(() => selection.snapshot(key), [selection, key]);
   const flags = useSyncExternalStore(subscribe, snapshot, snapshot);
   const nag = nagDetails(move.note?.nag);
-  const badge = reviewed && reviewBadge(reviewed.label);
   const number = compact && (move.ply % 2 === 1 || lineStart)
     ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
   if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
@@ -226,8 +226,7 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
     <button type="button" className="move-link" aria-current={(flags & 1) ? 'step' : undefined}
       aria-label={[move.notation,
         ...(nag ? [`${nag.description}, PGN $${nag.value}`] : []),
-        ...(badge ? [`Engine: ${reviewed!.label}, ${reviewed!.lossCp === null
-          ? 'no numeric centipawn loss' : `${reviewed!.lossCp} centipawn loss`}`] : []),
+        ...(reviewed ? [describeReviewedMove(reviewed)] : []),
         ...(book ? ['Book move, confirmed by the opening explorer'] : [])].join(', ')}
       aria-description={move.note?.comment}
       aria-keyshortcuts={!editable ? undefined : 'Shift+F10'}
@@ -256,8 +255,7 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
         suppressTouchSelection.current = null; return;
       }
         onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
-        {badge && <span className={`engine-glyph engine-${reviewed!.label.toLowerCase().replace(' ', '-')}`}
-          aria-hidden="true">{badge}</span>}
+        {reviewed && <MoveClassificationBadge classification={reviewed.classification} placement="list" />}
     {book && <span className="book-badge">Book</span>}</span>
     {move.note?.comment && <span className="move-comment">
       {move.note.comment}</span>}</button>

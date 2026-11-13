@@ -9,7 +9,7 @@ import { ReviewGraph, reviewAdvantageSegments, reviewGraphX, reviewGraphY,
 import { EngineCache, type EngineEvaluation, type EngineWorker } from '../src/engine-analysis';
 import { engineCacheIdentity, engineDescription, fullEngine } from '../src/engine-builds';
 import { buildGameReview, GameReviewRunner, graphCentipawns, moveLabel, nextReviewedMovePly,
-  reviewBadge, reviewMethodVersion, reviewPositions, reviewSummary,
+  reviewMethodVersion, reviewPositions, reviewSummary,
   type ReviewProgress } from '../src/game-review';
 
 function gameWithMoves(): GameReadResponse {
@@ -125,10 +125,10 @@ describe('browser-local full-game review', () => {
     const base = buildGameReview(gameWithMoves(), reviewPositions(gameWithMoves())
       .map(fen => evaluation(fen, 0)));
     const review = { ...base, moves: [
-      { ply: 1, side: 'white' as const, san: 'e4', lossCp: 90, label: 'Inaccuracy' as const },
-      { ply: 2, side: 'black' as const, san: 'e5', lossCp: 300, label: 'Blunder' as const },
-      { ply: 3, side: 'white' as const, san: 'Nf3', lossCp: 150, label: 'Mistake' as const },
-      { ply: 5, side: 'white' as const, san: 'Bc4', lossCp: 80, label: 'Inaccuracy' as const },
+      { ply: 1, side: 'white' as const, san: 'e4', lossCp: 90, label: 'Inaccuracy' as const, classification: 'inaccuracy' as const },
+      { ply: 2, side: 'black' as const, san: 'e5', lossCp: 300, label: 'Blunder' as const, classification: 'blunder' as const },
+      { ply: 3, side: 'white' as const, san: 'Nf3', lossCp: 150, label: 'Mistake' as const, classification: 'mistake' as const },
+      { ply: 5, side: 'white' as const, san: 'Bc4', lossCp: 80, label: 'Inaccuracy' as const, classification: 'inaccuracy' as const },
     ] };
     expect(nextReviewedMovePly(review, 'white', 'Inaccuracy', null)).toBe(1);
     expect(nextReviewedMovePly(review, 'white', 'Inaccuracy', 1)).toBe(5);
@@ -147,9 +147,7 @@ describe('browser-local full-game review', () => {
       blunder: 0, averageLossCp: 100 });
     expect(reviewSummary(review, 'black')).toEqual({ inaccuracy: 0, mistake: 1,
       blunder: 0, averageLossCp: 200 });
-    expect(['Strong', 'Good', 'Inaccuracy', 'Mistake', 'Blunder', 'Mate score']
-      .map(label => reviewBadge(label as typeof review.moves[number]['label'])))
-      .toEqual([null, null, '?!', '?', '??', 'Mate eval']);
+    expect(review.moves.map(move => move.classification)).toEqual(['inaccuracy', 'mistake']);
     const mate = buildGameReview(game, [evaluation(fens[0]!, 100),
       { ...evaluation(fens[1]!, 0), score: { kind: 'mate', value: 1 } },
       evaluation(fens[2]!, 200)]);

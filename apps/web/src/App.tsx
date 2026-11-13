@@ -52,7 +52,9 @@ import { EvaluationBar } from './EvaluationBar';
 import { createResizePreview } from './board-resize';
 import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
-import type { GameReview } from './game-review';
+import { describeReviewedMove, reviewedDestination, reviewForGame, type GameReview } from './game-review';
+import { moveClassifications } from './move-classification';
+import { MoveClassificationBadge } from './MoveClassificationBadge';
 import { FinishedResultArea } from './FinishedResultArea';
 import { importParsedPgn, importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
@@ -1022,6 +1024,9 @@ export function App() {
       : historicalClockMs(game?.history ?? [], displayedPly, side, importedInitialMs, true);
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
+  const completedReview = analysisOpen ? reviewForGame(game, gameReview) : null;
+  const reviewHighlight = game && completedReview
+    ? reviewedDestination(game, completedReview, analysis?.cursor ?? null, displayedFen) : null;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
@@ -1039,7 +1044,7 @@ export function App() {
   [showHints, selected, displayedFen, hintSide]);
   const selectedEvaluation = displayedFen === null || !analysisOpen ? null
     : positionEvaluation?.fen === displayedFen ? positionEvaluation
-      : gameReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
+      : completedReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
 
   useEffect(() => {
     if (game?.status !== 'active' && game?.status !== 'finished') return;
@@ -1274,10 +1279,14 @@ export function App() {
                   {rows.flat().map(({ square, piece, dark }) => {
                     const planned = premovePieces?.get(square) ?? null;
                     const ghost = planned !== null && planned !== piece ? planned : null;
+                    const reviewed = reviewHighlight?.square === square ? reviewHighlight.move : null;
                     return <button key={square} type="button"
                       className={`square ${dark ? 'dark' : 'light'} ${lastMove?.from === square || lastMove?.to === square ? 'last-move' : ''} ${selected === square ? 'selected' : ''} ${annotationFrom === square && analysisOpen ? 'annotation-origin' : ''} ${moveHints.has(square) ? moveHints.get(square) ? 'legal-capture' : 'legal-destination' : ''} ${drag?.from === square ? 'drag-origin' : ''} ${premoves.some(move => move.to === square) ? 'premove-target' : ''}`}
                       data-square={square}
+                      data-reviewed-destination={reviewed ? '' : undefined}
+                      style={reviewed ? { '--move-classification-color': moveClassifications[reviewed.classification].color } as CSSProperties : undefined}
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}${marks.has(square) ? ', marked' : ''}`}
+                      aria-description={reviewed ? describeReviewedMove(reviewed) : undefined}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
                       onPointerDown={event => {
@@ -1319,6 +1328,7 @@ export function App() {
                       {piece !== null && <img className="piece" src={pieceImage(piece, appearance.pieceSet)} alt="" draggable={false} />}
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost, appearance.pieceSet)} alt=""
                         aria-hidden="true" draggable={false} />}
+                      {reviewed && <MoveClassificationBadge classification={reviewed.classification} placement="board" />}
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
                     && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
@@ -1550,7 +1560,7 @@ export function App() {
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <div className="analysis-pane">
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying || game.status === 'active'}
-                  review={analysisOpen ? gameReview : null}
+                  review={completedReview}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}

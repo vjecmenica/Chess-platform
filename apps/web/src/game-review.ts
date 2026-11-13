@@ -1,8 +1,11 @@
-import type { GameReadResponse } from '@chess/contracts';
+import type { GameReadResponse, SavedMove } from '@chess/contracts';
+import type { AnalysisCursor } from './analysis-model';
 import { replayFen } from './board-model';
 import { calculateGameAccuracy, type GameAccuracy } from './game-accuracy';
 import { EngineCache, EngineController, type EngineEvaluation, type EngineState,
   type EngineWorker } from './engine-analysis';
+import { engineVariation } from './engine-variation';
+import { moveClassifications, type MoveClassification } from './move-classification';
 
 export const reviewMethodVersion = 'local-cpl-v1';
 export const reviewPauseMs = 150;
@@ -13,24 +16,40 @@ export interface ReviewedMove {
   readonly side: 'white' | 'black';
   readonly lossCp: number | null;
   readonly label: 'Strong' | 'Good' | 'Inaccuracy' | 'Mistake' | 'Blunder' | 'Mate score';
+  readonly classification: MoveClassification;
 }
 
 export interface GameReview {
+  readonly gameId: string;
   readonly method: typeof reviewMethodVersion;
   readonly evaluations: readonly EngineEvaluation[];
   readonly moves: readonly ReviewedMove[];
   readonly accuracy: GameAccuracy;
 }
 
-export function reviewBadge(label: ReviewedMove['label']): string | null {
-  switch (label) {
-    case 'Strong': return null;
-    case 'Good': return null;
-    case 'Inaccuracy': return '?!';
-    case 'Mistake': return '?';
-    case 'Blunder': return '??';
-    case 'Mate score': return 'Mate eval';
-  }
+const cplClassifications = {
+  Strong: 'excellent', Good: 'good', Inaccuracy: 'inaccuracy', Mistake: 'mistake', Blunder: 'blunder', 'Mate score': 'mate',
+} as const satisfies Record<ReviewedMove['label'], MoveClassification>;
+
+export function describeReviewedMove(move: ReviewedMove): string {
+  const label = moveClassifications[move.classification].label;
+  return `Engine: ${label}, ${move.lossCp === null ? 'no numeric centipawn loss' : `${move.lossCp} centipawn loss`}`;
+}
+
+export function reviewForGame(game: GameReadResponse | null, review: GameReview | null | undefined): GameReview | null {
+  return review && game?.status === 'finished' && game.id === review.gameId
+    && game.history.length === review.moves.length && review.evaluations.at(-1)?.fen === game.position.fen ? review : null;
+}
+
+export function reviewedDestination(game: GameReadResponse, review: GameReview | null,
+  cursor: AnalysisCursor | null, displayedFen: string | null) {
+  review = reviewForGame(game, review);
+  if (!review || cursor?.kind !== 'main' || cursor.ply < 1) return null;
+  const saved = game.history[cursor.ply - 1];
+  const move = review.moves[cursor.ply - 1];
+  if (!saved || !move || saved.afterFen !== displayedFen
+    || review.evaluations[cursor.ply]?.fen !== displayedFen) return null;
+  return { square: saved.to, move };
 }
 
 export function reviewSummary(review: GameReview, side: 'white' | 'black') {
@@ -80,6 +99,15 @@ export function moveLabel(lossCp: number): Exclude<ReviewedMove['label'], 'Mate 
   return 'Blunder';
 }
 
+function matchesBestMove(move: SavedMove, before: EngineEvaluation): boolean {
+  const played = `${move.from}${move.to}${move.promotion ?? ''}`;
+  const topLine = before.lines?.find(line => line.rank === 1)?.variation[0];
+  if (before.bestMove !== played || (before.variation[0] && before.variation[0] !== played)
+    || (topLine && topLine !== played)) return false;
+  // Validate standard UCI against the saved position, including king destination for castling.
+  return engineVariation(move.beforeFen, [played])[0]?.fen === move.afterFen;
+}
+
 export function buildGameReview(game: GameReadResponse,
   evaluations: readonly EngineEvaluation[]): GameReview {
   const fens = reviewPositions(game);
@@ -91,10 +119,13 @@ export function buildGameReview(game: GameReadResponse,
     const after = whiteCentipawns(evaluations[index + 1]!);
     const lossCp = before === null || after === null ? null
       : Math.max(0, (move.side === 'white' ? 1 : -1) * (before - after));
-    return { ply: move.ply, san: move.san, side: move.side, lossCp,
-      label: lossCp === null ? 'Mate score' : moveLabel(lossCp) };
+    const label = lossCp === null ? 'Mate score' : moveLabel(lossCp);
+    // Only distinguish an engine match inside the existing Strong band.
+    const classification = label === 'Strong' && matchesBestMove(move, evaluations[index]!)
+      ? 'best' : cplClassifications[label];
+    return { ply: move.ply, san: move.san, side: move.side, lossCp, label, classification };
   });
-  return { method: reviewMethodVersion, evaluations, moves,
+  return { gameId: game.id, method: reviewMethodVersion, evaluations, moves,
     accuracy: calculateGameAccuracy(evaluations, moves.map(move => move.side)) };
 }
 
