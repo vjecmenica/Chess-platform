@@ -40,13 +40,14 @@ it('omits unsupported online room/launcher for imported and blank analysis', () 
 });
 it('keeps the primary view when floating chat opens and closes', () => {
   const review = workspaceView(initialWorkspaceView, { type: 'select', tab: 'review' });
-  const floating = workspaceView(review, { type: 'float' });
+  const floating = workspaceView(review, { type: 'toggle-chat' });
   expect(floating).toEqual({ active: 'review', floating: true });
   expect(workspaceView(floating, { type: 'close-chat' })).toEqual(review);
+  expect(workspaceView(floating, { type: 'toggle-chat' })).toEqual(review);
   expect(workspaceView(floating, { type: 'select', tab: 'main' })).toEqual({ active: 'main', floating: true });
 });
 it('allows Game Room selection independently of the floating chat', () => {
-  const floating = workspaceView(initialWorkspaceView, { type: 'float' });
+  const floating = workspaceView(initialWorkspaceView, { type: 'toggle-chat' });
   const room = workspaceView(floating, { type: 'select', tab: 'room' });
   expect(room).toEqual({ active: 'room', floating: true });
   expect(workspaceView(room, { type: 'close-chat' })).toEqual({ active: 'room', floating: false });
@@ -60,7 +61,7 @@ it.each([
 ] as const)('keeps $label selected while chat floats (analysis=$enabled)', ({ enabled, tab, label }) => {
   const original = { ...initialWorkspaceView };
   const selected = workspaceView(original, { type: 'select', tab });
-  const floating = workspaceView(selected, { type: 'float' });
+  const floating = workspaceView(selected, { type: 'toggle-chat' });
   const render = (view: typeof original) => {
     // Seed the reducer to exercise the real pane and pressed-button rendering.
     Object.assign(initialWorkspaceView, view);
@@ -78,6 +79,7 @@ it.each([
   const overlay = render(floating);
   const closed = render(workspaceView(floating, { type: 'close-chat' }));
   expect(overlay).toContain(`aria-pressed="true">${label}`);
+  expect(overlay).toContain('class="floating-chat-launcher secondary" type="button" aria-label="Close floating chat" aria-expanded="true">');
   expect(overlay.match(/id="chat-conversation-test-game"/g)).toHaveLength(1);
   expect(overlay.match(/id="chat-conversation-test-game-floating"/g)).toHaveLength(1);
   expect(overlay.match(/id="notes-test-game"/g)).toHaveLength(1);
@@ -92,6 +94,7 @@ it.each([
     if (enabled) expect(overlay).toContain('<div class="workspace-room-info"><p>Game facts</p></div>');
   }
   expect(closed).toContain(`aria-pressed="true">${label}`);
+  expect(closed).toContain('class="floating-chat-launcher secondary" type="button" aria-label="Open floating chat" aria-expanded="false">');
   expect(closed).not.toContain('Close floating chat');
 });
 it.each([false, true])('renders game actions once in a footer outside the switchable panes (analysis=%s)', enabled => {

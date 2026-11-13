@@ -1,6 +1,7 @@
 import { loadGuestSession } from './guest-session-client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { accountMessages } from './AccountMenu';
+import { AnalysisNavigation } from './AnalysisNavigation';
 
 export type RecoveryMode = 'recover' | 'verify-email' | 'reset-password';
 export function RecoveryForm({ mode, busy, onSubmit }: { mode: RecoveryMode; busy: boolean;
@@ -47,9 +48,7 @@ export function RecoveryPage({ mode, token }: { mode: RecoveryMode; token: strin
     finally { setBusy(false); }
   }
   return <>
-    <header className="analysis-navigation"><div className="analysis-navigation-inner">
-      <a className="analysis-brand" href="/" aria-label="Chess Platform home">♞</a><nav aria-label="Main navigation"><a href="/">Play</a><a href="/account">Account</a></nav>
-    </div></header>
+    <AnalysisNavigation section="account" accountControl={<a className="account-trigger secondary" href="/account">Account</a>} />
     <main className="recovery-page"><h1>{mode === 'verify-email' ? 'Verify recovery email' : 'Reset password'}</h1>
       {!validLink ? <p role="alert">This link is missing or invalid. Open the complete link from your email.</p> : done
         ? <p role="status">{done}</p> : <RecoveryForm mode={mode} busy={busy || !csrf} onSubmit={event => void submit(event)} />}

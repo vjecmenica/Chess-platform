@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { ActionIcon } from './ActionIcon';
 
 export function DrawOfferControl({ ply, nextEligiblePly, busy, onOffer }: {
   ply: number; nextEligiblePly: number; busy: boolean; onOffer: () => void;
@@ -30,7 +31,7 @@ export function DrawOfferControl({ ply, nextEligiblePly, busy, onOffer }: {
   }, [positioned, reason]);
 
   const button = <button type="button" className="secondary" disabled={busy || reason !== null}
-    aria-describedby={reason ? id : undefined} onClick={onOffer}>Offer draw</button>;
+    aria-describedby={reason ? id : undefined} onClick={onOffer}><ActionIcon kind="draw" />Offer draw</button>;
   if (!reason) return button;
   return <span ref={anchor} className="draw-offer-control" role="group" aria-label="Offer draw"
     aria-describedby={id} tabIndex={0} onFocus={positionTooltip} onPointerEnter={positionTooltip}

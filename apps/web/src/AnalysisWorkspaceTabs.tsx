@@ -59,8 +59,9 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
           {enabled && <div className="workspace-room-info" hidden={!inRoom && view.floating}>{gameInfo}</div>}
         </div>
       </div>
-      <button ref={launcher} className="floating-chat-launcher secondary" type="button" aria-label="Open floating chat"
-        aria-expanded={view.floating} hidden={view.floating} onClick={() => dispatch({ type: 'float' })}>
+      <button ref={launcher} className="floating-chat-launcher secondary" type="button"
+        aria-label={view.floating ? 'Close floating chat' : 'Open floating chat'} aria-expanded={view.floating}
+        onClick={() => dispatch({ type: 'toggle-chat' })}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8M8 12h5"/></svg>
         <ChatUnreadBadge count={unread} />

@@ -42,7 +42,7 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
+export function AccountMenu({ csrfToken, current = false }: { csrfToken: string | undefined; current?: boolean }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -89,8 +89,8 @@ export function AccountMenu({ csrfToken }: { csrfToken: string | undefined }) {
   }
 
   return <>
-    {state?.account ? <a className="account-trigger secondary" href="/account">{state.account.username}</a> :
-      <button className="account-trigger secondary" disabled={!csrfToken} onClick={() => {
+    {state?.account ? <a className="account-trigger secondary" href="/account" aria-current={current ? 'page' : undefined}>{state.account.username}</a> :
+      <button className="account-trigger secondary" aria-current={current ? 'page' : undefined} disabled={!csrfToken} onClick={() => {
         dialog.current?.showModal(); void load();
       }}>Account</button>}
     <dialog ref={dialog} className="account-dialog" aria-labelledby="account-heading">

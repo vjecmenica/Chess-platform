@@ -9,6 +9,7 @@ import { AnalysisWorkspaceTabs } from './AnalysisWorkspaceTabs';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { AccountMenu } from './AccountMenu';
 import { GameRematch } from './GameRematch';
+import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
 import { GameInfo, liveGameStatus } from './GameInfo';
@@ -1154,25 +1155,21 @@ export function App() {
     event.stopPropagation();
   }
 
-  const showGameNavigation = analysisOpen || imported === null && challenge?.status === 'accepted';
   const liveStatus = game ? liveGameStatus(game, liveBrowsingHistory) : null;
-  if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <main className="challenge-page">
+  if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <>
     <AnalysisNavigation imported accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
-    <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
-    {error && <a href={window.location.href}>Retry</a>}
-  </main>;
+    <main className="challenge-page">
+      <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
+      {error && <a href={window.location.href}>Retry</a>}
+    </main>
+  </>;
 
   return (
     <>
-    {showGameNavigation && <AnalysisNavigation imported={imported !== null} section={analysisOpen ? 'analysis' : 'play'}
-      accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />}
+    <AnalysisNavigation imported={imported !== null} section={analysisOpen ? 'analysis' : 'play'}
+      accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
-      {!showGameNavigation && <header><span className="mark" aria-hidden="true">♞</span><span>CHESS PLATFORM</span>
-        {challenge?.status === 'accepted' && <a className="new-challenge" href="/">Create another challenge</a>}
-        {imported !== null && <a className="new-challenge" href="/">Open another game</a>}
-        <AccountMenu csrfToken={session?.csrfToken} />
-      </header>}
       {challengeId === null && imported === null && <section className="intro">
         <p className="eyebrow">Guest challenge preview</p>
         <h1>Challenge a friend.</h1>
@@ -1478,7 +1475,7 @@ export function App() {
                       </div>
                       : <button type="button" className="danger" ref={resignFocus}
                         disabled={submitting || pending !== null || pendingAction !== null}
-                        onClick={() => setResignConfirmationVersion(game.version)}>Resign</button>}
+                        onClick={() => setResignConfirmationVersion(game.version)}><ActionIcon kind="resign" />Resign</button>}
                   </>}
                 </div>
                 {pending !== null && !submitting && <div className="retry">

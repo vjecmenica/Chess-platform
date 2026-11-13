@@ -15,11 +15,12 @@ it.each([
   const id = html.match(/id="([^"]+)" role="tooltip"/)?.[1];
   expect(id).toBeTruthy();
   expect(html).toContain(`aria-describedby="${id}" tabindex="0"`);
-  expect(html).toContain(`<button type="button" class="secondary" disabled="" aria-describedby="${id}">Offer draw</button>`);
+  expect(html).toContain(`<button type="button" class="secondary" disabled="" aria-describedby="${id}"><svg aria-hidden="true"`);
+  expect(html).toContain('</svg>Offer draw</button>');
   expect(html).toContain(`hidden="">${reason}</span>`);
 });
 
 it('enables offers at the first eligible ply and preserves pending-request disabling', () => {
-  expect(render(25, 25)).toBe('<button type="button" class="secondary">Offer draw</button>');
-  expect(render(25, 25, true)).toBe('<button type="button" class="secondary" disabled="">Offer draw</button>');
+  expect(render(25, 25)).toMatch(/^<button type="button" class="secondary">.*Offer draw<\/button>$/);
+  expect(render(25, 25, true)).toMatch(/^<button type="button" class="secondary" disabled="">.*Offer draw<\/button>$/);
 });

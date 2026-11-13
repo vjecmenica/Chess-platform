@@ -344,30 +344,31 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }, [fen, enabled, state.kind, evaluation, onEvaluationPendingChange]);
   useEffect(() => () => onEvaluationPendingChange?.(null), [onEvaluationPendingChange]);
 
+  const engineAvailable = enabled && state.kind !== 'error';
   return <section className="engine-panel" aria-label="Stockfish analysis">
     <ThreatControl fen={fen} gameId={game.id}
       selected={variant}
       requestKey={`${variant.id}:${threads}:${lineCount}:${profile}:${engineEpoch}`}
-      available={enabled && state.kind !== 'error'}
+      available={engineAvailable}
       reviewing={review.kind === 'running'} onMove={onThreatMoveChange}
       renderToolbar={threatToggle => <div className="engine-depth-row">
       <div className="engine-search-controls">
-        <EngineToggle enabled={enabled && state.kind !== 'error'} onToggle={() => {
+        <EngineToggle enabled={engineAvailable} onToggle={() => {
           setEngineEpoch(value => value + 1);
-          if (enabled && state.kind !== 'error') { controller.current?.stop(); setEnabled(false); }
+          if (engineAvailable) { controller.current?.stop(); setEnabled(false); }
           else { controller.current?.start(fen); setEnabled(true); }
         }} />
         <small className="engine-depth">Depth {evaluation?.depth ?? '—'}
           {state.kind === 'done' && state.cached ? ' · cached' : ''}
           {state.kind === 'searching' && <span className="engine-search-status"> · {continuous ? 'Continuous' : 'Searching'}</span>}
         </small>
-        <button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous && enabled && state.kind !== 'error'}
+        {engineAvailable && <><button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous}
           aria-description="Analyze without a depth or time limit. Activate again to restore the previous bounded limits."
           onClick={toggleContinuous}>
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"
-            aria-hidden="true" focusable="false">{continuous && enabled && state.kind !== 'error' ? <path d="M5 3v10M11 3v10" strokeWidth="3"/> : <path d="M8 2v12M2 8h12" />}</svg>
+            aria-hidden="true" focusable="false">{continuous ? <path d="M5 3v10M11 3v10" strokeWidth="3"/> : <path d="M8 2v12M2 8h12" />}</svg>
         </button>
-        {threatToggle}
+        {threatToggle}</>}
       </div>
       <div className="engine-build-controls">
         <small className="engine-build">{description}</small>

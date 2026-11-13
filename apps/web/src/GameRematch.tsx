@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameReadResponse, GameRematchOffer, GameRematchAction, GameRematchResponse } from '@chess/contracts';
 import { timeControlLabel } from './TimeControlSelect';
-export function ActionIcon({ kind }: {
-  kind: 'new' | 'rematch' | 'analysis';
-}) { return <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={kind === 'new' ? 'M12 4v16M4 12h16' : kind === 'rematch' ? 'M4 10a8 8 0 1 1 1 8M4 4v6h6' : 'M4 19V5m0 14h16M7 15l4-5 4 3 5-8'} /></svg>; }
+import { ActionIcon } from './ActionIcon';
 export function ClosedRematchStatus({ offer }: { offer: GameRematchOffer }) {
   return <span className="rematch-status rematch-outcome" role="status">
     <span>Rematch {offer.status}</span>

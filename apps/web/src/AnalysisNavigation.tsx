@@ -11,8 +11,8 @@ function Icon({ path }: { path: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={path}/></svg>;
 }
 /** Unavailable destinations remain explicitly disabled, with no invented routes. */
-export function AnalysisNavigation({ imported, accountControl, section = 'analysis' }: {
-  imported: boolean; accountControl?: ReactNode; section?: 'play' | 'analysis';
+export function AnalysisNavigation({ imported = false, accountControl, section = 'analysis' }: {
+  imported?: boolean; accountControl?: ReactNode; section?: 'play' | 'analysis' | 'account';
 }) {
   const [expanded, setExpanded] = useState(false);
   return <header className="analysis-navigation" data-expanded={expanded}>

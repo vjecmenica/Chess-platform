@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ActionIcon } from './GameRematch';
+import { ActionIcon } from './ActionIcon';
 
 interface FinishedResultAreaProps {
   readonly score: string;

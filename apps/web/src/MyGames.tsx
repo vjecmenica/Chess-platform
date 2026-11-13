@@ -4,6 +4,7 @@ import type { AccountGame, AccountGames, AccountState } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
 import { resultDisplay } from './result-display';
+import { AnalysisNavigation } from './AnalysisNavigation';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -182,14 +183,10 @@ export function AccountPage() {
   useEffect(() => { sectionHeading.current?.focus({ preventScroll: true }); }, [section]);
 
   return <>
-    <header className="analysis-navigation"><div className="analysis-navigation-inner">
-      <a className="analysis-brand" href="/" aria-label="Chess Platform home">♞</a>
-      <nav aria-label="Main navigation"><a href="/">Play</a><span aria-current="page">Account</span></nav>
-      <div className="archive-account"><AccountMenu csrfToken={csrf} /></div>
-    </div></header>
+    <AnalysisNavigation section="account" accountControl={<AccountMenu csrfToken={csrf} current />} />
     <main className="my-games-page">
       {details?.account && !signedOut ? <AccountProfileHeader state={details} section={section} /> : <h1>Account</h1>}
-      {signedOut && <p>Use the Account button above to log in or register. Account details and linked games are private.</p>}
+      {signedOut && <p>Use the Account button in the navigation to log in or register. Account details and linked games are private.</p>}
       {error && <p role="alert" className="error">{error} <button className="secondary"
         onClick={() => void load(page?.next ?? undefined)}>Retry loading</button></p>}
       {notice && <p role="status">{notice}</p>}
