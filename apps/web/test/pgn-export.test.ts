@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePgn } from '@chess/domain';
 import { importPgn } from '../src/pgn-import';
-import { canExportGame, exportGamePgn } from '../src/pgn-export';
+import { canExportGame, exportGamePgn, pgnFile } from '../src/pgn-export';
 
 describe('individual PGN export', () => {
   it('round-trips available headers, result, and the saved main line without claiming annotations', () => {
@@ -31,5 +31,13 @@ describe('individual PGN export', () => {
     expect(canExportGame(source)).toBe(false);
     expect(() => exportGamePgn(source)).toThrow('not available');
     expect(canExportGame(blank)).toBe(false);
+  });
+
+  it('downloads the preview text as a UTF-8 PGN without changing its contents', async () => {
+    const imported = importPgn('[White "Jovanović"]\n\n1. e4 e5 *', 'local');
+    const preview = exportGamePgn(imported.game, imported.headers);
+    const file = pgnFile(preview);
+    expect(file.type).toBe('application/x-chess-pgn;charset=utf-8');
+    expect(await file.text()).toBe(preview);
   });
 });

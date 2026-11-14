@@ -83,6 +83,9 @@ export function buildMoveTree(game: GameReadResponse, tree: AnalysisTree | null,
 
   const start: AnalysisCursor = { kind: 'main', ply: 0 };
   const first = preferred(start, children(start));
+  const startingFen = game.history[0]?.beforeFen ?? game.position.fen;
+  const [, turn, , , , fullmove] = startingFen.split(' ');
+  const firstPly = 2 * Number(fullmove ?? 1) - (turn === 'b' ? 0 : 1);
   return { startSelected: cursorKey(start) === cursorKey(selected),
-    main: first ? line(first, game.history[0]?.side === 'black' ? 2 : 1) : { moves: [] } };
+    main: first ? line(first, firstPly) : { moves: [] } };
 }

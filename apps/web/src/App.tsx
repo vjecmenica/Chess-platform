@@ -1,6 +1,6 @@
 import { loadGuestSession } from './guest-session-client';
 import { useAppearance } from './Appearance';
-import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis } from './analysis-links';
+import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis, shareableGameUrl } from './analysis-links';
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
@@ -12,6 +12,7 @@ import { GameRematch } from './GameRematch';
 import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
+import { exportBoardImage } from './board-image';
 import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
@@ -42,7 +43,6 @@ import { clearStoredAnalysisTrees, createAnalysisTree, cursorFen, cursorSide, de
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
 import { ClockPanel, historicalClockMs } from './ClockPanel';
 import { simplePgnTimeControl } from './move-times';
-import { canExportGame, downloadGamePgn } from './pgn-export';
 import { MoveTree } from './MoveTree';
 import { PromotionPicker, promotionIsCurrent, type PromotionRequest } from './PromotionPicker';
 import { readBoardSizePreference, saveBoardSizePreference } from './board-size-preference';
@@ -460,7 +460,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (initialAnalysisEntry?.kind !== 'position') return;
+    // Changing only the fragment does not remount the page when opening a different position link.
+    const reloadPosition = () => window.location.reload();
+    window.addEventListener('hashchange', reloadPosition);
+    return () => window.removeEventListener('hashchange', reloadPosition);
+  }, []);
+
+  useEffect(() => {
     const entry = initialAnalysisEntry;
+    if (entry?.kind === 'position' && entry.position !== null && imported === null) {
+      const { fen, sideToMove } = entry.position;
+      showImportedGame(importParsedPgn({
+        headers: { White: 'White', Black: 'Black' }, result: '*', startingFen: fen, finalFen: fen,
+        sideToMove, moves: [], annotations: [],
+      }, 'blank-shared-position'));
+      return;
+    }
     if (entry?.kind !== 'explorer' || session === null || imported !== null) return;
     const controller = new AbortController();
     void loadExplorerAnalysis(entry.id, entry.fen, AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]))
@@ -474,7 +490,7 @@ export function App() {
   }, [session, imported, showImportedGame]);
 
   useEffect(() => {
-    if (!analysisOpen || !analysis || !game || !initialAnalysisEntry) return;
+    if (!analysisOpen || !analysis || !game || !initialAnalysisEntry || initialAnalysisEntry.kind === 'position') return;
     const ply = mainAncestorPly(analysis);
     const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply, boardSize ?? boardRowHeight)
       : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
@@ -1041,9 +1057,15 @@ export function App() {
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
-  const boardUtilities = game === null ? null : <BoardUtilities
-    downloadable={analysisOpen && canExportGame(game)}
-    onDownload={() => downloadGamePgn(game, imported?.headers)}
+  const boardUtilities = game === null ? null : <BoardUtilities key={game.id}
+    share={displayedFen !== null && (game.status === 'finished' || game.status === 'aborted') ? {
+      game, headers: imported?.headers, fen: displayedFen,
+      gameUrl: shareableGameUrl(initialAnalysisEntry, game.id, displayedPly),
+      exportImage: async coordinates => {
+        if (boardRef.current === null) throw new Error('The board is no longer available.');
+        return exportBoardImage(boardRef.current, displayedFen, orientation, appearance, coordinates);
+      },
+    } : null}
     onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
       ? { ...current, flipped: !current.flipped } : current)} />;
   const showHints = selected !== null && (analysisOpen ? game?.status === 'finished' : canMove);
@@ -1056,13 +1078,21 @@ export function App() {
 
   const navigateFromKeyboard = useEffectEvent((event: KeyboardEvent) => {
     if (promotion !== null || (game?.status !== 'active' && game?.status !== 'finished')) return;
+    if (event.target instanceof Element && event.target.closest('.share-export-dialog')) return;
     const direction = moveNavigationDirection(event);
     if (direction === null) return;
     if (event.target instanceof HTMLElement && event.target.matches('.analysis-view-tabs button')) {
       const tabPanel = event.target.closest('.analysis-view-tabs')
         ?.querySelector('button[aria-pressed="true"]')?.getAttribute('aria-controls');
       const panel = tabPanel ? document.getElementById(tabPanel) : null;
-      if (panel && !panel.hidden) panel.focus({ preventScroll: true });
+      if (panel && !panel.hidden) {
+        const moveList = panel.querySelector('.moves');
+        const target = moveList && !moveList.closest('[hidden]')
+          ? moveList.querySelector<HTMLElement>('.move-link[aria-current="step"]')
+            ?? moveList.querySelector<HTMLElement>('.moves-heading')
+          : panel;
+        target?.focus({ preventScroll: true });
+      }
     }
     if (analysisOpen && analysis !== null) {
       setAnalysis(current => !current || current.gameId !== game.id ? current
@@ -1169,6 +1199,15 @@ export function App() {
   }
 
   const liveStatus = game ? liveGameStatus(game, liveBrowsingHistory) : null;
+  if (initialAnalysisEntry?.kind === 'position' && imported === null) return <>
+    <AnalysisNavigation section="analysis" accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
+    <main className="challenge-page">
+      {initialAnalysisEntry.position === null ? <>
+        <p role="alert">This position link does not contain a valid chess position.</p>
+        <a href="/">Go to the homepage</a>
+      </> : <p role="status">Loading position…</p>}
+    </main>
+  </>;
   if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <>
     <AnalysisNavigation accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <main className="challenge-page">

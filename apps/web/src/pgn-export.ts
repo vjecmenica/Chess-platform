@@ -26,15 +26,6 @@ export function exportGamePgn(game: GameReadResponse,
   return `${tags}\n\n${moves ? `${moves} ` : ''}${result}\n`;
 }
 
-export function downloadGamePgn(game: GameReadResponse,
-  sourceHeaders: Readonly<Record<string, string>> = {}): void {
-  const blob = new Blob([exportGamePgn(game, sourceHeaders)], { type: 'application/x-chess-pgn;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `chess-platform-${game.id}.pgn`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+export function pgnFile(text: string): Blob {
+  return new Blob([text], { type: 'application/x-chess-pgn;charset=utf-8' });
 }

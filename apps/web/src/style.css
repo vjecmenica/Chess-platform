@@ -455,6 +455,8 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .moves { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 10px; }
 .workspace-play-pane .moves { border: 0; border-radius: 0; background: transparent; }
 .moves h3 { font-size: var(--text-body); margin: 0 0 6px; }
+.moves-heading { width: fit-content; }
+.moves-heading:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .moves p { color: var(--color-text-muted); }
 .moves ol { list-style: none; padding: 0; margin: 0; }
 .move-pair { border-top: 1px solid var(--color-border-subtle); padding: 2px 0; }
@@ -532,9 +534,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   min-width: 0; }
 .finished-result-area.compact { display: grid; grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto 12px; align-items: center; column-gap: 8px; }
-.final-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px;
-  min-width: 0; padding-left: 8px; font-size: var(--text-compact); line-height: 1.35; }
-.final-result strong { font-size: 21px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.final-result { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  min-width: 0; font: var(--text-compact)/1.35 var(--font-ui); }
+.final-result strong { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; white-space: nowrap; }
 .finished-result-actions { min-width: 0; }
 /* Preserve expanded action spacing on both play and Analysis. */
 .finished-result-area:not(.compact) .finished-result-actions { padding-top: 6px; }
@@ -1251,6 +1253,29 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .settings-sections [hidden] {display:none;}
 .settings-disclosure {display:flex;align-items:center;justify-content:space-between;width:100%;}
 .shared-settings-dialog :is(button,a,input,select):focus-visible {outline:2px solid var(--color-focus);outline-offset:2px;}
+.share-export-dialog { width: min(560px, calc(100% - 24px)); background: var(--color-surface); }
+.share-export-dialog > header { background: var(--color-surface-raised); }
+.share-export-body { padding: 14px 20px; }
+.share-export-body p { margin: 0; font-size: var(--text-meta); color: var(--color-text-muted); }
+.share-export-link label, .share-export-body [role="tabpanel"] > label { margin: 0 0 5px; }
+.share-export-link > div { display: flex; flex-wrap: wrap; align-items: stretch; gap: 7px; }
+.share-export-link input { flex: 1 1 180px; min-width: 0; }
+.share-export-link p { margin-top: 5px; }
+.share-export-tabs { display: flex; gap: var(--tab-gap); border-bottom: 1px solid var(--color-border); margin: 12px 0; }
+.share-export-tabs button { min-height: var(--tab-height); padding: var(--tab-padding); border: 0;
+  border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--color-text-muted); }
+.share-export-tabs button:hover { background: var(--color-surface-hover); color: var(--color-text); }
+.share-export-tabs button[aria-selected="true"] { color: var(--color-text);
+  border-bottom-color: var(--color-tab-indicator, var(--color-accent)); }
+.share-export-body textarea { display: block; width: 100%; resize: vertical; padding: 8px 10px;
+  border: 1px solid var(--color-border-strong); border-radius: 6px; color: inherit; background: var(--color-input); font: inherit; }
+.share-export-body textarea:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.share-export-body textarea + :is(p, .share-export-link) { margin-top: 8px; }
+.share-export-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.share-export-body [role="tabpanel"] > .share-export-checkbox { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
+.share-export-checkbox input { width: auto; margin: 0; }
+.share-export-body .share-export-feedback { min-height: 1.5em; margin-top: 6px; }
+.share-export-body .share-export-feedback.error { color: var(--color-error); }
 @media(max-width:600px){.settings-layout{grid-template-columns:minmax(0,1fr)}.settings-layout>nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--color-border);padding:10px}.settings-sections{padding:14px}.appearance-settings label{gap:8px}.shared-settings-dialog{max-height:94dvh}.engine-settings-content{--settings-label-width:78px;--settings-value-width:44px}}
 /* Primary workspace panes share the existing measured sidebar height. */
 .workspace-tabs-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; height: 100%; }

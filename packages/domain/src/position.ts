@@ -1,4 +1,4 @@
-import { Chess } from 'chess.js';
+import { Chess, type Square } from 'chess.js';
 import { matingPossibility } from './mating.js';
 import type { MatingPossibility } from './mating.js';
 
@@ -62,6 +62,41 @@ export function createPosition(): ChessPosition {
 
 export function createPositionFromFen(fen: string): ChessPosition {
   return createPositionAdapter(fen).position;
+}
+
+/** Accept a standalone position for analysis without creating or loading a game. */
+export function parseAnalysisPosition(fen: string): PositionSnapshot | null {
+  if (fen.length > 120 || fen.trim() !== fen
+    || !/^[prnbqkPRNBQK1-8/]+ [wb] (?:-|K?Q?k?q?) (?:-|[a-h][36]) \d{1,7} [1-9]\d{0,6}$/.test(fen))
+    return null;
+  try {
+    const chess = new Chess(fen);
+    const [, , castling = '', enPassant = '-', halfmove] = fen.split(' ');
+    const previousSide = chess.turn() === 'w' ? 'b' : 'w';
+    const previousKing = chess.findPiece({ type: 'k', color: previousSide })[0]!;
+    if (chess.isAttacked(previousKing, chess.turn())) return null;
+    const pieces = chess.board().flat();
+    for (const color of ['w', 'b'] as const) {
+      if (chess.findPiece({ type: 'p', color }).length > 8
+        || pieces.filter(piece => piece?.color === color).length > 16) return null;
+    }
+    for (const [right, king, rook, color] of [
+      ['K', 'e1', 'h1', 'w'], ['Q', 'e1', 'a1', 'w'],
+      ['k', 'e8', 'h8', 'b'], ['q', 'e8', 'a8', 'b'],
+    ] as const) {
+      if (castling.includes(right) && (chess.get(king)?.type !== 'k'
+        || chess.get(king)?.color !== color || chess.get(rook)?.type !== 'r'
+        || chess.get(rook)?.color !== color)) return null;
+    }
+    if (enPassant !== '-') {
+      const file = enPassant.charAt(0);
+      const pawn = chess.get(`${file}${previousSide === 'w' ? '4' : '5'}` as Square);
+      const start = `${file}${previousSide === 'w' ? '2' : '7'}` as Square;
+      if (pawn?.type !== 'p' || pawn.color !== previousSide || chess.get(start)
+        || chess.get(enPassant as Square) || Number(halfmove) !== 0) return null;
+    }
+    return { fen: chess.fen(), sideToMove: chess.turn() === 'w' ? 'white' : 'black' };
+  } catch { return null; }
 }
 
 // Internal adapter: only the game owner may inspect terminal board conditions.

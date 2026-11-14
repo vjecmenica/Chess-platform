@@ -1,4 +1,4 @@
-export { createPosition, createPositionFromFen, STANDARD_STARTING_FEN } from './position.js';
+export { createPosition, createPositionFromFen, parseAnalysisPosition, STANDARD_STARTING_FEN } from './position.js';
 export { parsePgn, validatePgn } from './pgn.js';
 export { opponentPassPosition } from './threat-position.js';
 export type { ThreatPosition } from './threat-position.js';

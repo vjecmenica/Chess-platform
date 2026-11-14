@@ -18,7 +18,7 @@ export function AnalysisSidebarTabs({ enabled, book, children }: {
         id={`${id}-${tab}-tab`} aria-controls={`${id}-${tab}-panel`}
         aria-pressed={active === tab} onClick={() => setActive(tab)}>{tab === 'moves' ? 'Moves' : 'Opening Book'}</button>)}
     </div>
-    <div className="sidebar-tab-content sidebar-moves" role="region" tabIndex={0}
+    <div className="sidebar-tab-content sidebar-moves" role="region"
       id={`${id}-moves-panel`} aria-labelledby={`${id}-moves-tab`} hidden={active !== 'moves'}>
       <MovesVisible.Provider value={workspaceVisible && active === 'moves'}>{children}</MovesVisible.Provider>
     </div>

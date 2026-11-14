@@ -2,9 +2,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it, vi } from 'vitest';
 import { parsePgn, STANDARD_STARTING_FEN } from '@chess/domain';
-import { analysisEntry, explorerAnalysisUrl, loadExplorerAnalysis, siteAnalysisUrl } from '../src/analysis-links';
+import { analysisEntry, explorerAnalysisUrl, loadExplorerAnalysis, positionAnalysisUrl, shareableGameUrl,
+  siteAnalysisUrl } from '../src/analysis-links';
 import { importParsedPgn } from '../src/pgn-import';
-import { createAnalysisTree, cursorFen, selectMain } from '../src/analysis-model';
+import { createAnalysisTree, cursorFen, playAnalysisMove, selectMain } from '../src/analysis-model';
+import { buildMoveTree } from '../src/move-tree-model';
 import { FinishedResultArea } from '../src/FinishedResultArea';
 import { EngineScoreBadge } from '../src/EnginePanel';
 import { GameChat } from '../src/GameChat';
@@ -39,8 +41,49 @@ it('reconstructs explorer replay from URL and existing authorized API, including
   expect(url.pathname).toBe('/api/opening-explorer/games/12');
   expect(url.searchParams.get('fen')).toBe(fen);
   expect(fetch.mock.calls[0]![1]).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
-  expect(analysisEntry(new URL(explorerAnalysisUrl('12', fen, 3), 'http://localhost'))?.ply).toBe(3);
+  expect(analysisEntry(new URL(explorerAnalysisUrl('12', fen, 3), 'http://localhost'))).toMatchObject({ ply: 3 });
   expect(cursorFen(selectMain(createAnalysisTree(game), game, 0), game)).toBe(STANDARD_STARTING_FEN);
+});
+
+it('shares only the matching, already loaded Opening Explorer replay at a supported ply', () => {
+  const origin = 'https://chess.example';
+  const entry = analysisEntry(new URL(explorerAnalysisUrl('12', STANDARD_STARTING_FEN, 2)
+    + '&token=private#local-state', origin));
+  const link = shareableGameUrl(entry, 'explorer-12', 3);
+  expect(link).toBe(explorerAnalysisUrl('12', STANDARD_STARTING_FEN, 3));
+  expect(shareableGameUrl(entry, 'explorer-13', 3)).toBeNull();
+  expect(shareableGameUrl(null, 'import-local', 3)).toBeNull();
+  const id = '298953a3-d5e8-408d-a612-7a63af5f93d3';
+  expect(shareableGameUrl(analysisEntry(new URL(siteAnalysisUrl(id, 1), origin)), id, 1)).toBeNull();
+});
+
+it('round-trips a variation FEN in a standalone link without sending it to the server', () => {
+  const fen = parsePgn('1. e4 a6 2. e5 d5 *').finalFen;
+  const url = new URL(positionAnalysisUrl(fen)!, 'https://chess.example');
+  expect(url.pathname).toBe('/analysis/position');
+  expect(url.search).toBe('');
+  expect(analysisEntry(url)).toEqual({ kind: 'position', position: { fen, sideToMove: 'white' } });
+});
+
+it('continues with the correct move number and side when a shared position starts with Black', () => {
+  const fen = parsePgn('1. e4 e5 2. Nf3 *').finalFen;
+  const base = importParsedPgn(parsePgn('*'), 'blank-shared-position').game;
+  const game = { ...base, position: { fen, sideToMove: 'black' as const } };
+  const result = playAnalysisMove(createAnalysisTree(game), game, 'b8', 'c6');
+  if (!result.accepted) throw new Error(result.result.message);
+  expect(buildMoveTree(game, result.tree, result.tree.cursor).main.moves[0]?.notation).toBe('2... Nc6');
+});
+
+it.each([
+  '8/8/8/8/8/8/8/8 w - - 0 1',
+  '4k3/8/8/8/8/8/4R3/4K3 w - - 0 1',
+  '4k3/8/8/8/8/8/8/4K3 w K - 0 1',
+  '4k3/8/8/8/8/8/8/4K3 w - d6 0 1',
+  '4k3/8/8/8/8/8/8/4K3 w - - 0 99999999999999999',
+])('rejects invalid standalone FEN %s', fen => {
+  expect(positionAnalysisUrl(fen)).toBeNull();
+  const url = new URL('/analysis/position#' + new URLSearchParams({ fen }), 'https://chess.example');
+  expect(analysisEntry(url)).toEqual({ kind: 'position', position: null });
 });
 
 it('reports explorer authorization or loading failures on the destination page', async () => {

@@ -1,15 +1,21 @@
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AppearanceLauncher } from './AppearanceSettings';
-export function BoardUtilities({ downloadable, onDownload, onFlip }: {
-  downloadable: boolean; onDownload: () => void; onFlip: () => void;
+import { ShareExportDialog, type ShareExportOptions } from './ShareExportDialog';
+
+export function BoardUtilities({ share, onFlip }: {
+  share: ShareExportOptions | null; onFlip: () => void;
 }) {
+  const [sharing, setSharing] = useState(false);
+  const launcher = useRef<HTMLButtonElement>(null);
   return <div className="board-utilities" role="group" aria-label="Board and game tools">
     <AppearanceLauncher />
-    {downloadable && <button type="button" aria-label="Download PGN"
-      aria-description="Download this game's main line and available headers. Clocks and analysis comments are not included."
-      onClick={onDownload}>
+    {share && <button ref={launcher} type="button" aria-label="Share & Export" aria-haspopup="dialog"
+      onClick={() => setSharing(true)}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-        <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" />
+        <path d="m8.7 10.7 6.6-3.4m-6.6 6 6.6 3.4" />
+        <circle cx="6" cy="12" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" />
       </svg>
     </button>}
     <button type="button" aria-label="Flip board" data-board-display-control onClick={onFlip}>
@@ -18,5 +24,9 @@ export function BoardUtilities({ downloadable, onDownload, onFlip }: {
         <path d="M4 8h15l-4-4M20 16H5l4 4M4 8v4m16 4v-4" />
       </svg>
     </button>
+    {sharing && share && createPortal(<ShareExportDialog options={share} onClose={() => {
+      setSharing(false);
+      launcher.current?.focus({ preventScroll: true });
+    }} />, document.body)}
   </div>;
 }

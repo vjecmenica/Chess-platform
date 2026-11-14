@@ -1,4 +1,4 @@
-import type { ParsedPgn } from '@chess/domain';
+import { parseAnalysisPosition, type ParsedPgn } from '@chess/domain';
 import { renderedBoardSize } from './board-size-preference';
 
 type ReviewView = { gameId: string; workspace?: 'main' | 'review'; chart?: 'computer' | 'times' };
@@ -27,9 +27,26 @@ export function siteAnalysisUrl(id: string, ply?: number, size?: number | null):
 export function explorerAnalysisUrl(id: string, fen: string, ply?: number): string {
   return `/analysis/explorer/${id}?${new URLSearchParams({ fen, ...(ply === undefined ? {} : { ply: String(ply) }) })}`;
 }
+export function positionAnalysisUrl(fen: string): string | null {
+  const position = parseAnalysisPosition(fen);
+  // A position can come from a private game. Keep the shared FEN out of HTTP requests.
+  return position ? `/analysis/position#${new URLSearchParams({ fen: position.fen })}` : null;
+}
+
+export function shareableGameUrl(entry: ReturnType<typeof analysisEntry>, gameId: string, ply?: number): string | null {
+  if (entry?.kind !== 'explorer' || gameId !== `explorer-${entry.id}`) return null;
+  const sharePly = ply !== undefined && Number.isInteger(ply) && ply >= 0 && ply <= 1000 ? ply : undefined;
+  return explorerAnalysisUrl(entry.id, entry.fen, sharePly);
+}
+
 export function analysisEntry(url: URL) {
   const plyText = url.searchParams.get('ply');
   const ply = plyText !== null && /^\d{1,4}$/.test(plyText) && Number(plyText) <= 1000 ? Number(plyText) : undefined;
+  if (url.pathname === '/analysis/position') {
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    const position = parseAnalysisPosition(fragment.get('fen') ?? '');
+    return { kind: 'position' as const, position };
+  }
   const explorer = /^\/analysis\/explorer\/([1-9][0-9]{0,17})$/.exec(url.pathname);
   if (explorer) return { kind: 'explorer' as const, id: explorer[1]!, fen: url.searchParams.get('fen') ?? '', ply };
   const site = /^\/challenge\/([0-9a-f-]{36})$/.exec(url.pathname);

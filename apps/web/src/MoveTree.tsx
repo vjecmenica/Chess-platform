@@ -39,8 +39,13 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
       if (!container) return;
       const focused = document.activeElement;
       if (focused instanceof HTMLElement && container.contains(focused)
-        && (focused.matches('.move-link') || focused === container) && focused !== move)
-        (move ?? container).focus({ preventScroll: true });
+        && focused.matches('.move-link, .moves-heading') && focused !== move) {
+        if (move) move.focus({ preventScroll: true });
+        else if (!focused.matches('.moves-heading')) {
+          container.querySelector<HTMLElement>('.moves-heading')?.focus({ preventScroll: true });
+          container.scrollTop = 0;
+        }
+      }
       if (!move || container.scrollHeight <= container.clientHeight) return;
       const bounds = move.getBoundingClientRect();
       const row = move.closest('.move-pair-row');
@@ -102,9 +107,9 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
     actions.current.openMenu(move, x, y, trigger), []);
 
   const live = game.status !== 'finished' && tree === null;
-  return <nav ref={list} tabIndex={-1} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
+  return <nav ref={list} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
-    <h3>Moves</h3>
+    <h3 className="moves-heading" tabIndex={-1}>Moves</h3>
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
       selection={selection} interactive={interactive} editable={tree !== null} review={reviewForGame(game, review)} bookMoves={bookMoves}
       selectEntry={selectEntry} menuEntry={menuEntry} />}

@@ -5,7 +5,6 @@ import { BoardUtilities } from '../src/BoardUtilities';
 import { ChatMessage, ChatUnreadBadge } from '../src/GameChat';
 import { ClosedRematchStatus } from '../src/GameRematch';
 import { importPgn } from '../src/pgn-import';
-import { canExportGame } from '../src/pgn-export';
 
 describe('workspace utility presentation', () => {
   it.each([1, 12, 100])('retains a readable numeric unread badge for %i entries', count => {
@@ -37,16 +36,17 @@ describe('workspace utility presentation', () => {
     expect(html).not.toContain('>/challenge/');
   });
 
-  it('offers icon buttons with accessible names while retaining source-game download restrictions', () => {
-    for (const id of ['site-game', 'imported-game', 'explorer-5', 'blank-1']) {
-      const game = importPgn('1. e4 e5 1-0', id).game;
+  it('offers an accessible Share & Export launcher where sharing is available', () => {
+    const game = importPgn('1. e4 e5 1-0', 'site-game').game;
+    for (const enabled of [true, false]) {
       const html = renderToStaticMarkup(createElement(BoardUtilities, {
-        downloadable: canExportGame(game), onDownload: () => {}, onFlip: () => {},
+        share: enabled ? { game, fen: game.position.fen, gameUrl: null, exportImage: async () => new Blob() }
+          : null, onFlip: () => {},
       }));
       expect(html).toContain('aria-label="Flip board" data-board-display-control="true"');
       expect(html).not.toContain('>Flip board<');
       expect(html).not.toContain('title=');
-      expect(html.includes('aria-label="Download PGN"')).toBe(!id.startsWith('explorer-') && !id.startsWith('blank-'));
+      expect(html.includes('aria-label="Share &amp; Export" aria-haspopup="dialog"')).toBe(enabled);
     }
   });
 });
