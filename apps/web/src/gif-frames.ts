@@ -7,7 +7,13 @@ export const gifSize = 256;
 export const gifMaxBytes = 16 * 1024 * 1024;
 export const gifSpeeds = { Slow: 750, Normal: 450, Fast: 250 } as const;
 
-export function gifFrames(game: GameReadResponse) {
+export interface GifFrame { fen: string; from: string | null; to: string | null }
+
+export function gifFrameDelay(delay: number, final: boolean): number {
+  return final ? delay * 3 : delay;
+}
+
+export function gifFrames(game: GameReadResponse): GifFrame[] {
   if (!canExportGame(game)) throw new Error('GIF export is unavailable for this game.');
   if (game.history.length > gifMaxPlies) throw new Error(`GIF export supports up to ${gifMaxPlies} half-moves.`);
   return [{ fen: replayFen(game, 0), from: null, to: null },

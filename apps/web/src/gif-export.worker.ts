@@ -1,12 +1,10 @@
 /// <reference lib="webworker" />
 import { applyPalette, GIFEncoder, quantize } from 'gifenc';
-import { boardRows } from './board-model';
-import { paintBoardPieces, paintBoardSurface } from './board-image';
-import { gifMaxBytes, gifSize } from './gif-frames';
+import { paintBoardSurface, paintReplayFrame } from './board-image';
+import { gifFrameDelay, gifMaxBytes, gifSize, type GifFrame } from './gif-frames';
 import type { GifJob, GifUpdate } from './gif-export';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
-const squareSize = gifSize / 8;
 const report = (data: GifUpdate) => scope.postMessage(data);
 
 scope.onmessage = ({ data }: MessageEvent<GifJob>) => {
@@ -20,13 +18,8 @@ scope.onmessage = ({ data }: MessageEvent<GifJob>) => {
     const ctx = context;
     paintBoardSurface(background, surfaces, images, appearance, gifSize);
 
-    function pixels({ fen, from, to }: GifJob['frames'][number]) {
-      ctx.drawImage(board, 0, 0);
-      const rows = boardRows(fen, orientation).flat();
-      ctx.fillStyle = 'rgba(214, 190, 78, .42)';
-      for (const [index, { square }] of rows.entries()) if (square === from || square === to)
-        ctx.fillRect(index % 8 * squareSize, Math.floor(index / 8) * squareSize, squareSize, squareSize);
-      paintBoardPieces(ctx, rows.map(({ piece }) => piece), images, appearance, gifSize);
+    function pixels(position: GifFrame) {
+      paintReplayFrame(ctx, board, position, orientation, images, appearance, gifSize);
       return ctx.getImageData(0, 0, gifSize, gifSize).data;
     }
 
@@ -42,7 +35,7 @@ scope.onmessage = ({ data }: MessageEvent<GifJob>) => {
     for (const [index, position] of frames.entries()) {
       const rgba = index === 0 ? first : index === 1 ? second : pixels(position);
       gif.writeFrame(applyPalette(rgba, palette), gifSize, gifSize, {
-        ...(index === 0 ? { palette } : {}), delay: index === frames.length - 1 ? delay * 3 : delay,
+        ...(index === 0 ? { palette } : {}), delay: gifFrameDelay(delay, index === frames.length - 1),
       });
       if (gif.bytesView().length >= gifMaxBytes) throw new Error('The animation exceeds the 16 MB GIF limit.');
       if ((index + 1) % 4 === 0 || index === frames.length - 1) report({ done: index + 1 });

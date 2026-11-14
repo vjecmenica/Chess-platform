@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest';
-import { gifFrames, gifMaxPlies } from '../src/gif-frames';
+import { gifFrameDelay, gifFrames, gifMaxPlies, gifSpeeds } from '../src/gif-frames';
 import { importPgn } from '../src/pgn-import';
+
+it.each(Object.values(gifSpeeds))('holds the final frame for three beats at %i ms per move', delay => {
+  expect(gifFrameDelay(delay, false)).toBe(delay);
+  expect(gifFrameDelay(delay, true)).toBe(delay * 3);
+});
 
 it('uses the saved starting position and every confirmed main-line position in order', () => {
   const game = importPgn('1. e4 {idea} e5 2. Nf3 Nc6 1-0', 'local').game;

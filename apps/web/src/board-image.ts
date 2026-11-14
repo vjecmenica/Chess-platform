@@ -1,6 +1,7 @@
 import type { BoardAppearance, GameSide } from '@chess/contracts';
 import { boardRows, type Piece } from './board-model';
 import { pieceImage } from './board-interaction';
+import type { GifFrame } from './gif-frames';
 
 const squareSize = 128;
 const imageSize = squareSize * 8;
@@ -117,6 +118,17 @@ export function paintBoardPieces(ctx: DrawingContext, pieces: readonly (Piece | 
     ctx.lineWidth = edge;
     ctx.strokeRect(edge / 2, edge / 2, size - edge, size - edge);
   }
+}
+
+export function paintReplayFrame(ctx: DrawingContext, background: CanvasImageSource, frame: GifFrame,
+  orientation: GameSide, images: ReadonlyMap<string, CanvasImageSource>, appearance: BoardAppearance, size: number): void {
+  ctx.drawImage(background, 0, 0);
+  const squares = boardRows(frame.fen, orientation).flat();
+  const squareSize = size / 8;
+  ctx.fillStyle = 'rgba(214, 190, 78, .42)';
+  for (const [index, { square }] of squares.entries()) if (square === frame.from || square === frame.to)
+    ctx.fillRect(index % 8 * squareSize, Math.floor(index / 8) * squareSize, squareSize, squareSize);
+  paintBoardPieces(ctx, squares.map(({ piece }) => piece), images, appearance, size);
 }
 
 export async function exportBoardImage(board: HTMLElement, fen: string, orientation: GameSide,
