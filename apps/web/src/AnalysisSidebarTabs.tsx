@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useState, type ReactNode } from 'react';
+import { MovesVisible } from './move-list-scroll';
 
 export type SidebarTab = 'moves' | 'book';
 /** Keep both panes mounted: visibility changes must not discard trees, requests or scroll offsets. */
@@ -6,6 +7,7 @@ export function AnalysisSidebarTabs({ enabled, book, children }: {
   enabled: boolean; book: ReactNode; children: ReactNode;
 }) {
   const [active, setActive] = useState<SidebarTab>('moves');
+  const workspaceVisible = useContext(MovesVisible);
   const id = useId();
   useEffect(() => { if (!enabled) setActive('moves'); }, [enabled]);
   if (!enabled) return children;
@@ -17,7 +19,9 @@ export function AnalysisSidebarTabs({ enabled, book, children }: {
         aria-pressed={active === tab} onClick={() => setActive(tab)}>{tab === 'moves' ? 'Moves' : 'Opening Book'}</button>)}
     </div>
     <div className="sidebar-tab-content sidebar-moves" role="region" tabIndex={0}
-      id={`${id}-moves-panel`} aria-labelledby={`${id}-moves-tab`} hidden={active !== 'moves'}>{children}</div>
+      id={`${id}-moves-panel`} aria-labelledby={`${id}-moves-tab`} hidden={active !== 'moves'}>
+      <MovesVisible.Provider value={workspaceVisible && active === 'moves'}>{children}</MovesVisible.Provider>
+    </div>
     <div className="sidebar-tab-content sidebar-book" role="region" tabIndex={0}
       id={`${id}-book-panel`} aria-labelledby={`${id}-book-tab`} hidden={active !== 'book'}>{book}</div>
   </div>;

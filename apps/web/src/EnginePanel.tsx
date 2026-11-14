@@ -362,9 +362,12 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           if (engineAvailable) { controller.current?.stop(); setEnabled(false); }
           else { controller.current?.start(fen); setEnabled(true); }
         }} />
-        <small className="engine-depth">Depth {evaluation?.depth ?? '—'}
-          {state.kind === 'done' && state.cached ? ' · cached' : ''}
-          {state.kind === 'searching' && <span className="engine-search-status"> · {continuous ? 'Continuous' : 'Searching'}</span>}
+        <small className="engine-depth">
+          <span className="engine-depth-reserve" aria-hidden="true">{engineAvailable ? 'Depth 00 · Continuous' : 'Depth 00'}</span>
+          <span>Depth {evaluation?.depth ?? '—'}
+            {evaluation && state.kind === 'done' && state.cached ? ' · cached' : ''}
+            {state.kind === 'searching' && state.fen === fen && <span className="engine-search-status"> · {continuous ? 'Continuous' : 'Searching'}</span>}
+          </span>
         </small>
         {engineAvailable && <><button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous}
           aria-description="Analyze without a depth or time limit. Activate again to restore the previous bounded limits."
@@ -392,12 +395,8 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
         setState({ kind: 'loading' }); setFallback(false); setEnabled(true);
       }}>Retry Full</button></div>}
     {!enabled && <p className="engine-idle">Evaluate the selected position with Stockfish in this browser.</p>}
-    {enabled && state.kind === 'loading' && <div className="engine-loading" role="status">
-      <span>Loading {variant === liteEngine ? 'Lite' : 'Full'}{state.progress === undefined ? '…' : ` · ${state.progress}%`}</span>
-      <progress aria-label="Engine download" max="100" value={state.progress} />
-    </div>}
     {enabled && state.kind === 'error' && <span role="alert">{state.message}</span>}
-    {enabled && (state.kind === 'searching' || state.kind === 'done') &&
+    {engineAvailable &&
       <div className="engine-result" role="group" aria-label="Engine lines">
       {engineLineRows(lines, lineCount).map((line, index) => {
         const rank = index + 1;
@@ -408,8 +407,12 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           <EngineVariation key={`${game.id}:${fen}`} fen={fen} moves={line.moves} orientation={orientation} onExplore={onExploreLine} />
         </div> : <div className="engine-candidate engine-candidate-pending" key={rank}
           aria-label={`Line ${rank}, waiting for Stockfish`}>
-          <span className="engine-rank">{rank}.</span><span className="engine-score">—</span>
-          <span className="engine-line">Pending…</span>
+          <span className="engine-rank">{rank}.</span>
+          {rank === 1 && state.kind === 'loading' ? <div className="engine-loading" role="status">
+            <span>Loading {variant === liteEngine ? 'Lite' : 'Full'}{state.progress === undefined ? '…' : ` · ${state.progress}%`}</span>
+            <progress aria-label="Engine download" max="100" value={state.progress} />
+          </div> : <><span className="engine-score engine-score-badge">—</span>
+            <span className="engine-line">Pending…</span></>}
         </div>;
       })}
     </div>}

@@ -77,6 +77,7 @@ describe('browser Stockfish controller', () => {
     expect(html).not.toMatch(/class="engine-(?:settings-button|continuous)"[^>]*title=/);
     expect(html).not.toMatch(/Start engine|Stop engine/);
     expect(html).not.toContain('More lines share the 1.2-second search budget');
+    expect(html.match(/class="engine-candidate engine-candidate-pending"/g)).toHaveLength(3);
   });
 
   it('keeps a stable depth row during a pending search', () => {
@@ -85,6 +86,16 @@ describe('browser Stockfish controller', () => {
     expect(panel).toContain("Depth {evaluation?.depth ?? '—'}");
     expect(panel).toContain('className="engine-depth"');
     expect(css).toMatch(/\.engine-depth\s*\{[^}]*min-height: 1\.2em/);
+  });
+
+  it.each([1, 3, 5] as const)('keeps %i line slots through pending, partial and complete results', count => {
+    const complete = Array.from({ length: count }, (_, index) => ({ rank: index + 1 }));
+    expect(engineLineRows([], count)).toEqual(complete.map(() => null));
+    expect(engineLineRows([complete[count - 1]!], count)).toEqual(complete.map((line, i) =>
+      i === count - 1 ? line : null));
+    expect(engineLineRows(complete, count)).toEqual(complete);
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    expect(css).toContain('grid-auto-rows: calc(var(--engine-score-height) + 2 * var(--engine-row-padding))');
   });
 
   it('uses the first depth or time limit and requires explicit infinite mode', () => {

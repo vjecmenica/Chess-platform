@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import type { AnalysisCursor, AnalysisTree, MoveNote } from './analysis-model';
 import { MoveSelection } from './move-selection';
@@ -7,6 +7,7 @@ import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
 import { describeReviewedMove, reviewForGame, type GameReview } from './game-review';
 import { reviewAnnotation } from './move-classification';
+import { MovesVisible, moveListScrollTop } from './move-list-scroll';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -27,6 +28,25 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
   onPromote, onNote, review, bookMoves }: MoveTreeProps) {
   const [selection] = useState(() => new MoveSelection(selected));
   useLayoutEffect(() => selection.update(selected), [selection, selected]);
+  const visible = useContext(MovesVisible);
+  const list = useRef<HTMLElement>(null);
+  const selectedKey = cursorKey(selected);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    const frame = requestAnimationFrame(() => {
+      const container = list.current;
+      const move = container?.querySelector<HTMLElement>('.move-link[aria-current="step"]');
+      if (!container || !move || container.scrollHeight <= container.clientHeight) return;
+      const bounds = move.getBoundingClientRect();
+      const row = move.closest('.move-pair-row');
+      const rowHeight = (row ?? move).getBoundingClientRect().height;
+      const moveTop = bounds.top - container.getBoundingClientRect().top - container.clientTop;
+      const top = moveListScrollTop(container.scrollTop, container.clientHeight, container.scrollHeight,
+        moveTop, bounds.height, Math.min(rowHeight, 40));
+      if (Math.abs(top - container.scrollTop) >= 1) container.scrollTop = top;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [visible, selectedKey, game.id]);
   const view = useMemo(() => buildMoveTree(game, tree, { kind: 'main', ply: 0 }),
     [game, tree?.nodes, tree?.notes, tree?.promoted]);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -77,7 +97,7 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
     actions.current.openMenu(move, x, y, trigger), []);
 
   const live = game.status !== 'finished' && tree === null;
-  return <nav className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
+  return <nav ref={list} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
     <h3>Moves</h3>
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}

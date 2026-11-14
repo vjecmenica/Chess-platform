@@ -318,8 +318,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .engine-continuous:hover::before { background: var(--color-primary-hover); }
 .engine-continuous[aria-pressed="true"]::before { background: var(--color-primary-pressed); border-color: var(--color-accent); box-shadow: none; }
 .engine-build { color: var(--color-text-muted); overflow-wrap: anywhere; }
-.engine-loading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--text-compact); }
-.engine-loading progress { width: min(180px, 100%); height: 8px; accent-color: var(--color-accent); }
+.engine-loading { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px;
+  min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
+.engine-loading progress { flex: 0 1 180px; min-width: 0; height: 8px; accent-color: var(--color-accent); }
 .engine-fallback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--text-compact); }
 .review-engine, .review-progress { display: block; color: var(--color-text-muted); font-size: var(--text-meta); }
 .engine-settings-content { --settings-label-width: 82px; --settings-value-width: 48px; display:grid; gap:10px; width:100%; max-width:440px; min-width:0; color:var(--color-text); }
@@ -365,18 +366,21 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 @media (max-width: 480px) {
   .engine-settings-content { --settings-label-width: 78px; --settings-value-width: 42px; }
 }
-.engine-result { display: grid; gap: 4px; min-width: 0; }
-.engine-depth { display: block; min-height: 1.2em; font-variant-numeric: tabular-nums; }
+.engine-result { --engine-score-height: 30px; --engine-row-padding: 0px;
+  display: grid; grid-auto-rows: calc(var(--engine-score-height) + 2 * var(--engine-row-padding)); gap: 4px; min-width: 0; }
+.engine-depth { display: grid; min-height: 1.2em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.engine-depth > span { grid-area: 1 / 1; }
+.engine-depth-reserve { visibility: hidden; }
 .engine-candidate-pending { color: var(--color-text-muted); }
 .engine-candidate { font-size: var(--text-compact); display: grid; grid-template-columns: 20px 60px minmax(0, 1fr);
-  align-items: baseline; gap: 6px; min-width: 0; }
+  align-items: center; gap: 6px; min-width: 0; padding-block: var(--engine-row-padding); }
 .engine-rank { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .engine-score { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-link); }
-.engine-score-badge { display: inline-grid; place-items: center; min-height: 30px; padding: 2px 3px;
+.engine-score-badge { display: inline-grid; place-items: center; block-size: var(--engine-score-height, 30px); padding: 2px 3px;
   box-sizing: border-box; border-radius: 2px; border: 1px solid var(--color-border-strong); }
 .engine-score-badge[data-side="white"] { background: var(--evaluation-white); color: var(--evaluation-white-text); }
 .engine-score-badge[data-side="black"] { background: var(--evaluation-black); color: var(--evaluation-black-text); }
-.engine-candidate:has(.engine-score-badge) { align-items: center; }
+.engine-candidate-pending .engine-score { color: inherit; border-color: var(--color-border-subtle); }
 .game-chat-header .analysis-view-tabs { border-bottom: 0; min-width: 0; }
 .game-chat-header .analysis-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
 .chat-unread { display: inline-flex; align-items: center; justify-content: center;
@@ -481,7 +485,7 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   background: var(--move-classification-color); color: #161313; }
 .move-classification svg { display: block; width: 84%; height: 84%; }
 .move-classification-glyph { font: 800 86cqi / 1 var(--font-ui); letter-spacing: -.055em; white-space: nowrap; }
-.review-annotation { font-weight: 750; white-space: nowrap; }
+.review-annotation { margin-inline-start: 3px; font-size: 1.1em; line-height: 1; font-weight: 800; white-space: nowrap; }
 .move-classification-board { position: absolute; inset: 3% 3% auto auto; width: 35%; max-width: 28px;
   z-index: 3; pointer-events: none; }
 .move-comment { display: block; flex-basis: 100%; font-size: var(--text-compact); font-weight: 400; color: var(--color-text-muted); overflow-wrap: anywhere; }
@@ -779,8 +783,8 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .analysis-workspace .move-pair-row { min-height: 32px; }
 .analysis-workspace .moves h3 { font-size: var(--text-compact); color: var(--color-text-muted); font-weight: 500; }
 .analysis-workspace .engine-panel button { min-height: 32px; padding: 5px 8px; }
-.analysis-workspace .engine-result { gap: 7px; }
-.analysis-workspace .engine-candidate { grid-template-columns: 14px minmax(50px, max-content) minmax(0,1fr); gap: 5px; padding: 3px 5px; background: var(--color-surface-raised); border-radius: 4px; }
+.analysis-workspace .engine-result { --engine-row-padding: 3px; gap: 7px; }
+.analysis-workspace .engine-candidate { grid-template-columns: 14px 60px minmax(0,1fr); gap: 5px; padding-inline: 5px; background: var(--color-surface-raised); border-radius: 4px; }
 .analysis-workspace .engine-line { line-height: 1.45; }
 .analysis-workspace .book-columns { color: var(--color-text-muted); padding-bottom: 5px; }
 .analysis-workspace .masters-move { min-height: 32px; }
@@ -1152,7 +1156,8 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .engine-panel .engine-threat-toggle[aria-pressed='true'] { color:var(--color-error); }
 .engine-panel .engine-depth-row .engine-threat-toggle[aria-pressed='true']:hover { color:var(--color-error); }
 .engine-threat-toggle:focus-visible,.appearance-close:focus-visible { outline:3px solid var(--color-focus); outline-offset:2px; }
-.engine-threat-status { color: var(--color-text-muted); font-size: var(--text-compact); }
+.engine-threat-status { color: var(--color-text-muted); font-size: var(--text-compact);
+  block-size: 2lh; overflow: auto; }
 
 /* Appearance changes never change square hit boxes or the board's measured dimensions. */
 .square.light,.engine-preview-board .light { background-color:var(--appearance-light,#f0dfbd);

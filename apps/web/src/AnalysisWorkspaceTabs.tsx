@@ -1,6 +1,7 @@
 import { useId, useReducer, useRef, useState, type ReactNode } from 'react';
 import { ChatUnreadBadge } from './GameChat';
 import { initialWorkspaceView, workspaceView } from './workspace-view';
+import { MovesVisible } from './move-list-scroll';
 
 export interface GameRoomPresentation {
   visible: boolean;
@@ -41,7 +42,9 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
         {tab.id === 'room' && <ChatUnreadBadge count={unread} />}</button>)}
     </div>
     <div className={enabled ? 'workspace-analysis-pane' : 'workspace-play-pane'} id={`${id}-main`} role="region"
-      aria-labelledby={`${id}-main-button`} hidden={active !== 'main'}>{children}</div>
+      aria-labelledby={`${id}-main-button`} hidden={active !== 'main'}>
+      <MovesVisible.Provider value={active === 'main'}>{children}</MovesVisible.Provider>
+    </div>
     {enabled && <div className="workspace-review-pane" id={`${id}-review`} role="region"
       aria-labelledby={`${id}-review-button`} hidden={active !== 'review'}>
       <div ref={reviewHost} className="review-host" />
