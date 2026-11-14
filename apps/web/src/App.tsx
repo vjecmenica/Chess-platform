@@ -1,6 +1,8 @@
 import { loadGuestSession } from './guest-session-client';
 import { useAppearance } from './Appearance';
 import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis, shareableGameUrl } from './analysis-links';
+import { publicReplay, publicReplayUrl } from './public-replays';
+import { embedUrlForGame } from './embed-links';
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
@@ -12,7 +14,6 @@ import { GameRematch } from './GameRematch';
 import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
-import { exportBoardImage } from './board-image';
 import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
@@ -441,12 +442,13 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible); };
   }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
 
-  const showImportedGame = useCallback((next: ImportedGame) => {
+  const showImportedGame = useCallback((next: ImportedGame, ply = next.game.history.length) => {
     try { setBoardSize(readBoardSizePreference(window.localStorage)); } catch { setBoardSize(null); }
     setImported(next);
     gameRef.current = next.game;
     setGame(next.game);
-    setAnalysis(createAnalysisTree(next.game, next.notes));
+    const tree = createAnalysisTree(next.game, next.notes);
+    setAnalysis(ply === next.game.history.length ? tree : selectMain(tree, next.game, ply));
     setAnalysisBoard(createAnalysisBoard(next.game.id));
     setAnalysisOpen(true);
 
@@ -477,14 +479,20 @@ export function App() {
       }, 'blank-shared-position'));
       return;
     }
+    if (entry?.kind === 'public' && imported === null) {
+      const replay = publicReplay(entry.id);
+      if (replay === null) { setError('This public replay is unavailable.'); return; }
+      const next = importParsedPgn(replay, `public-${entry.id}`);
+      showImportedGame(next, entry.ply ?? next.game.history.length);
+      return;
+    }
     if (entry?.kind !== 'explorer' || session === null || imported !== null) return;
     const controller = new AbortController();
     void loadExplorerAnalysis(entry.id, entry.fen, AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]))
       .then(value => {
         if (controller.signal.aborted) return;
         const next = importParsedPgn(value.game, 'explorer-' + entry.id);
-        showImportedGame(next);
-        setAnalysis(selectMain(createAnalysisTree(next.game, next.notes), next.game, entry.ply ?? value.ply));
+        showImportedGame(next, entry.ply ?? value.ply);
       }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Example game could not be opened.'); });
     return () => controller.abort();
   }, [session, imported, showImportedGame]);
@@ -493,7 +501,8 @@ export function App() {
     if (!analysisOpen || !analysis || !game || !initialAnalysisEntry || initialAnalysisEntry.kind === 'position') return;
     const ply = mainAncestorPly(analysis);
     const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply, boardSize ?? boardRowHeight)
-      : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
+      : initialAnalysisEntry.kind === 'public' ? publicReplayUrl(initialAnalysisEntry.id, ply)
+        : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
     window.history.replaceState(window.history.state, '', url);
   }, [analysisOpen, analysis?.cursor, game?.id, boardSize, boardRowHeight]);
 
@@ -1061,10 +1070,8 @@ export function App() {
     share={displayedFen !== null && (game.status === 'finished' || game.status === 'aborted') ? {
       game, headers: imported?.headers, fen: displayedFen,
       gameUrl: shareableGameUrl(initialAnalysisEntry, game.id, displayedPly),
-      exportImage: async coordinates => {
-        if (boardRef.current === null) throw new Error('The board is no longer available.');
-        return exportBoardImage(boardRef.current, displayedFen, orientation, appearance, coordinates);
-      },
+      embedUrl: embedUrlForGame(initialAnalysisEntry, game.id, orientation, displayedPly),
+      board: boardRef, orientation, appearance,
     } : null}
     onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
       ? { ...current, flipped: !current.flipped } : current)} />;
@@ -1208,11 +1215,12 @@ export function App() {
       </> : <p role="status">Loading position…</p>}
     </main>
   </>;
-  if (initialAnalysisEntry?.kind === 'explorer' && imported === null) return <>
+  if ((initialAnalysisEntry?.kind === 'explorer' || initialAnalysisEntry?.kind === 'public') && imported === null) return <>
     <AnalysisNavigation accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
     <main className="challenge-page">
-      <p role={error ? 'alert' : 'status'}>{error ?? 'Loading example game…'}</p>
-      {error && <a href={window.location.href}>Retry</a>}
+      <p role={error ? 'alert' : 'status'}>{error ?? 'Loading replay…'}</p>
+      {error && (initialAnalysisEntry.kind === 'public' ? <a href="/">Go to the homepage</a>
+        : <a href={window.location.href}>Retry</a>)}
     </main>
   </>;
 
@@ -1283,6 +1291,7 @@ export function App() {
         <button type="button" className="secondary" onClick={() => {
           showImportedGame(importPgn('[White "White"]\n[Black "Black"]\n[Result "*"]\n\n*', `blank-${crypto.randomUUID()}`));
         }}>Open blank analysis</button>
+        <p><a href={publicReplayUrl('scholars-mate')}>Open the public demonstration game</a></p>
         {pgnError !== null && pgnErrorSource === 'text' && <p className="error" role="alert" tabIndex={-1}
           ref={pgnErrorRef}>{pgnError}</p>}
       </section>}

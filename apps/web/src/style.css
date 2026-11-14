@@ -1261,7 +1261,7 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .share-export-link > div { display: flex; flex-wrap: wrap; align-items: stretch; gap: 7px; }
 .share-export-link input { flex: 1 1 180px; min-width: 0; }
 .share-export-link p { margin-top: 5px; }
-.share-export-tabs { display: flex; gap: var(--tab-gap); border-bottom: 1px solid var(--color-border); margin: 12px 0; }
+.share-export-tabs { display: flex; flex-wrap: wrap; gap: var(--tab-gap); border-bottom: 1px solid var(--color-border); margin: 12px 0; }
 .share-export-tabs button { min-height: var(--tab-height); padding: var(--tab-padding); border: 0;
   border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--color-text-muted); }
 .share-export-tabs button:hover { background: var(--color-surface-hover); color: var(--color-text); }
@@ -1276,6 +1276,13 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .share-export-checkbox input { width: auto; margin: 0; }
 .share-export-body .share-export-feedback { min-height: 1.5em; margin-top: 6px; }
 .share-export-body .share-export-feedback.error { color: var(--color-error); }
+.share-export-body select { min-height: 34px; padding: 4px 8px; font: inherit; color: inherit;
+  background: var(--color-input); border: 1px solid var(--color-border-strong); border-radius: 6px; }
+.share-export-progress { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.share-export-progress label { margin: 0; }
+.share-export-progress progress { flex: 1 1 100px; min-width: 0; accent-color: var(--color-primary); }
+.share-embed-preview { display: block; max-width: 100%; margin: 12px auto 0;
+  border: 1px solid var(--color-border); border-radius: 6px; }
 @media(max-width:600px){.settings-layout{grid-template-columns:minmax(0,1fr)}.settings-layout>nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--color-border);padding:10px}.settings-sections{padding:14px}.appearance-settings label{gap:8px}.shared-settings-dialog{max-height:94dvh}.engine-settings-content{--settings-label-width:78px;--settings-value-width:44px}}
 /* Primary workspace panes share the existing measured sidebar height. */
 .workspace-tabs-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; height: 100%; }

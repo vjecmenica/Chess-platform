@@ -1,10 +1,12 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { GameReadResponse } from '@chess/contracts';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import type { BoardAppearance, GameReadResponse, GameSide } from '@chess/contracts';
 import { canExportGame, exportGamePgn, pgnFile } from './pgn-export';
 import { positionAnalysisUrl } from './analysis-links';
 import { downloadBlob } from './download';
+import { embedFrame, embedHeight, embedWidth } from './embed-links';
+import { gifMaxPlies, gifSize, gifSpeeds } from './gif-frames';
 
-const tabs = ['PGN', 'FEN', 'Image'] as const;
+const tabs = ['PGN', 'FEN', 'Image', 'GIF', 'Embed'] as const;
 type Tab = typeof tabs[number];
 
 export interface ShareExportOptions {
@@ -12,7 +14,10 @@ export interface ShareExportOptions {
   readonly headers?: Readonly<Record<string, string>> | undefined;
   readonly fen: string;
   readonly gameUrl: string | null;
-  readonly exportImage: (coordinates: boolean) => Promise<Blob>;
+  readonly embedUrl: string | null;
+  readonly board: RefObject<HTMLDivElement | null>;
+  readonly appearance: BoardAppearance;
+  readonly orientation: GameSide;
 }
 
 export function ShareExportDialog({ options, onClose }: { options: ShareExportOptions; onClose: () => void }) {
@@ -22,18 +27,24 @@ export function ShareExportDialog({ options, onClose }: { options: ShareExportOp
   const [tab, setTab] = useState<Tab>(() => canExportGame(options.game) ? 'PGN' : 'FEN');
   const [coordinates, setCoordinates] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [speed, setSpeed] = useState<keyof typeof gifSpeeds>('Normal');
+  const [progress, setProgress] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null);
   const action = useRef(0);
+  const gifRequest = useRef<AbortController | null>(null);
   const pgn = useMemo(() => canExportGame(options.game) ? exportGamePgn(options.game, options.headers)
     : null, [options.game, options.headers]);
   const positionUrl = useMemo(() => positionAnalysisUrl(options.fen), [options.fen]);
   const absoluteUrl = (path: string) => new URL(path, window.location.origin).href;
   const gameLink = options.gameUrl && absoluteUrl(options.gameUrl);
+  const embedUrl = options.embedUrl ? new URL(options.embedUrl, window.location.origin) : null;
+  const embedCode = embedUrl && embedFrame(embedUrl);
+  const frameCount = options.game.history.length + 1;
 
   useLayoutEffect(() => {
     dialog.current?.showModal();
     closeButton.current?.focus({ preventScroll: true });
-    return () => { action.current++; };
+    return () => { action.current++; gifRequest.current?.abort(); };
   }, []);
 
   function selectTab(next: Tab) {
@@ -41,6 +52,40 @@ export function ShareExportDialog({ options, onClose }: { options: ShareExportOp
     action.current++;
     setFeedback(null);
     setTab(next);
+  }
+
+  function cancelGif() {
+    if (gifRequest.current === null) return;
+    gifRequest.current.abort();
+    gifRequest.current = null;
+    setProgress(null);
+    setFeedback({ text: 'GIF export canceled.' });
+  }
+
+  async function downloadGif() {
+    if (gifRequest.current !== null) return;
+    const controller = new AbortController();
+    gifRequest.current = controller;
+    setProgress(0);
+    setFeedback(null);
+    try {
+      const board = options.board.current;
+      if (!board) throw new Error('The board is no longer available.');
+      const { exportGameGif } = await import('./gif-export');
+      const blob = await exportGameGif(board, options.game, options.orientation, options.appearance, gifSpeeds[speed],
+        controller.signal, setProgress);
+      if (controller.signal.aborted || !dialog.current?.open) return;
+      downloadBlob(blob, 'chess-platform-replay.gif');
+      setFeedback({ text: 'GIF download started.' });
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setFeedback({ text: error instanceof Error ? error.message : 'Could not create the GIF.', error: true });
+    } finally {
+      if (gifRequest.current === controller) {
+        gifRequest.current = null;
+        setProgress(null);
+      }
+    }
   }
 
   async function copy(value: string, label: string) {
@@ -66,7 +111,10 @@ export function ShareExportDialog({ options, onClose }: { options: ShareExportOp
     setExporting(true);
     setFeedback(null);
     try {
-      const blob = await options.exportImage(coordinates);
+      const board = options.board.current;
+      if (!board) throw new Error('The board is no longer available.');
+      const { exportBoardImage } = await import('./board-image');
+      const blob = await exportBoardImage(board, options.fen, options.orientation, options.appearance, coordinates);
       if (!dialog.current?.open) return;
       downloadBlob(blob, 'chess-platform-position.png');
       if (request === action.current) setFeedback({ text: 'PNG download started.' });
@@ -90,7 +138,7 @@ export function ShareExportDialog({ options, onClose }: { options: ShareExportOp
         <label htmlFor={`${id}-game-link`}>Game link</label>
         <div><input id={`${id}-game-link`} readOnly value={gameLink} />
           <button type="button" onClick={() => void copy(gameLink, 'Game link')}>Copy link</button></div>
-        <p>Opens the recorded line in Opening Explorer using the recipient’s guest session.</p>
+        <p>{embedUrl ? 'Opens the published game in Analysis.' : 'Opens the recorded line in Opening Explorer using the recipient’s guest session.'}</p>
       </div> : <p>{options.game.id.startsWith('import-') && pgn !== null
         ? 'This imported game is local to this session. Share it using PGN.'
         : options.headers === undefined
@@ -142,6 +190,39 @@ export function ShareExportDialog({ options, onClose }: { options: ShareExportOp
             {exporting ? 'Creating PNG…' : 'Download PNG'}</button>
         </div>
       </section>
+      <section role="tabpanel" id={`${id}-GIF-panel`} aria-labelledby={`${id}-GIF-tab`} hidden={tab !== 'GIF'}>
+        {pgn === null ? <p>GIF export is unavailable for this game.</p> : options.game.history.length > gifMaxPlies
+          ? <p>This game is too long for GIF export. The limit is {gifMaxPlies} half-moves.</p> : <>
+            <p>Replay the recorded main line as a {gifSize} × {gifSize} animation with your current board and pieces.</p>
+            <label htmlFor={`${id}-speed`}>Playback speed</label>
+            <select id={`${id}-speed`} value={speed} disabled={progress !== null}
+              onChange={event => setSpeed(event.target.value as keyof typeof gifSpeeds)}>
+              {Object.keys(gifSpeeds).map(value => <option key={value}>{value}</option>)}
+            </select>
+            <div className="share-export-actions">
+              {progress !== null && <button type="button" onClick={cancelGif}>Cancel GIF</button>}
+              <button type="button" className="primary" disabled={progress !== null} onClick={() => void downloadGif()}>
+                Download GIF
+              </button>
+            </div>
+          </>}
+      </section>
+      <section role="tabpanel" id={`${id}-Embed-panel`} aria-labelledby={`${id}-Embed-tab`} hidden={tab !== 'Embed'}>
+        {embedUrl && embedCode ? <>
+          <label htmlFor={`${id}-embed-code`}>Embed code</label>
+          <textarea id={`${id}-embed-code`} readOnly rows={3} value={embedCode} spellCheck={false} />
+          <div className="share-export-actions">
+            <button type="button" className="primary" onClick={() => void copy(embedCode, 'Embed code')}>Copy Embed Code</button>
+          </div>
+          {tab === 'Embed' && <iframe className="share-embed-preview" src={embedUrl.href} title="Embed preview"
+            width={embedWidth - 96} height={embedHeight - 96} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />}
+        </> : <p>Embedding is available for published public replays.</p>}
+      </section>
+      {progress !== null && <div className="share-export-progress">
+        <label htmlFor={`${id}-gif-progress`}>{progress === 0 ? 'Preparing GIF…' : `Encoding frame ${progress} of ${frameCount}`}</label>
+        <progress id={`${id}-gif-progress`} value={progress} max={frameCount} />
+        {tab !== 'GIF' && <button type="button" onClick={cancelGif}>Cancel GIF</button>}
+      </div>}
       <p className={`share-export-feedback${feedback?.error ? ' error' : ''}`} role="status">{feedback?.text}</p>
     </div>
   </dialog>;

@@ -15,6 +15,7 @@
   "dependencies": {
     "@chess/contracts": "0.0.0",
     "@chess/domain": "0.0.0",
+    "gifenc": "1.0.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

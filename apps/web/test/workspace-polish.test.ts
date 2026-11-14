@@ -5,6 +5,7 @@ import { BoardUtilities } from '../src/BoardUtilities';
 import { ChatMessage, ChatUnreadBadge } from '../src/GameChat';
 import { ClosedRematchStatus } from '../src/GameRematch';
 import { importPgn } from '../src/pgn-import';
+import { defaultAppearance } from '@chess/contracts';
 
 describe('workspace utility presentation', () => {
   it.each([1, 12, 100])('retains a readable numeric unread badge for %i entries', count => {
@@ -40,7 +41,8 @@ describe('workspace utility presentation', () => {
     const game = importPgn('1. e4 e5 1-0', 'site-game').game;
     for (const enabled of [true, false]) {
       const html = renderToStaticMarkup(createElement(BoardUtilities, {
-        share: enabled ? { game, fen: game.position.fen, gameUrl: null, exportImage: async () => new Blob() }
+        share: enabled ? { game, fen: game.position.fen, gameUrl: null, embedUrl: null, board: { current: null },
+          appearance: defaultAppearance, orientation: 'white' }
           : null, onFlip: () => {},
       }));
       expect(html).toContain('aria-label="Flip board" data-board-display-control="true"');

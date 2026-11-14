@@ -1,5 +1,6 @@
 import { parseAnalysisPosition, type ParsedPgn } from '@chess/domain';
 import { renderedBoardSize } from './board-size-preference';
+import { publicReplayId, publicReplayUrl } from './public-replays';
 
 type ReviewView = { gameId: string; workspace?: 'main' | 'review'; chart?: 'computer' | 'times' };
 
@@ -34,9 +35,12 @@ export function positionAnalysisUrl(fen: string): string | null {
 }
 
 export function shareableGameUrl(entry: ReturnType<typeof analysisEntry>, gameId: string, ply?: number): string | null {
-  if (entry?.kind !== 'explorer' || gameId !== `explorer-${entry.id}`) return null;
   const sharePly = ply !== undefined && Number.isInteger(ply) && ply >= 0 && ply <= 1000 ? ply : undefined;
-  return explorerAnalysisUrl(entry.id, entry.fen, sharePly);
+  if (entry?.kind === 'explorer' && gameId === `explorer-${entry.id}`)
+    return explorerAnalysisUrl(entry.id, entry.fen, sharePly);
+  if (entry?.kind === 'public' && gameId === `public-${entry.id}` && publicReplayId(entry.id))
+    return publicReplayUrl(entry.id, sharePly);
+  return null;
 }
 
 export function analysisEntry(url: URL) {
@@ -47,6 +51,8 @@ export function analysisEntry(url: URL) {
     const position = parseAnalysisPosition(fragment.get('fen') ?? '');
     return { kind: 'position' as const, position };
   }
+  const published = /^\/analysis\/public\/([a-z0-9-]{1,64})$/.exec(url.pathname);
+  if (published) return { kind: 'public' as const, id: published[1]!, ply };
   const explorer = /^\/analysis\/explorer\/([1-9][0-9]{0,17})$/.exec(url.pathname);
   if (explorer) return { kind: 'explorer' as const, id: explorer[1]!, fen: url.searchParams.get('fen') ?? '', ply };
   const site = /^\/challenge\/([0-9a-f-]{36})$/.exec(url.pathname);
