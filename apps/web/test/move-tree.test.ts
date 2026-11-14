@@ -49,22 +49,38 @@ describe('analysis move list', () => {
     expect(html).toContain('PGN $1');
     expect(html).toContain('Prepared opening choice');
     expect(html).toContain('Engine: Inaccuracy, 100 centipawn loss');
-    expect(html).toContain('data-classification="inaccuracy"');
-    expect(html).toContain('data-classification="mistake"');
-    expect(html).toContain('data-classification="blunder"');
-    expect((html.match(/move-classification-list/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('e4<span class="nag-symbol">!</span></span>');
+    expect(html).toContain('e5<span class="review-annotation" aria-hidden="true" style="color:#df904b">?</span>');
+    expect(html).toContain('Nf3<span class="review-annotation" aria-hidden="true" style="color:#cf5a5a">??</span>');
+    expect((html.match(/review-annotation/g) ?? [])).toHaveLength(2);
+    expect(html).not.toContain('move-classification');
+    expect(markup(game, createAnalysisTree(game), true, review)).toContain(
+      'e4<span class="review-annotation" aria-hidden="true" style="color:#ddbb55">?!</span>');
     expect(html).toContain('1. d4');
     expect(game.history.map(move => move.san)).toEqual(['e4', 'e5', 'Nf3']);
     const quiet = buildGameReview(game, fens.map(fen => ({ fen, depth: 14,
       score: { kind: 'cp' as const, value: 0 }, bestMove: null, variation: [] })));
-    expect(markup(game, tree, true, quiet)).toContain('data-classification="excellent"');
+    expect(markup(game, tree, true, quiet)).not.toContain('review-annotation');
     expect(markup(game, tree, true, quiet)).toContain('Engine: Excellent, 0 centipawn loss');
-    expect(markup({ ...game, status: 'active' }, null, true, quiet)).not.toContain('data-classification');
+    expect(markup({ ...game, status: 'active' }, null, true, quiet)).not.toContain('Engine:');
     const mate = buildGameReview(game, quiet.evaluations.map((evaluation, index) => index === 1
       ? { ...evaluation, score: { kind: 'mate' as const, value: 1 } } : evaluation));
     expect(markup(game, tree, true, mate)).toContain('Engine: Mate score, no numeric centipawn loss');
-    expect(markup(game, tree, true, mate)).toContain('data-classification="mate"');
+    expect(markup(game, tree, true, mate)).not.toContain('review-annotation');
   });
+  it('keeps Best and Good descriptions accessible without visible automatic notation', () => {
+    const game = savedGame(2);
+    const fens = reviewPositions(game);
+    const review = buildGameReview(game, fens.map((fen, index) => ({
+      fen, depth: 14, score: { kind: 'cp' as const, value: index === 2 ? 35 : 0 },
+      bestMove: index === 0 ? 'e2e4' : null, variation: index === 0 ? ['e2e4'] : [],
+    })));
+    const html = markup(game, createAnalysisTree(game), true, review);
+    expect(html).toContain('Engine: Best move, 0 centipawn loss');
+    expect(html).toContain('Engine: Good, 35 centipawn loss');
+    expect(html).not.toContain('review-annotation');
+  });
+
   it('groups saved half-moves into White and Black columns, including an incomplete pair', () => {
     const complete = markup(savedGame(2), null);
     expect((complete.match(/class="move-pair"/g) ?? [])).toHaveLength(1);

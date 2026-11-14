@@ -1,8 +1,8 @@
 import { ExplorerGames } from './ExplorerGames';
 import { memo, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
-import type { AnalysisTree } from './analysis-model';
-import { mastersPath, playedPercentage, MastersClient, type MastersResult } from './masters-explorer';
+import { cursorFen, type AnalysisTree } from './analysis-model';
+import { playedPercentage, MastersClient, type MastersResult } from './masters-explorer';
 
 const client = new MastersClient();
 
@@ -174,7 +174,7 @@ export function ExplorerExamples({ children, hasMoves }: { children: ReactNode; 
 export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore }: {
   game: GameReadResponse; tree: AnalysisTree; onExplore: (uci: string) => void;
 }) {
-  const fen = mastersPath(game, tree).fen;
+  const fen = cursorFen(tree, game);
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{ fen: string; result: MastersResult } | null>(null);
   useEffect(() => {

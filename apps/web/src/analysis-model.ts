@@ -79,7 +79,7 @@ export function cursorFen(tree: AnalysisTree, game: GameReadResponse,
   cursor: AnalysisCursor = tree.cursor): string {
   if (tree.gameId !== game.id || tree.savedFen !== game.position.fen)
     throw new Error('The saved game changed; reload its analysis.');
-  return cursor.kind === 'main' ? replayFen(game, replayPly(cursor.ply, game.history.length))
+  return cursor.kind === 'main' ? replayFen(game, cursor.ply)
     : node(tree, cursor.id).fen;
 }
 
@@ -105,7 +105,7 @@ export function mainAncestorPly(tree: AnalysisTree, cursor = tree.cursor): numbe
 export function previousPosition(tree: AnalysisTree): AnalysisTree {
   const cursor = tree.cursor;
   if (cursor.kind === 'branch') return { ...tree, cursor: node(tree, cursor.id).parent };
-  return { ...tree, cursor: { kind: 'main', ply: Math.max(0, cursor.ply - 1) } };
+  return cursor.ply === 0 ? tree : { ...tree, cursor: { kind: 'main', ply: cursor.ply - 1 } };
 }
 
 export function nextPosition(tree: AnalysisTree, game: GameReadResponse): AnalysisTree {

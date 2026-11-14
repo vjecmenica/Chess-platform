@@ -2,6 +2,7 @@ export function nextReplaySelection(selectedPly: number | null, moveCount: numbe
   direction: -1 | 1, followLive: boolean): number | null {
   const current = Math.max(0, Math.min(moveCount, selectedPly ?? moveCount));
   const next = Math.max(0, Math.min(moveCount, current + direction));
+  if (current === next && selectedPly === null) return null;
   return followLive && next === moveCount ? null : next;
 }
 

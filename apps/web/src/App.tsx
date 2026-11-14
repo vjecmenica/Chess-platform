@@ -1,7 +1,7 @@
 import { loadGuestSession } from './guest-session-client';
 import { useAppearance } from './Appearance';
 import { analysisEntry, siteAnalysisUrl, explorerAnalysisUrl, loadExplorerAnalysis } from './analysis-links';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ChallengeSummary, GameReadResponse, GameSide, GuestSessionResponse,
   GameActionAcceptedResponse, GameClaimAcceptedResponse, MoveAcceptedResponse } from '@chess/contracts';
 import { defaultTimeControl, type TimeControlId } from '@chess/contracts';
@@ -959,6 +959,13 @@ export function App() {
     setAnalysisError(null);
   }, []);
 
+  const selectReviewPly = useCallback((ply: number) => {
+    const currentGame = gameRef.current;
+    if (currentGame === null) return;
+    setAnalysis(current => current?.gameId === currentGame.id ? selectMain(current, currentGame, ply) : current);
+    setSelected(null);
+  }, []);
+
   const removeVariation = useCallback((id: number) => {
     setAnalysis(current => current === null ? null : deleteVariation(current, id));
     setSelected(null); setAnalysisError(null);
@@ -1035,43 +1042,34 @@ export function App() {
     onDownload={() => downloadGamePgn(game, imported?.headers)}
     onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
       ? { ...current, flipped: !current.flipped } : current)} />;
-  const hintSide = game === null ? null : analysisOpen && analysis !== null
-    ? cursorSide(analysis, game) : game.position.sideToMove;
-  const showHints = selected !== null && displayedFen !== null && hintSide !== null
-    && (analysisOpen ? game?.status === 'finished' : canMove);
+  const showHints = selected !== null && (analysisOpen ? game?.status === 'finished' : canMove);
   const moveHints = useMemo(() => showHints && selected !== null && displayedFen !== null
-    && hintSide !== null ? legalMoveHints(displayedFen, hintSide, selected) : new Map<Square, boolean>(),
-  [showHints, selected, displayedFen, hintSide]);
+    ? legalMoveHints(displayedFen, displayedFen.split(' ')[1] === 'w' ? 'white' : 'black', selected)
+    : new Map<Square, boolean>(), [showHints, selected, displayedFen]);
   const selectedEvaluation = displayedFen === null || !analysisOpen ? null
     : positionEvaluation?.fen === displayedFen ? positionEvaluation
       : completedReview?.evaluations.find(item => item.fen === displayedFen) ?? null;
 
+  const navigateFromKeyboard = useEffectEvent((event: KeyboardEvent) => {
+    if (promotion !== null || (game?.status !== 'active' && game?.status !== 'finished')) return;
+    const direction = moveNavigationDirection(event);
+    if (direction === null) return;
+    if (analysisOpen && analysis !== null) {
+      setAnalysis(current => !current || current.gameId !== game.id ? current
+        : direction === -1 ? previousPosition(current) : nextPosition(current, game));
+    } else {
+      setSelectedReplayPly(current => nextReplaySelection(current, game.history.length, direction, game.status === 'active'));
+    }
+    setSelected(null);
+    setAnnotationFrom(null);
+    event.preventDefault();
+  });
+
   useEffect(() => {
-    if (game?.status !== 'active' && game?.status !== 'finished') return;
-    const navigate = (event: KeyboardEvent) => {
-      if (promotion !== null) return;
-      const direction = moveNavigationDirection(event);
-      if (direction === null) return;
-      if (analysisOpen && analysis !== null) {
-        if (direction === -1 && analysis.cursor.kind === 'main' && analysis.cursor.ply === 0) return;
-        const next = direction === -1 ? previousPosition(analysis) : nextPosition(analysis, game);
-        if (next === analysis) return;
-        setAnalysis(next);
-      } else {
-        if (direction === -1 && displayedPly === 0) return;
-        if (direction === 1 && displayedPly === game.history.length) {
-          if (game.status !== 'active' || selectedReplayPly === null) return;
-          setSelectedReplayPly(null);
-        } else setSelectedReplayPly(nextReplaySelection(selectedReplayPly,
-          game.history.length, direction, game.status === 'active'));
-      }
-      setSelected(null);
-      setAnnotationFrom(null);
-      event.preventDefault();
-    };
+    const navigate = (event: KeyboardEvent) => navigateFromKeyboard(event);
     window.addEventListener('keydown', navigate);
     return () => window.removeEventListener('keydown', navigate);
-  }, [game, analysis, analysisOpen, displayedPly, selectedReplayPly, promotion]);
+  }, []);
 
   useLayoutEffect(() => {
     const frame = boardFrameRef.current;
@@ -1332,7 +1330,7 @@ export function App() {
                       {piece !== null && <img className="piece" src={pieceImage(piece, appearance.pieceSet)} alt="" draggable={false} />}
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost, appearance.pieceSet)} alt=""
                         aria-hidden="true" draggable={false} />}
-                      {badge && <MoveClassificationBadge classification={badge.classification} placement="board" />}
+                      {badge && <MoveClassificationBadge classification={badge.classification} />}
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
                     && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
@@ -1507,10 +1505,7 @@ export function App() {
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
                 selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}
-                onSelectPly={ply => {
-                  setAnalysis(current => current === null ? null : selectMain(current, game, ply));
-                  setSelected(null);
-                }} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
+                onSelectPly={selectReviewPly} onReviewChange={setGameReview} onEvaluationChange={setPositionEvaluation}
                 orientation={orientation} onExploreLine={(rootFen, moves) => {
                   const current = gameRef.current, tree = analysisRef.current;
                   if (!analysisOpenRef.current || !current || !tree || promotion !== null) return;

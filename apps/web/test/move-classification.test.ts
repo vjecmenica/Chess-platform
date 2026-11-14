@@ -5,7 +5,7 @@ import { createPositionFromFen } from '@chess/domain';
 import { boardRows } from '../src/board-model';
 import type { EngineEvaluation } from '../src/engine-analysis';
 import { buildGameReview, describeReviewedMove, reviewedBoardMove, reviewPositions } from '../src/game-review';
-import { moveClassifications } from '../src/move-classification';
+import { moveClassifications, reviewAnnotation, type MoveClassification } from '../src/move-classification';
 import { MoveClassificationBadge } from '../src/MoveClassificationBadge';
 import { importPgn } from '../src/pgn-import';
 
@@ -79,17 +79,23 @@ it('resolves both squares of the displayed, reviewed main-line move of this fini
   expect(describeReviewedMove(highlighted!.move)).toBe('Engine: Best move, 0 centipawn loss');
 });
 
-it('shares unique theme-independent colors and symbols between board and list badges', () => {
+it('keeps board badges for all classifications and shares the palette with traditional list punctuation', () => {
   const visuals = Object.entries(moveClassifications);
   expect(new Set(visuals.map(([, visual]) => visual.color)).size).toBe(visuals.length);
   expect(new Set(visuals.map(([, visual]) => 'glyph' in visual ? visual.glyph : visual.path)).size).toBe(visuals.length);
   for (const classification of Object.keys(moveClassifications) as (keyof typeof moveClassifications)[]) {
     const visual = moveClassifications[classification];
-    for (const placement of ['board', 'list'] as const) {
-      const html = renderToStaticMarkup(createElement(MoveClassificationBadge, { classification, placement }));
-      expect(html).toContain(`data-classification="${classification}"`);
-      expect(html).toContain(`--move-classification-color:${visual.color}`);
-      expect(html).toContain('glyph' in visual ? `>${visual.glyph}</span>` : `d="${visual.path}"`);
-    }
+    const html = renderToStaticMarkup(createElement(MoveClassificationBadge, { classification }));
+    expect(html).toContain('class="move-classification move-classification-board"');
+    expect(html).toContain(`data-classification="${classification}"`);
+    expect(html).toContain(`--move-classification-color:${visual.color}`);
+    expect(html).toContain('glyph' in visual ? `>${visual.glyph}</span>` : `d="${visual.path}"`);
+  }
+  const punctuation: Partial<Record<MoveClassification, string>> =
+    { brilliant: '!!', great: '!', inaccuracy: '?!', mistake: '?', blunder: '??' };
+  for (const classification of Object.keys(moveClassifications) as MoveClassification[]) {
+    const glyph = punctuation[classification];
+    expect(reviewAnnotation(classification)).toEqual(glyph
+      ? expect.objectContaining({ glyph, color: moveClassifications[classification].color }) : null);
   }
 });

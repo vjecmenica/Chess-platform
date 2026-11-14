@@ -46,13 +46,22 @@ export function replayPly(ply: number, moveCount: number): number {
   return Math.max(0, Math.min(moveCount, ply));
 }
 
+// Confirmed histories are readonly and replaced on append. Still check the terminal
+// FEN on each read because a new game snapshot can reuse the history array.
+const validatedHistories = new WeakSet<GameReadResponse['history']>();
+
 export function replayFen(game: GameReadResponse, ply: number): string {
   const history = game.history;
   if (history.length === 0) return game.position.fen;
-  if (history[history.length - 1]?.afterFen !== game.position.fen
-    || history.some((move, index) => move.ply !== index + 1
-      || (index > 0 && move.beforeFen !== history[index - 1]?.afterFen))) {
+  if (history[history.length - 1]?.afterFen !== game.position.fen) {
     throw new Error('Saved move history does not match the confirmed position.');
+  }
+  if (!validatedHistories.has(history)) {
+    if (history.some((move, index) => move.ply !== index + 1
+      || (index > 0 && move.beforeFen !== history[index - 1]?.afterFen))) {
+      throw new Error('Saved move history does not match the confirmed position.');
+    }
+    validatedHistories.add(history);
   }
   const index = replayPly(ply, history.length);
   return index === 0 ? history[0]!.beforeFen : history[index - 1]!.afterFen;

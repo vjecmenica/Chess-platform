@@ -6,7 +6,7 @@ import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
 import { describeReviewedMove, reviewForGame, type GameReview } from './game-review';
-import { MoveClassificationBadge } from './MoveClassificationBadge';
+import { reviewAnnotation } from './move-classification';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -218,6 +218,7 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
   const snapshot = useCallback(() => selection.snapshot(key), [selection, key]);
   const flags = useSyncExternalStore(subscribe, snapshot, snapshot);
   const nag = nagDetails(move.note?.nag);
+  const annotation = !nag && reviewed ? reviewAnnotation(reviewed.classification) : null;
   const number = compact && (move.ply % 2 === 1 || lineStart)
     ? <span className="inline-number" aria-hidden="true">{Math.ceil(move.ply / 2)}{move.ply % 2 ? '.' : '...'}</span> : null;
   if (!interactive) return <span key={cursorKey(move.cursor)} className="move-text">{move.san}</span>;
@@ -255,7 +256,8 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
         suppressTouchSelection.current = null; return;
       }
         onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
-        {reviewed && <MoveClassificationBadge classification={reviewed.classification} placement="list" />}
+        {annotation && <span className="review-annotation" aria-hidden="true"
+          style={{ color: annotation.color }}>{annotation.glyph}</span>}
     {book && <span className="book-badge">Book</span>}</span>
     {move.note?.comment && <span className="move-comment">
       {move.note.comment}</span>}</button>

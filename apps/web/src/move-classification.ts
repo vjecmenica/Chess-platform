@@ -14,3 +14,8 @@ export const moveClassifications = {
 } as const;
 
 export type MoveClassification = keyof typeof moveClassifications;
+
+export function reviewAnnotation(classification: MoveClassification) {
+  const visual = moveClassifications[classification];
+  return classification !== 'mate' && 'glyph' in visual ? visual : null;
+}

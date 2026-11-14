@@ -1,12 +1,12 @@
 import type { CSSProperties } from 'react';
 import { moveClassifications, type MoveClassification } from './move-classification';
 
-export function MoveClassificationBadge({ classification, placement }: {
-  classification: MoveClassification; placement: 'list' | 'board';
+export function MoveClassificationBadge({ classification }: {
+  classification: MoveClassification;
 }) {
   const visual = moveClassifications[classification];
-  return <span className={`move-classification move-classification-${placement}`}
-    data-classification={classification} aria-hidden="true" title={placement === 'list' ? visual.label : undefined}
+  return <span className="move-classification move-classification-board"
+    data-classification={classification} aria-hidden="true"
     style={{ '--move-classification-color': visual.color } as CSSProperties}>
     {'glyph' in visual ? <span className="move-classification-glyph">{visual.glyph}</span>
       : <svg viewBox="0 0 24 24" fill={'solid' in visual ? 'currentColor' : 'none'} stroke="currentColor"

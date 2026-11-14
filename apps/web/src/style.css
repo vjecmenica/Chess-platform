@@ -481,7 +481,7 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   background: var(--move-classification-color); color: #161313; }
 .move-classification svg { display: block; width: 84%; height: 84%; }
 .move-classification-glyph { font: 800 86cqi / 1 var(--font-ui); letter-spacing: -.055em; white-space: nowrap; }
-.move-classification-list { width: 19px; margin-inline-start: 5px; vertical-align: middle; }
+.review-annotation { font-weight: 750; white-space: nowrap; }
 .move-classification-board { position: absolute; inset: 3% 3% auto auto; width: 35%; max-width: 28px;
   z-index: 3; pointer-events: none; }
 .move-comment { display: block; flex-basis: 100%; font-size: var(--text-compact); font-weight: 400; color: var(--color-text-muted); overflow-wrap: anywhere; }

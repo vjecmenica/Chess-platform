@@ -1,10 +1,11 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentPropsWithoutRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse } from '@chess/contracts';
 import { formatClock } from './ClockValue';
 import { moveTimes, type TimedMove } from './move-times';
 import { moveTimeTooltipPosition, recordedClockSegments, summarizeMoveTimes } from './move-times-chart';
 import { TimeManagementSummary } from './TimeManagementSummary';
+import { MoveSelection } from './move-selection';
 
 export function moveTimeDescription(move: TimedMove, remainingMs: number | null): string {
   const number = `${Math.ceil(move.ply / 2)}${move.side === 'white' ? '.' : '...'}`;
@@ -46,6 +47,16 @@ function MoveTimeTooltip({ id, move, remainingMs, target }: {
   </div>, document.body);
 }
 
+function MoveTimeColumn({ ply, selection, ...button }: ComponentPropsWithoutRef<'button'> & {
+  ply: number; selection: MoveSelection;
+}) {
+  const key = `m${ply}`;
+  const subscribe = useCallback((notify: () => void) => selection.subscribe(key, notify), [key, selection]);
+  const snapshot = useCallback(() => selection.snapshot(key), [key, selection]);
+  const selected = useSyncExternalStore(subscribe, snapshot, snapshot);
+  return <button {...button} aria-current={selected ? 'step' : undefined} />;
+}
+
 export function MoveTimes({ game, selectedPly, onSelectPly }: {
   game: GameReadResponse; selectedPly: number | null; onSelectPly: (ply: number) => void;
 }) {
@@ -53,19 +64,20 @@ export function MoveTimes({ game, selectedPly, onSelectPly }: {
   const [focused, setFocused] = useState<{ ply: number; target: HTMLButtonElement; order: number } | null>(null);
   const interactionOrder = useRef(0);
   const tooltipId = useId();
+  const [selection] = useState(() => new MoveSelection({ kind: 'main', ply: selectedPly ?? 0 }));
+  useLayoutEffect(() => selection.update({ kind: 'main', ply: selectedPly ?? 0 }), [selection, selectedPly]);
   const entries = useMemo(() => moveTimes(game), [game]);
   const clockSegments = useMemo(() => recordedClockSegments(game.history), [game.history]);
   const summaries = useMemo(() => summarizeMoveTimes(game.history, entries), [game.history, entries]);
-  const known = entries.filter(entry => entry.elapsedMs !== null);
-  if (known.length === 0) return null;
-  const maximum = Math.max(1_000, ...known.map(entry => entry.elapsedMs!));
   const active = hovered && focused ? hovered.order > focused.order ? hovered : focused : hovered ?? focused;
+  const activePly = active?.ply;
   const detail = active === null ? null : entries[active.ply - 1];
-  const tickEvery = entries.length <= 20 ? 2 : entries.length <= 60 ? 5 : 10;
-  return <div className="move-times-layout">
-    <div className="move-times" role="group" aria-label="Move times chart"
-    aria-description="White move durations above the baseline; Black below. Blue clock lines use separate scales for each player and break at missing samples.">
-    <div className="move-times-scroll">
+  const plot = useMemo(() => {
+    const known = entries.filter(entry => entry.elapsedMs !== null);
+    if (known.length === 0) return null;
+    const maximum = Math.max(1_000, ...known.map(entry => entry.elapsedMs!));
+    const tickEvery = entries.length <= 20 ? 2 : entries.length <= 60 ? 5 : 10;
+    return <div className="move-times-scroll">
       <div className="move-times-plot" style={{ minWidth: `${entries.length * 13}px`,
         gridTemplateColumns: `repeat(${entries.length}, minmax(0, 1fr))` }}>
         <span className="move-times-baseline" aria-hidden="true" />
@@ -81,11 +93,10 @@ export function MoveTimes({ game, selectedPly, onSelectPly }: {
           const remainingMs = game.history[entry.ply - 1]?.remainingMsAfterMove ?? null;
           const moveNumber = Math.ceil(entry.ply / 2);
           const tick = entry.side === 'white' && (moveNumber - 1) % tickEvery === 0;
-          return <button key={entry.ply} type="button"
+          return <MoveTimeColumn key={entry.ply} ply={entry.ply} selection={selection} type="button"
             className={`move-time-column move-time-${entry.side}${entry.elapsedMs === null ? ' move-time-unknown' : ''}`}
             aria-label={moveTimeDescription(entry, remainingMs)}
-            aria-current={selectedPly === entry.ply ? 'step' : undefined}
-            aria-describedby={active?.ply === entry.ply ? tooltipId : undefined}
+            aria-describedby={activePly === entry.ply ? tooltipId : undefined}
             onMouseEnter={event => setHovered({ ply: entry.ply, target: event.currentTarget,
               order: ++interactionOrder.current })}
             onMouseLeave={() => setHovered(null)}
@@ -103,10 +114,16 @@ export function MoveTimes({ game, selectedPly, onSelectPly }: {
               : <span className="move-time-bar" aria-hidden="true"
                 style={{ height: `${Math.max(2, entry.elapsedMs / maximum * 44)}%` }} />}
             {tick && <span className="move-time-axis-label" aria-hidden="true">{moveNumber}</span>}
-          </button>;
+          </MoveTimeColumn>;
         })}
       </div>
-    </div>
+    </div>;
+  }, [entries, game.history, clockSegments, activePly, tooltipId, selection, onSelectPly]);
+  if (!plot) return null;
+  return <div className="move-times-layout">
+    <div className="move-times" role="group" aria-label="Move times chart"
+      aria-description="White move durations above the baseline; Black below. Blue clock lines use separate scales for each player and break at missing samples.">
+    {plot}
     {detail && active && <MoveTimeTooltip id={tooltipId} move={detail} target={active.target}
       remainingMs={game.history[detail.ply - 1]?.remainingMsAfterMove ?? null} />}
     </div>

@@ -140,37 +140,41 @@ export function ReviewGraph({ review, selectedPly, onSelectPly }: {
     return () => observer.disconnect();
   }, []);
   const x = (index: number) => reviewGraphX(index, review.evaluations.length, width);
-  const y = (evaluation: GameReview['evaluations'][number]) =>
-    reviewGraphY(graphCentipawns(evaluation));
-  const points = review.evaluations.map((evaluation, index) => `${x(index)},${y(evaluation)}`).join(' ');
   const selected = selectedPly === null ? null : review.evaluations[selectedPly];
-  const fills = reviewAdvantageSegments(review.evaluations.map(graphCentipawns), width);
+  const plot = useMemo(() => {
+    const x = (index: number) => reviewGraphX(index, review.evaluations.length, width);
+    const scores = review.evaluations.map(graphCentipawns);
+    const points = scores.map((score, index) => `${x(index)},${reviewGraphY(score)}`).join(' ');
+    return <>
+      {reviewAdvantageSegments(scores, width).map((fill, index) => <polygon key={index} points={fill.points}
+        className={`review-fill-${fill.side}`} />)}
+      <line x1="10" x2={width - 10} y1="80" y2="80" className="review-zero" />
+      <polyline points={points} fill="none" className="review-plot-outline" />
+      <polyline points={points} fill="none" className="review-plot" />
+      {review.evaluations.map((_, index) => {
+        const left = index === 0 ? 0 : (x(index - 1) + x(index)) / 2;
+        const right = index === review.evaluations.length - 1 ? width
+          : (x(index) + x(index + 1)) / 2;
+        return <rect key={index} x={left} y="0" width={right - left}
+          height="160" className="review-hit"
+          role="button" tabIndex={0} aria-label={`Show ${reviewPositionText(review, index)}`}
+          onPointerEnter={() => setHoveredPly(index)} onFocus={() => setHoveredPly(index)}
+          onPointerLeave={() => setHoveredPly(current => current === index ? null : current)}
+          onBlur={() => setHoveredPly(current => current === index ? null : current)}
+          onClick={() => onSelectPly(index)}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault(); onSelectPly(index);
+          } }} />;
+      })}
+    </>;
+  }, [review, width, onSelectPly]);
   return <div className="review-graph-wrap">
     <svg ref={graphRef} className="review-graph" viewBox={`0 0 ${width} 160`} preserveAspectRatio="none" role="group"
     aria-label="White-perspective evaluation by half-move, nonlinear scale clipped at plus or minus ten pawns; mate at the edge">
-    {fills.map((fill, index) => <polygon key={index} points={fill.points}
-      className={`review-fill-${fill.side}`} />)}
-    <line x1="10" x2={width - 10} y1="80" y2="80" className="review-zero" />
-    <polyline points={points} fill="none" className="review-plot-outline" />
-    <polyline points={points} fill="none" className="review-plot" />
-    {review.evaluations.map((_, index) => {
-      const left = index === 0 ? 0 : (x(index - 1) + x(index)) / 2;
-      const right = index === review.evaluations.length - 1 ? width
-        : (x(index) + x(index + 1)) / 2;
-      return <rect key={index} x={left} y="0" width={right - left}
-        height="160" className="review-hit"
-        role="button" tabIndex={0} aria-label={`Show ${reviewPositionText(review, index)}`}
-        onPointerEnter={() => setHoveredPly(index)} onFocus={() => setHoveredPly(index)}
-        onPointerLeave={() => setHoveredPly(current => current === index ? null : current)}
-        onBlur={() => setHoveredPly(current => current === index ? null : current)}
-        onClick={() => onSelectPly(index)}
-        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault(); onSelectPly(index);
-        } }} />;
-    })}
+    {plot}
     {hoveredPly !== null && <line x1={x(hoveredPly)} x2={x(hoveredPly)} y1="8" y2="152"
       className="review-hover-line" />}
-    {selected && <circle cx={x(selectedPly!)} cy={y(selected)} r="3" className="review-selected" />}
+    {selected && <circle cx={x(selectedPly!)} cy={reviewGraphY(graphCentipawns(selected))} r="3" className="review-selected" />}
     </svg>
     {hoveredPly !== null && <span className="review-tooltip" role="tooltip"
       style={{ left: `${Math.max(13, Math.min(87, x(hoveredPly) / width * 100))}%` }}>

@@ -120,6 +120,14 @@ describe('finished-game replay', () => {
       .find(square => square.square === 'e4')?.piece).toBe('P');
   });
 
+  it('validates a replacement history and a changed final FEN after a successful indexed read', () => {
+    expect(replayFen(finished, 1)).toBe(afterE4);
+    expect(() => replayFen({ ...finished, position: { ...finished.position, fen: start } }, 1)).toThrow();
+    const replacement = { ...finished, history: [history[0]!, { ...history[1]!, beforeFen: start }] };
+    expect(() => replayFen(replacement, 1)).toThrow();
+    expect(replayFen(finished, 2)).toBe(afterE5);
+  });
+
   it('keeps navigation within the start and end, including a zero-move result', () => {
     expect(replayPly(-1, 2)).toBe(0);
     expect(replayPly(3, 2)).toBe(2);
