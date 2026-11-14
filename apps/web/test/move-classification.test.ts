@@ -60,7 +60,7 @@ it('resolves both squares of the displayed, reviewed main-line move of this fini
     score(fen, index === 0 ? 'e2e4' : null)));
   const first = { kind: 'main', ply: 1 } as const;
   const highlighted = reviewedBoardMove(game, review, first, fens[1]!);
-  expect(highlighted).toEqual({ from: 'e2', to: 'e4', move: review.moves[0] });
+  expect(highlighted).toMatchObject({ from: 'e2', to: 'e4', move: review.moves[0] });
   expect(reviewedBoardMove(game, review, { kind: 'main', ply: 2 }, fens[2]!)).toMatchObject({ from: 'e7', to: 'e5' });
   for (const orientation of ['white', 'black'] as const) {
     const squares = boardRows(fens[1]!, orientation).flat().filter(({ square }) => square === highlighted?.to || square === highlighted?.from);

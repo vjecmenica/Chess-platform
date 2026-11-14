@@ -43,6 +43,22 @@ describe('local opening explorer in PostgreSQL', () => {
       expect((await app.inject({ url: `/opening-explorer?fen=${encodeURIComponent(fen)}&download=all`, headers })).statusCode).toBe(400);
       const empty = '4k3/8/8/8/8/8/8/4K3 w - - 0 1';
       expect((await app.inject({ url: `/opening-explorer?fen=${encodeURIComponent(empty)}`, headers })).json().moves).toEqual([]);
+      const batch = (moves: { fen: string; uci: string }[], auth: Record<string, string> = {}) =>
+        app.inject({ method: 'POST', url: '/opening-explorer/book-counts', headers: auth, payload: { moves } });
+      const candidates = [
+        { fen: fen.replace('4 3', '0 17'), uci: 'c2c4' }, { fen, uci: 'e2e4' },
+        { fen: empty, uci: 'e1e2' }, { fen, uci: 'c2c4' },
+      ];
+      const authorized = { ...headers, 'x-csrf-token': session.json().csrfToken };
+      expect((await batch(candidates)).statusCode).toBe(401);
+      expect((await batch(candidates, headers)).statusCode).toBe(403);
+      expect((await batch(candidates, authorized)).json()).toEqual({ counts: [
+        { positionGames: 3, moveGames: 3 }, { positionGames: 3, moveGames: 0 },
+        { positionGames: 0, moveGames: 0 }, { positionGames: 3, moveGames: 3 },
+      ] });
+      expect((await batch([{ fen: 'invalid-position', uci: 'e2e4' }], authorized)).statusCode).toBe(400);
+      expect((await batch([{ fen, uci: 'c4' }], authorized)).statusCode).toBe(400);
+      expect((await batch(Array(25).fill(candidates[0]!), authorized)).statusCode).toBe(400);
       const restarted = buildApp(async () => {}, false, { pool, secureCookies: true });
       try { expect((await restarted.inject({ url: `/opening-explorer?fen=${encodeURIComponent(fen)}`, headers })).json()).toEqual(response.json()); }
       finally { await restarted.close(); }

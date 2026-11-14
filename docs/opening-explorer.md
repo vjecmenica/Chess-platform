@@ -20,6 +20,20 @@ bounded settings, including a single finite limit. The settings popover reflects
 same limits. The engine switch still stops the worker immediately; Computer Analysis
 keeps its separate bounded search profile.
 
+## Book moves in Game Review
+
+After a completed review, the browser sends one authenticated, read-only batch of
+up to 24 pre-move positions and played UCI moves. The server normalizes positions
+and counts all indexed continuations and the exact played continuation. A move
+qualifies with at least 25 games at the position, 5 games with that move and a
+3% share of the indexed continuations. Recognition ends at the first move that
+falls short. The thresholds are defined in `apps/web/src/review-book.ts`.
+
+The Book badge describes practice in the indexed corpus. Engine quality, accuracy,
+centipawn loss and mistake counts remain independent. The current game's successful
+lookup is reused in memory, and ordinary navigation never requests Book counts.
+Missing data or lookup failure leaves the engine review available.
+
 ## Private source data
 
 The owner reports TWIC permission for an opening book, weekly updates and commercial use

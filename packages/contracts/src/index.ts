@@ -138,6 +138,18 @@ export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {
 }
 export { timeControlPresets, defaultTimeControl, isTimeControlId } from './time-controls.js';
 export type { TimeControlId } from './time-controls.js';
+export const explorerBookMaxPlies = 24;
+
+export interface ExplorerBookCandidate {
+  readonly fen: string;
+  readonly uci: string;
+}
+
+export interface ExplorerBookCount {
+  readonly positionGames: number;
+  readonly moveGames: number;
+}
+
 export interface ExplorerListedGame {
   readonly id: string;
   readonly white_name: string | null; readonly black_name: string | null;

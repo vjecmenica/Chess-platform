@@ -42,14 +42,16 @@ export function reviewForGame(game: GameReadResponse | null, review: GameReview 
 }
 
 export function reviewedBoardMove(game: GameReadResponse, review: GameReview | null,
-  cursor: AnalysisCursor | null, displayedFen: string | null) {
+  cursor: AnalysisCursor | null, displayedFen: string | null, bookMoves?: ReadonlySet<string>) {
   review = reviewForGame(game, review);
   if (!review || cursor?.kind !== 'main' || cursor.ply < 1) return null;
   const saved = game.history[cursor.ply - 1];
   const move = review.moves[cursor.ply - 1];
   if (!saved || !move || saved.afterFen !== displayedFen
     || review.evaluations[cursor.ply]?.fen !== displayedFen) return null;
-  return { from: saved.from, to: saved.to, move };
+  const book = bookMoves?.has(`${game.id}:m${cursor.ply}`) ?? false;
+  const classification = book ? 'book' : move.classification;
+  return { from: saved.from, to: saved.to, move, book, classification } as const;
 }
 
 export function reviewSummary(review: GameReview, side: 'white' | 'black') {

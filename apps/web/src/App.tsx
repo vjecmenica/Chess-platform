@@ -53,6 +53,7 @@ import { createResizePreview } from './board-resize';
 import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import { describeReviewedMove, reviewedBoardMove, reviewForGame, type GameReview } from './game-review';
+import { useReviewBookMoves } from './review-book';
 import { moveClassifications } from './move-classification';
 import { MoveClassificationBadge } from './MoveClassificationBadge';
 import { FinishedResultArea } from './FinishedResultArea';
@@ -1032,8 +1033,9 @@ export function App() {
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
   const completedReview = analysisOpen ? reviewForGame(game, gameReview) : null;
+  const bookMoves = useReviewBookMoves(game, completedReview, session?.csrfToken);
   const reviewHighlight = game && completedReview
-    ? reviewedBoardMove(game, completedReview, analysis?.cursor ?? null, displayedFen) : null;
+    ? reviewedBoardMove(game, completedReview, analysis?.cursor ?? null, displayedFen, bookMoves) : null;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
   const result = imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
@@ -1279,7 +1281,7 @@ export function App() {
                     const ghost = planned !== null && planned !== piece ? planned : null;
                     const reviewSquare = reviewHighlight?.to === square ? 'destination'
                       : reviewHighlight?.from === square ? 'origin' : undefined;
-                    const reviewed = reviewSquare ? reviewHighlight?.move : undefined;
+                    const reviewed = reviewSquare ? reviewHighlight : null;
                     const badge = reviewSquare === 'destination' ? reviewed : undefined;
                     const ordinaryHighlight = !reviewHighlight && (lastMove?.from === square || lastMove?.to === square);
                     return <button key={square} type="button"
@@ -1288,7 +1290,7 @@ export function App() {
                       data-reviewed-square={reviewSquare}
                       style={reviewed ? { '--move-classification-color': moveClassifications[reviewed.classification].color } as CSSProperties : undefined}
                       aria-label={`${square}, ${piece === null ? 'empty' : `${piece === piece.toUpperCase() ? 'white' : 'black'} ${pieceNames[piece.toLowerCase()]}`}${marks.has(square) ? ', marked' : ''}`}
-                      aria-description={badge ? describeReviewedMove(badge) : undefined}
+                      aria-description={badge ? `${badge.book ? 'Book move, confirmed by the opening explorer. ' : ''}${describeReviewedMove(badge.move)}` : undefined}
                       aria-pressed={selected === square}
                       disabled={promotion !== null || pending !== null || pendingAction !== null || submitting}
                       onPointerDown={event => {
@@ -1556,7 +1558,7 @@ export function App() {
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <div className="analysis-pane">
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying || game.status === 'active'}
-                  review={completedReview}
+                  review={completedReview} bookMoves={bookMoves}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}
                   onSelect={selectMove} onDelete={removeVariation}

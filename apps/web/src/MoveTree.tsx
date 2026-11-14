@@ -162,7 +162,7 @@ const MoveLines = memo(function MoveLines({ view, gameId, selection, interactive
     return <MoveEntry key={cursorKey(move.cursor)} move={move} selection={selection} compact={compact} lineStart={lineStart}
       interactive={interactive} editable={editable}
       reviewed={move.cursor.kind === 'main' ? review?.moves[move.cursor.ply - 1] : undefined}
-      book={editable && !!bookMoves?.has(`${gameId}:${cursorKey(move.cursor)}`)}
+      book={!!review && move.cursor.kind === 'main' && !!bookMoves?.has(`${gameId}:${cursorKey(move.cursor)}`)}
       onSelect={selectEntry} onMenu={menuEntry} />;
   }
 
@@ -278,7 +278,7 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
         onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
         {annotation && <span className="review-annotation" aria-hidden="true"
           style={{ color: annotation.color }}>{annotation.glyph}</span>}
-    {book && <span className="book-badge">Book</span>}</span>
+    </span>
     {move.note?.comment && <span className="move-comment">
       {move.note.comment}</span>}</button>
   </span>;

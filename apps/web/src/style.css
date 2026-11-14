@@ -289,7 +289,6 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .masters-move:focus-visible { outline-offset: -3px; }
 .book-san { font-weight: 600; }
 .masters-move span { font-variant-numeric: tabular-nums; }
-.book-badge { margin-left: 3px; color: var(--color-accent-text); font-size: var(--text-caption); font-weight: 700; }
 
 .analysis-workspace .engine-panel button { min-height: 36px; padding: 7px 11px; }
 .engine-panel .engine-depth-row :is(.engine-search-controls, .engine-build-controls) > button {

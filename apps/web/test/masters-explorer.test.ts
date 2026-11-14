@@ -6,6 +6,7 @@ import type { GameReadResponse } from '@chess/contracts';
 import { createAnalysisTree, playAnalysisMove, selectMain } from '../src/analysis-model';
 import { MoveTree } from '../src/MoveTree';
 import { ExplorerContent } from '../src/MastersPanel';
+import { buildGameReview, reviewPositions } from '../src/game-review';
 import { playedPercentage, isBookMove, mastersPath, MastersClient, mastersUrl, parseMastersResponse,
   previousMastersPath } from '../src/masters-explorer';
 
@@ -89,11 +90,14 @@ describe('Masters opening explorer', () => {
       white: 13, draws: 5, black: 2 }]);
     expect(isBookMove(data, 'g1f3')).toBe(true);
     expect(isBookMove(data, 'a1a8')).toBe(false);
-    const html = renderToStaticMarkup(createElement(MoveTree, { game: saved,
+    const review = buildGameReview(saved, reviewPositions(saved).map(fen => ({
+      fen, depth: 14, score: { kind: 'cp', value: 0 }, bestMove: null, variation: [],
+    })));
+    const html = renderToStaticMarkup(createElement(MoveTree, { game: saved, review,
       tree: createAnalysisTree(saved), selected: { kind: 'main', ply: 2 }, interactive: true,
       bookMoves: new Set(['masters-test:m2']), onSelect: () => {}, onDelete: () => {} }));
     expect(html).toContain('Book move, confirmed by the opening explorer');
-    expect(html).toContain('>Book</span>');
+    expect(html).not.toContain('>Book</span>');
   });
 
   it('explores a candidate locally without changing the saved position or history', () => {
