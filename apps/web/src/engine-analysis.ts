@@ -88,7 +88,7 @@ export function evaluationLabel(evaluation: EngineEvaluation): string {
   return `${value >= 0 ? '+' : ''}${(value / 100).toFixed(2)}`;
 }
 
-function validEvaluation(value: unknown): value is EngineEvaluation {
+export function validEvaluation(value: unknown): value is EngineEvaluation {
   if (typeof value !== 'object' || value === null) return false;
   const item = value as Partial<EngineEvaluation>;
   return typeof item.fen === 'string' && item.fen.length <= 128

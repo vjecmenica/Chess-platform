@@ -97,6 +97,8 @@ describe('Masters opening explorer', () => {
       tree: createAnalysisTree(saved), selected: { kind: 'main', ply: 2 }, interactive: true,
       bookMoves: new Set(['masters-test:m2']), onSelect: () => {}, onDelete: () => {} }));
     expect(html).toContain('Book move, confirmed by the opening explorer');
+    expect(html.match(/class="review-book-icon"/g)).toHaveLength(1);
+    expect(html).toContain('stroke="#a493c6"');
     expect(html).not.toContain('>Book</span>');
   });
 

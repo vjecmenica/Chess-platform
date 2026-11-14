@@ -1,6 +1,6 @@
 import {useSettings} from './SettingsDialog';
 import {readSettings, settingsChanged, settingsKey, setRuntimeSettings} from './settings-store';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameReadResponse, GameSide } from '@chess/contracts';
 import { EngineVariation } from './EngineVariation';
@@ -13,6 +13,8 @@ import { EngineCache, EngineController,
 import { buildGameReview, GameReviewRunner, graphCentipawns, nextReviewedMovePly, reviewMethodVersion, reviewSummary,
   reviewPositions, type GameReview, type ReviewProgress } from './game-review';
 import { accuracyMethodVersion, type PlayerAccuracy } from './game-accuracy';
+import { loadCompletedReview, reviewEngineLabel, reviewStorageKey, saveCompletedReview, type ReviewEngine } from './review-storage';
+import { readReviewView, writeReviewView } from './analysis-links';
 import {
   scheduleInteractiveEngine, toggleContinuousSettings,
   type InteractiveSettingsState } from './interactive-engine';
@@ -27,9 +29,9 @@ function browserStorage(): Storage | undefined {
   try { return window.localStorage; } catch { return undefined; }
 }
 
-export type ReviewState = { readonly kind: 'idle' | 'cancelled' }
+export type ReviewState = { readonly kind: 'idle' | 'cancelled' | 'restoring' }
   | { readonly kind: 'running'; readonly progress: ReviewProgress }
-  | { readonly kind: 'complete'; readonly review: GameReview }
+  | { readonly kind: 'complete'; readonly review: GameReview; readonly engine?: ReviewEngine }
   | { readonly kind: 'error'; readonly message: string };
 
 /** Publish one lifecycle transition to both the panel and its parent's move annotations. */
@@ -198,7 +200,8 @@ export function currentEngineEvaluation(state: EngineState, fen: string): Engine
 }
 
 export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChange,
-  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, onThreatMoveChange, onExploreLine, orientation = 'white', reviewHost, sessionOnly = false }: {
+  onEvaluationChange, onEvaluationPendingChange, onBestMoveChange, onThreatMoveChange, onExploreLine, orientation = 'white', reviewHost, sessionOnly = false,
+  reviewIdentity = '' }: {
   readonly game: GameReadResponse; readonly fen: string; readonly selectedPly: number | null;
   readonly onSelectPly: (ply: number) => void;
   readonly onReviewChange: (review: GameReview | null) => void;
@@ -210,6 +213,7 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   readonly orientation?: GameSide;
   readonly reviewHost?: HTMLElement | null;
   readonly sessionOnly?: boolean;
+  readonly reviewIdentity?: string;
 }) {
   const [enabled, setEnabled] = useState(true);
   const [engineEpoch, setEngineEpoch] = useState(0);
@@ -228,26 +232,65 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   const continuous = unlimitedDepth && unlimitedTime;
   const [state, setState] = useState<EngineState>({ kind: 'off' });
   const [readVariation] = useState(() => createEngineVariationReader());
-  const [review, setReview] = useState<ReviewState>({ kind: 'idle' });
-  const [reviewTab, setReviewTab] = useState<'computer' | 'times'>('computer');
+  const [review, setReview] = useState<ReviewState>({ kind: reviewIdentity ? 'restoring' : 'idle' });
+  const [reviewTab, setReviewTab] = useState<'computer' | 'times'>(
+    () => readReviewView(game.id, 'chart') === 'times' ? 'times' : 'computer');
   const {open: openSettings, isOpen: settingsOpen} = useSettings();
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controller = useRef<EngineController | null>(null);
   const runner = useRef<GameReviewRunner | null>(null);
   const cache = useRef<EngineCache | null>(null);
   const reviewCache = useRef<EngineCache | null>(null);
+  const reviewKey = useRef<string | null>(null);
   const limits = interactiveLimits(unlimitedDepth ? null : depth, unlimitedTime ? null : timeMs);
   const profile = searchProfile(limits);
   const hasMoveTimes = useMemo(() => moveTimes(game).some(move => move.elapsedMs !== null), [game]);
+  const shownReviewTab = hasMoveTimes ? reviewTab : 'computer';
+
+  function selectReviewTab(tab: 'computer' | 'times') {
+    setReviewTab(tab);
+    writeReviewView(game.id, 'chart', tab);
+  }
 
   useEffect(() => {
-    runner.current?.cancel();
-    runner.current = null;
     reviewCache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
       engineCacheIdentity(variant, threads), description);
-    changeReview({ kind: 'idle' });
-    return () => { runner.current?.cancel(); runner.current = null; reviewCache.current = null; };
+    return () => {
+      // A completed review describes the engine that produced it, even if the
+      // interactive engine is subsequently changed or falls back.
+      if (runner.current) {
+        runner.current.cancel();
+        runner.current = null;
+        setReview(current => current.kind === 'running' ? { kind: 'idle' } : current);
+      }
+      reviewCache.current = null;
+    };
   }, [variant.id, threads, sessionOnly]);
+
+  const reviewGame = useEffectEvent(() => game);
+  useEffect(() => {
+    const source = reviewGame();
+    let cancelled = false;
+    reviewKey.current = null;
+    if (!reviewIdentity) {
+      publishReviewState({ kind: 'idle' }, setReview, onReviewChange);
+      return;
+    }
+    setReview({ kind: 'restoring' });
+    onReviewChange(null);
+    void (async () => {
+      const key = await reviewStorageKey(reviewIdentity);
+      if (cancelled) return;
+      reviewKey.current = key;
+      const saved = key ? await loadCompletedReview(key, source) : null;
+      if (!cancelled) publishReviewState(saved ? { kind: 'complete', ...saved } : { kind: 'idle' }, setReview, onReviewChange);
+    })();
+    return () => {
+      cancelled = true;
+      runner.current?.cancel();
+      runner.current = null;
+    };
+  }, [reviewIdentity, onReviewChange]);
 
   useEffect(() => {
     cache.current = new EngineCache(sessionOnly ? undefined : browserStorage(),
@@ -309,22 +352,28 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
   }
 
   function startReview() {
-    if (reviewCache.current === null || review.kind === 'running') return;
+    if (reviewCache.current === null || review.kind === 'running' || review.kind === 'restoring') return;
     runner.current?.cancel();
+    const key = reviewKey.current;
+    const engine = { variant: variant.id, threads };
+    const positionCache = review.kind === 'complete'
+      ? new EngineCache(undefined, engineCacheIdentity(variant, threads), description) : reviewCache.current;
     changeReview({ kind: 'running', progress: { completed: 0, total: game.history.length + 1, cached: 0 } });
     try {
       const positions = reviewPositions(game);
       const next = new GameReviewRunner(positions,
-        () => createBrowserEngineWorker(variant.url), reviewCache.current,
+        () => createBrowserEngineWorker(variant.url), positionCache,
         progress => changeReview({ kind: 'running', progress }),
         evaluations => {
+          runner.current = null;
           try {
             const complete = buildGameReview(game, evaluations);
-            changeReview({ kind: 'complete', review: complete });
+            if (key) void saveCompletedReview(key, complete, engine);
+            changeReview({ kind: 'complete', review: complete, engine });
           }
           catch { changeReview({ kind: 'error', message: 'The review did not match the saved game.' }); }
         },
-        message => changeReview({ kind: 'error', message }),
+        message => { runner.current = null; changeReview({ kind: 'error', message }); },
         variant.multithreaded ? { threads } : {});
       runner.current = next;
       next.start();
@@ -362,12 +411,9 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
           if (engineAvailable) { controller.current?.stop(); setEnabled(false); }
           else { controller.current?.start(fen); setEnabled(true); }
         }} />
-        <small className="engine-depth">
-          <span className="engine-depth-reserve" aria-hidden="true">{engineAvailable ? 'Depth 00 · Continuous' : 'Depth 00'}</span>
-          <span>Depth {evaluation?.depth ?? '—'}
-            {evaluation && state.kind === 'done' && state.cached ? ' · cached' : ''}
-            {state.kind === 'searching' && state.fen === fen && <span className="engine-search-status"> · {continuous ? 'Continuous' : 'Searching'}</span>}
-          </span>
+        <small className="engine-depth" aria-description={evaluation && state.kind === 'done' && state.cached ? 'Cached evaluation'
+          : state.kind === 'searching' && state.fen === fen ? continuous ? 'Continuous search' : 'Searching' : undefined}>
+          Depth {evaluation?.depth ?? '—'}
         </small>
         {engineAvailable && <><button type="button" className="engine-continuous" aria-label="Continuous analysis" aria-pressed={continuous}
           aria-description="Analyze without a depth or time limit. Activate again to restore the previous bounded limits."
@@ -419,34 +465,34 @@ export function EnginePanel({ game, fen, selectedPly, onSelectPly, onReviewChang
     {reviewHost && createPortal(<div className="review-content">
     <div className="review-toolbar">
       <div className="review-tabs analysis-view-tabs" role="group" aria-label="Game analysis views">
-        <button type="button" id="computer-analysis-button" aria-pressed={reviewTab === 'computer'}
+        <button type="button" id="computer-analysis-button" aria-pressed={shownReviewTab === 'computer'}
           aria-controls="computer-analysis-view"
-          onClick={() => setReviewTab('computer')}>Evaluation</button>
-        <button type="button" id="move-times-button" aria-pressed={reviewTab === 'times'}
+          onClick={() => selectReviewTab('computer')}>Evaluation</button>
+        <button type="button" id="move-times-button" aria-pressed={shownReviewTab === 'times'}
           aria-controls="move-times-view" disabled={!hasMoveTimes}
           aria-description={hasMoveTimes ? 'View recorded move durations' : 'No move durations can be calculated from this game'}
-          onClick={() => setReviewTab('times')}>Move Times</button>
+          onClick={() => selectReviewTab('times')}>Move Times</button>
       </div>
       <button type="button" className={`review-action ${review.kind === 'running' ? 'secondary' : 'primary'}`}
-        disabled={game.history.length === 0} onClick={() => {
+        disabled={game.history.length === 0 || review.kind === 'restoring'} onClick={() => {
           if (review.kind === 'running') {
-            runner.current?.cancel(); changeReview({ kind: 'cancelled' });
+            runner.current?.cancel(); runner.current = null; changeReview({ kind: 'cancelled' });
           } else startReview();
         }}>{review.kind === 'running' ? 'Cancel analysis'
-          : review.kind === 'complete' ? 'Analyze again' : 'Analyze game'}</button>
+          : review.kind === 'complete' ? 'Analyze again' : review.kind === 'restoring' ? 'Loading review…' : 'Analyze game'}</button>
     </div>
-    <small className="review-engine">{description} · depth 14 / 1.2s per position</small>
+    <small className="review-engine">{(review.kind === 'complete' && review.engine && reviewEngineLabel(review.engine)) || description} · depth 14 / 1.2s per position</small>
     {review.kind === 'running' && <small className="review-progress" role="status">
       {review.progress.completed} / {review.progress.total} positions
       {review.progress.cached > 0 ? ` · ${review.progress.cached} cached` : ''}
     </small>}
-    <div id="move-times-view" role="region" aria-labelledby="move-times-button" hidden={reviewTab !== 'times'}>
+    <div id="move-times-view" role="region" tabIndex={-1} aria-labelledby="move-times-button" hidden={shownReviewTab !== 'times'}>
       <MoveTimes game={game} selectedPly={selectedPly} onSelectPly={onSelectPly} />
     </div>
-    <div id="computer-analysis-view" role="region" aria-labelledby="computer-analysis-button">
+    <div id="computer-analysis-view" role="region" tabIndex={-1} aria-labelledby="computer-analysis-button">
     {review.kind === 'error' && <span role="alert">{review.message}</span>}
     {review.kind === 'complete' && <div className="review-results">
-      <div hidden={reviewTab !== 'computer'}><ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
+      <div hidden={shownReviewTab !== 'computer'}><ReviewGraph review={review.review} selectedPly={selectedPly} onSelectPly={onSelectPly} />
       <small className="review-scale" title={`White perspective; nonlinear scale; mate at the graph edge. ${reviewMethodVersion}`}>White perspective · ±10 pawns</small></div>
       <div className="review-summary" aria-label="Computer Analysis summary">
         {(['white', 'black'] as const).map(side => {

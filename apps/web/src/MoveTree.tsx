@@ -6,7 +6,7 @@ import { cursorKey } from './analysis-model';
 import { buildMoveTree, type MoveLine, type MoveView } from './move-tree-model';
 import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
 import { describeReviewedMove, reviewForGame, type GameReview } from './game-review';
-import { reviewAnnotation } from './move-classification';
+import { moveClassifications, reviewAnnotation } from './move-classification';
 import { MovesVisible, moveListScrollTop } from './move-list-scroll';
 
 interface MoveTreeProps {
@@ -36,7 +36,12 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
     const frame = requestAnimationFrame(() => {
       const container = list.current;
       const move = container?.querySelector<HTMLElement>('.move-link[aria-current="step"]');
-      if (!container || !move || container.scrollHeight <= container.clientHeight) return;
+      if (!container) return;
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && container.contains(focused)
+        && (focused.matches('.move-link') || focused === container) && focused !== move)
+        (move ?? container).focus({ preventScroll: true });
+      if (!move || container.scrollHeight <= container.clientHeight) return;
       const bounds = move.getBoundingClientRect();
       const row = move.closest('.move-pair-row');
       const rowHeight = (row ?? move).getBoundingClientRect().height;
@@ -97,7 +102,7 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
     actions.current.openMenu(move, x, y, trigger), []);
 
   const live = game.status !== 'finished' && tree === null;
-  return <nav ref={list} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
+  return <nav ref={list} tabIndex={-1} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
     <h3>Moves</h3>
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
@@ -278,6 +283,9 @@ const MoveEntry = memo(function MoveEntry({ move, selection, compact, lineStart,
         onSelect(move.cursor); }}>{number}<span className="move-content">{move.san}{nag && <span className="nag-symbol">{moveNagLabel(nag.value)}</span>}
         {annotation && <span className="review-annotation" aria-hidden="true"
           style={{ color: annotation.color }}>{annotation.glyph}</span>}
+        {book && <svg className="review-book-icon" viewBox="0 0 24 24" width="15" height="15"
+          aria-hidden="true" focusable="false" fill="none" stroke={moveClassifications.book.color}
+          strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d={moveClassifications.book.path} /></svg>}
     </span>
     {move.note?.comment && <span className="move-comment">
       {move.note.comment}</span>}</button>

@@ -1,10 +1,12 @@
 import { explorerBookMaxPlies, type ExplorerBookCandidate, type ExplorerBookCount, type GameReadResponse } from '@chess/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { reviewForGame, type GameReview } from './game-review';
+import { loadReviewBook, reviewStorageKey, saveReviewBook, validStoredBook, type StoredBook } from './review-storage';
 
 // Counts are from the licensed Explorer sample of indexed opening positions.
 export const reviewBookCriteria = { maxPlies: explorerBookMaxPlies, minPositionGames: 25, minMoveGames: 5, minPercent: 3 };
 const noBookMoves: ReadonlySet<string> = new Set();
+const criteriaKey = JSON.stringify(reviewBookCriteria);
 
 export function reviewBookCandidates(game: GameReadResponse | null, review: GameReview | null): ExplorerBookCandidate[] {
   if (!game || !review || !reviewForGame(game, review)) return [];
@@ -38,18 +40,18 @@ export async function fetchReviewBookPlies(body: string, count: number, csrfToke
 }
 
 export function useReviewBookMoves(game: GameReadResponse | null, review: GameReview | null,
-  csrfToken: string | undefined): ReadonlySet<string> {
+  csrfToken: string | undefined, identity: string): ReadonlySet<string> {
   const candidates = useMemo(() => reviewBookCandidates(game, review), [game, review]);
   const body = candidates.length ? JSON.stringify({ moves: candidates }) : '';
   const gameId = game?.id;
   // Hold the most recent successful lookup, including zero recognized plies.
-  const [result, setResult] = useState<{ body: string; gameId: string; csrfToken: string; moves: ReadonlySet<string> }>();
+  const [result, setResult] = useState<{ body: string; gameId: string; book: StoredBook; moves: ReadonlySet<string> }>();
   const cache = useRef(result);
   const count = candidates.length;
   useEffect(() => {
-    if (!body || !gameId || !csrfToken) return;
+    if (!body || !gameId) return;
     const cached = cache.current;
-    if (cached?.body === body && cached.gameId === gameId && cached.csrfToken === csrfToken) {
+    if (cached?.body === body && cached.gameId === gameId && validStoredBook(cached.book, criteriaKey, count)) {
       setResult(cached);
       return;
     }
@@ -59,15 +61,26 @@ export function useReviewBookMoves(game: GameReadResponse | null, review: GameRe
     queueMicrotask(async () => {
       if (signal.aborted) return;
       try {
-        const plies = await fetchReviewBookPlies(body, count, csrfToken, signal);
+        const key = await reviewStorageKey(identity);
+        const stored = key ? await loadReviewBook(key) : undefined;
         if (signal.aborted) return;
-        const moves = new Set(Array.from({ length: plies }, (_, index) => `${gameId}:m${index + 1}`));
-        cache.current = { body, gameId, csrfToken, moves };
+        let book: StoredBook;
+        if (validStoredBook(stored, criteriaKey, count)) book = stored;
+        else {
+          if (!csrfToken) return;
+          const plies = await fetchReviewBookPlies(body, count, csrfToken, signal);
+          if (signal.aborted) return;
+          book = { criteria: criteriaKey, checkedAt: Date.now(), plies };
+          if (key) void saveReviewBook(key, book);
+        }
+        if (signal.aborted) return;
+        const moves = new Set(Array.from({ length: book.plies }, (_, index) => `${gameId}:m${index + 1}`));
+        cache.current = { body, gameId, book, moves };
         setResult(cache.current);
       } catch { /* Book is optional. The engine review stays available. */ }
     });
     return () => controller.abort();
-  }, [body, count, gameId, csrfToken, review]);
-  return body && result?.body === body && result.gameId === gameId && result.csrfToken === csrfToken
+  }, [body, count, gameId, csrfToken, identity, review]);
+  return body && result?.body === body && result.gameId === gameId && validStoredBook(result.book, criteriaKey, count)
     ? result.moves : noBookMoves;
 }

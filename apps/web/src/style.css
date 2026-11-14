@@ -309,7 +309,6 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .engine-settings-button { width: 28px; border-radius: 5px; color: var(--color-utility-accent, var(--color-accent-text)); }
 .engine-panel .engine-settings-button:hover { color: var(--color-utility-accent, var(--color-accent-text)); }
 .engine-depth, .engine-build { font-size: var(--text-meta); line-height: 1.35; }
-.engine-search-status { color: var(--color-text-muted); }
 .engine-continuous { position: relative; width: 26px; border-radius: 4px; color: var(--color-on-action); }
 .engine-continuous::before { content: ''; position: absolute; width: 18px; height: 18px;
   background: var(--color-primary); border: 1px solid var(--color-primary-outline, var(--color-border-strong)); border-radius: 3px; pointer-events: none; }
@@ -367,9 +366,7 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 }
 .engine-result { --engine-score-height: 30px; --engine-row-padding: 0px;
   display: grid; grid-auto-rows: calc(var(--engine-score-height) + 2 * var(--engine-row-padding)); gap: 4px; min-width: 0; }
-.engine-depth { display: grid; min-height: 1.2em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.engine-depth > span { grid-area: 1 / 1; }
-.engine-depth-reserve { visibility: hidden; }
+.engine-depth { min-height: 1.2em; min-inline-size: 8.5ch; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .engine-candidate-pending { color: var(--color-text-muted); }
 .engine-candidate { font-size: var(--text-compact); display: grid; grid-template-columns: 20px 60px minmax(0, 1fr);
   align-items: center; gap: 6px; min-width: 0; padding-block: var(--engine-row-padding); }
@@ -485,6 +482,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .move-classification svg { display: block; width: 84%; height: 84%; }
 .move-classification-glyph { font: 800 86cqi / 1 var(--font-ui); letter-spacing: -.055em; white-space: nowrap; }
 .review-annotation { margin-inline-start: 3px; font-size: 1.1em; line-height: 1; font-weight: 800; white-space: nowrap; }
+.review-book-icon { margin-inline-start: 3px; vertical-align: -.15em; }
+:is(.move-content, .analysis-view-tabs > button, .board-utilities button, .replay-controls > button,
+  .engine-depth-row button, .game-actions > button, .review-action) { user-select: none; }
 .move-classification-board { position: absolute; inset: 3% 3% auto auto; width: 35%; max-width: 28px;
   z-index: 3; pointer-events: none; }
 .move-comment { display: block; flex-basis: 100%; font-size: var(--text-compact); font-weight: 400; color: var(--color-text-muted); overflow-wrap: anywhere; }

@@ -54,6 +54,7 @@ import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoard
 import type { EngineEvaluation } from './engine-analysis';
 import { describeReviewedMove, reviewedBoardMove, reviewForGame, type GameReview } from './game-review';
 import { useReviewBookMoves } from './review-book';
+import { reviewStorageIdentity } from './review-storage';
 import { moveClassifications } from './move-classification';
 import { MoveClassificationBadge } from './MoveClassificationBadge';
 import { FinishedResultArea } from './FinishedResultArea';
@@ -477,7 +478,7 @@ export function App() {
     const ply = mainAncestorPly(analysis);
     const url = initialAnalysisEntry.kind === 'site' ? siteAnalysisUrl(game.id, ply, boardSize ?? boardRowHeight)
       : explorerAnalysisUrl(initialAnalysisEntry.id, initialAnalysisEntry.fen, ply);
-    window.history.replaceState(null, '', url);
+    window.history.replaceState(window.history.state, '', url);
   }, [analysisOpen, analysis?.cursor, game?.id, boardSize, boardRowHeight]);
 
   function openPgn(text: string) {
@@ -1033,7 +1034,8 @@ export function App() {
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
   const completedReview = analysisOpen ? reviewForGame(game, gameReview) : null;
-  const bookMoves = useReviewBookMoves(game, completedReview, session?.csrfToken);
+  const reviewIdentity = useMemo(() => game ? reviewStorageIdentity(game, imported !== null) : '', [game, imported !== null]);
+  const bookMoves = useReviewBookMoves(game, completedReview, session?.csrfToken, reviewIdentity);
   const reviewHighlight = game && completedReview
     ? reviewedBoardMove(game, completedReview, analysis?.cursor ?? null, displayedFen, bookMoves) : null;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
@@ -1056,6 +1058,12 @@ export function App() {
     if (promotion !== null || (game?.status !== 'active' && game?.status !== 'finished')) return;
     const direction = moveNavigationDirection(event);
     if (direction === null) return;
+    if (event.target instanceof HTMLElement && event.target.matches('.analysis-view-tabs button')) {
+      const tabPanel = event.target.closest('.analysis-view-tabs')
+        ?.querySelector('button[aria-pressed="true"]')?.getAttribute('aria-controls');
+      const panel = tabPanel ? document.getElementById(tabPanel) : null;
+      if (panel && !panel.hidden) panel.focus({ preventScroll: true });
+    }
     if (analysisOpen && analysis !== null) {
       setAnalysis(current => !current || current.gameId !== game.id ? current
         : direction === -1 ? previousPosition(current) : nextPosition(current, game));
@@ -1416,7 +1424,7 @@ export function App() {
                   height: (boardRef.current?.clientWidth ?? 512) / 8 }} aria-hidden="true" draggable={false} />}
             </div>
             <div className="position-column">
-            <AnalysisWorkspaceTabs key={`workspace-${game.id}`} enabled={analysisOpen} reviewHost={setReviewHost}
+            <AnalysisWorkspaceTabs key={`workspace-${game.id}`} gameId={game.id} enabled={analysisOpen} reviewHost={setReviewHost}
               footer={!game.id.startsWith('blank-') || gameError !== null || gameInfo !== null ?
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
@@ -1503,7 +1511,8 @@ export function App() {
               gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
                 side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}
                 playerNames={game.playerNames} /> : undefined}>
-              {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}`} game={game}
+              {analysisOpen && displayedFen !== null && <EnginePanel key={`engine-${game.id}:${reviewIdentity}`} game={game}
+                reviewIdentity={reviewIdentity}
                 sessionOnly={imported !== null}
                 fen={displayedFen} reviewHost={reviewHost}
                 selectedPly={analysis?.cursor.kind === 'main' ? analysis.cursor.ply : null}

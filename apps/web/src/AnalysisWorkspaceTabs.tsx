@@ -2,6 +2,7 @@ import { useId, useReducer, useRef, useState, type ReactNode } from 'react';
 import { ChatUnreadBadge } from './GameChat';
 import { initialWorkspaceView, workspaceView } from './workspace-view';
 import { MovesVisible } from './move-list-scroll';
+import { readReviewView, writeReviewView } from './analysis-links';
 
 export interface GameRoomPresentation {
   visible: boolean;
@@ -12,13 +13,15 @@ export interface GameRoomPresentation {
 }
 
 /** Every pane stays mounted, including the Game Room's shared chat controller. */
-export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, gameInfo, footer }: {
+export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, gameInfo, footer, gameId }: {
   enabled: boolean; children: ReactNode; reviewHost: (element: HTMLDivElement | null) => void;
+  gameId?: string;
   gameRoom?: ((presentation: GameRoomPresentation) => ReactNode) | undefined;
   gameInfo?: ReactNode;
   footer?: ReactNode;
 }) {
-  const [view, dispatch] = useReducer(workspaceView, initialWorkspaceView);
+  const [view, dispatch] = useReducer(workspaceView, initialWorkspaceView, initial =>
+    gameId && readReviewView(gameId, 'workspace') === 'review' ? { ...initial, active: 'review' as const } : initial);
   const [unread, setUnread] = useState(0);
   const launcher = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -38,19 +41,22 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     <div className="workspace-tabs analysis-view-tabs" role="group" aria-label={enabled ? 'Analysis workspace' : 'Game workspace'}>
       {tabs.map(tab => <button key={tab.id} type="button"
         id={`${id}-${tab.id}-button`} aria-controls={`${id}-${tab.id}`} aria-pressed={active === tab.id}
-        onClick={() => dispatch({ type: 'select', tab: tab.id })}>{tab.label}
+        onClick={() => {
+          dispatch({ type: 'select', tab: tab.id });
+          if (enabled && gameId) writeReviewView(gameId, 'workspace', tab.id === 'review' ? 'review' : 'main');
+        }}>{tab.label}
         {tab.id === 'room' && <ChatUnreadBadge count={unread} />}</button>)}
     </div>
     <div className={enabled ? 'workspace-analysis-pane' : 'workspace-play-pane'} id={`${id}-main`} role="region"
-      aria-labelledby={`${id}-main-button`} hidden={active !== 'main'}>
+      aria-labelledby={`${id}-main-button`} tabIndex={-1} hidden={active !== 'main'}>
       <MovesVisible.Provider value={active === 'main'}>{children}</MovesVisible.Provider>
     </div>
     {enabled && <div className="workspace-review-pane" id={`${id}-review`} role="region"
-      aria-labelledby={`${id}-review-button`} hidden={active !== 'review'}>
+      aria-labelledby={`${id}-review-button`} tabIndex={-1} hidden={active !== 'review'}>
       <div ref={reviewHost} className="review-host" />
     </div>}
     {hasRoom && (
-      <div className="workspace-room-pane" id={`${id}-room`} role="region" aria-labelledby={`${id}-room-button`}
+      <div className="workspace-room-pane" id={`${id}-room`} role="region" tabIndex={-1} aria-labelledby={`${id}-room-button`}
         data-overlay-only={!inRoom && view.floating} hidden={!inRoom && !view.floating}>
         <div className="workspace-room-layout" data-analysis={enabled} data-info-only={!gameRoom}>
           {gameRoom?.({

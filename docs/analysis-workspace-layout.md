@@ -21,6 +21,18 @@ tool row does not change the automatic board size.
 - Imported games, including Opening Book examples: Analysis / Game Review / Game Room with PGN information.
 - Blank analysis: Analysis / Game Review.
 
+Completed Game Reviews are saved in this browser's IndexedDB, in the
+`chess-game-reviews` database and `reviews` store. The 20 most recently completed
+reviews are retained. The key hashes the game source and exact main line. The
+record includes the review and accuracy method versions, Stockfish build, thread
+count, search limits and completed position evaluations. A matching review
+restores automatically. Analyze again runs a new review, and the previous saved
+review stays available until a replacement completes.
+
+Book metadata uses the same review key and is reused for up to seven days while
+the recognition criteria still match. Local PGN files and pasted text are
+session-local. Reopening the same PGN can recover its saved review.
+
 Every primary pane stays mounted. The Analysis pane retains EnginePanel and
 Moves/Opening Book. Game Review retains its stable portal host; EnginePanel still
 owns the independent interactive and review workers. Switching views does not

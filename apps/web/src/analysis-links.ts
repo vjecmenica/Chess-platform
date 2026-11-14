@@ -1,6 +1,24 @@
 import type { ParsedPgn } from '@chess/domain';
 import { renderedBoardSize } from './board-size-preference';
 
+type ReviewView = { gameId: string; workspace?: 'main' | 'review'; chart?: 'computer' | 'times' };
+
+export function readReviewView<K extends 'workspace' | 'chart'>(gameId: string, field: K): ReviewView[K] | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const view = window.history.state?.chessReviewView as ReviewView | undefined;
+  return view?.gameId === gameId ? view[field] : undefined;
+}
+
+export function writeReviewView<K extends 'workspace' | 'chart'>(gameId: string, field: K, value: ReviewView[K]): void {
+  const state = window.history.state;
+  const previous = state?.chessReviewView as ReviewView | undefined;
+  try {
+    window.history.replaceState({ ...state, chessReviewView: {
+      ...(previous?.gameId === gameId ? previous : {}), gameId, [field]: value,
+    } }, '');
+  } catch { /* Tab preferences are optional. */ }
+}
+
 export function siteAnalysisUrl(id: string, ply?: number, size?: number | null): string {
   const board = renderedBoardSize(size);
   return `/challenge/${id}?${new URLSearchParams({ analysis: '1', ...(ply === undefined ? {} : { ply: String(ply) }),
