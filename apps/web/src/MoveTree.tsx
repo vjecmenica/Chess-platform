@@ -42,10 +42,10 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
       if (!container) return;
       const focused = document.activeElement;
       if (focused instanceof HTMLElement && container.contains(focused)
-        && focused.matches('.move-link, .opening-label') && focused !== move) {
+        && (focused === container || focused.matches('.move-link')) && focused !== move) {
         if (move) move.focus({ preventScroll: true });
-        else if (!focused.matches('.opening-label')) {
-          container.querySelector<HTMLElement>('.opening-label')?.focus({ preventScroll: true });
+        else if (focused !== container) {
+          container.focus({ preventScroll: true });
           container.scrollTop = 0;
         }
       }
@@ -111,8 +111,9 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
 
   const live = game.status !== 'finished' && tree === null;
   return <nav ref={list} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
+    tabIndex={-1}
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
-    <OpeningLabel opening={opening} focusTarget />
+    <OpeningLabel opening={opening} />
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
       selection={selection} interactive={interactive} editable={tree !== null} review={reviewForGame(game, review)} bookMoves={bookMoves}
       selectEntry={selectEntry} menuEntry={menuEntry} />}

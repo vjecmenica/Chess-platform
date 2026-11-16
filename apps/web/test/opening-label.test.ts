@@ -60,7 +60,7 @@ it('identifies a transposition by position and shows a neutral label without evi
   const b = parsePgn('1. c4 e6 2. d4 d5 *').moves;
   expect(identifyOpening(a)).toEqual(identifyOpening(b));
   expect(identifyOpening(a)?.name).toContain("Queen's Gambit Declined");
-  expect(renderToStaticMarkup(createElement(OpeningLabel, { opening: null }))).toContain('Opening not identified');
+  expect(renderToStaticMarkup(createElement(OpeningLabel, { opening: null }))).toBe('');
 });
 
 it('preserves supplied PGN names and valid codes while treating placeholders as unavailable', () => {

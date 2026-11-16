@@ -93,7 +93,8 @@ describe('display clocks', () => {
     const shown = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
     expect(shown).toContain('05:03');
-    expect(shown).toContain('class="clock-hundredths" data-reserved="" aria-hidden="true"');
+    expect(shown).not.toContain('clock-hundredths');
+    expect(shown).not.toContain('low-time-marker');
     expect(shown).not.toContain('At selected move');
     expect(shown).not.toContain('Stopped');
     expect(shown).not.toContain('clock-active');
@@ -136,9 +137,18 @@ describe('display clocks', () => {
     expect(live).toContain('class="player-clock-value" data-side="white"');
     expect(history).toContain('class="player-clock-value" data-side="black"');
     for (const side of ['white', 'black']) {
-      expect(css).toContain(`.player-clock-value[data-side="${side}"] { background: var(--evaluation-${side}); color: var(--evaluation-${side}-text); }`);
+      expect(css).toContain(`.player-clock-value[data-side="${side}"] { --clock-background: var(--evaluation-${side}); color: var(--evaluation-${side}-text); }`);
     }
     expect(css).toMatch(/\.clock-warning \.player-clock-value \{ border-color: var\(--color-error\)/);
     expect(css).toMatch(/\.clock-hundredths[^}]*font-size: \.58em/);
+  });
+
+  it('only emphasizes a running clock', () => {
+    for (const phase of ['handoff', 'stopped', 'flagged', 'awaiting_first_move'] as const) {
+      const html = renderToStaticMarkup(createElement(ClockPanel, {
+        clock: { ...running, phase }, side: 'white', isYou: true,
+      }));
+      expect(html).not.toContain('clock-active');
+    }
   });
 });

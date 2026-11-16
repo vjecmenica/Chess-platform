@@ -33,10 +33,10 @@ export function useGameOpening(history: readonly SavedMove[] | undefined, ply: n
     [index, history, ply, tree, headers]);
 }
 
-export function OpeningLabel({ opening, focusTarget = false }: { opening: OpeningName | null; focusTarget?: boolean }) {
-  return <p className="opening-label" tabIndex={focusTarget ? -1 : undefined}
-    title={opening ? [opening.eco, opening.name].filter(Boolean).join(' · ') : undefined}>
-    {opening?.eco && <small>{opening.eco} <span aria-hidden="true">·</span></small>}
-    <span>{opening?.name ?? 'Opening not identified'}</span>
+export function OpeningLabel({ opening }: { opening: OpeningName | null }) {
+  if (!opening) return null;
+  return <p className="opening-label" title={[opening.eco, opening.name].filter(Boolean).join(' · ')}>
+    {opening.eco && <small>{opening.eco} <span aria-hidden="true">·</span></small>}
+    <span>{opening.name}</span>
   </p>;
 }
