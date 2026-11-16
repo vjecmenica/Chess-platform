@@ -1,3 +1,5 @@
+import type { GameSide } from '@chess/contracts';
+
 export function formatClock(milliseconds: number): string {
   const hundredths = Math.ceil(Math.max(0, milliseconds) / 10);
   const seconds = milliseconds > 30_000 ? Math.ceil(milliseconds / 1000)
@@ -14,9 +16,11 @@ export function ClockValue({ milliseconds }: { milliseconds: number }) {
       aria-hidden={fraction === undefined ? true : undefined}>.{fraction ?? '00'}</span></>;
 }
 
-export function PlayerClockValue({ milliseconds, fallback }: { milliseconds: number | null; fallback: string }) {
+export function PlayerClockValue({ milliseconds, fallback, side }: {
+  milliseconds: number | null; fallback?: string; side: GameSide;
+}) {
   const lowTime = milliseconds !== null && milliseconds <= 30_000;
-  return <strong className="player-clock-value" aria-live="off">
+  return <strong className="player-clock-value" data-side={side} aria-live="off">
     {milliseconds === null ? fallback : <>
       <span className="low-time-marker" hidden={!lowTime} aria-hidden="true">!</span>
       {lowTime && <span className="visually-hidden">Low time </span>}

@@ -72,7 +72,8 @@ describe('shared game presentation', () => {
     expect(white).toContain('00:29');
     expect(white).toContain('clock-hundredths');
     expect(white).toContain('clock-warning');
-    expect(black).toContain('>—</strong>');
+    expect(white).toContain('class="player-clock-value" data-side="white"');
+    expect(black).not.toContain('player-clock-value');
     expect(black).not.toContain('05:00');
   });
 

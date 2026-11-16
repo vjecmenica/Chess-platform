@@ -102,6 +102,17 @@ export function mainAncestorPly(tree: AnalysisTree, cursor = tree.cursor): numbe
   return current.ply;
 }
 
+export function variationFens(tree: AnalysisTree): readonly string[] {
+  let cursor = tree.cursor;
+  const fens: string[] = [];
+  while (cursor.kind === 'branch') {
+    const move = node(tree, cursor.id);
+    fens.push(move.fen);
+    cursor = move.parent;
+  }
+  return fens.reverse();
+}
+
 export function previousPosition(tree: AnalysisTree): AnalysisTree {
   const cursor = tree.cursor;
   if (cursor.kind === 'branch') return { ...tree, cursor: node(tree, cursor.id).parent };

@@ -11,7 +11,7 @@ it('keeps both sections mounted and uses native buttons without reserving arrow 
   expect(html).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Moves/);
   expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*>Opening Book/);
   expect(html).not.toContain('role="tab');
-  expect(html).not.toContain('tabindex="-1"');
+  expect(html).not.toContain('tabindex=');
   expect(html).toContain('Existing move tree and actions');
   expect(html).toMatch(/class="sidebar-tab-content sidebar-book"[^>]*hidden=""[^>]*><p>Existing explorer and examples/);
   const controls = [...html.matchAll(/aria-controls="([^"]+)"/g)].map(match => match[1]);

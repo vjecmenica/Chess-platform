@@ -147,7 +147,6 @@ export function App() {
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [chatRevision, setChatRevision] = useState(0);
   const [imported, setImported] = useState<ImportedGame | null>(null);
-  const opening = useGameOpening(game?.history, imported?.headers);
   const [pgnText, setPgnText] = useState('');
   const [pgnError, setPgnError] = useState<string | null>(null);
   const [pgnErrorSource, setPgnErrorSource] = useState<'file' | 'text'>('file');
@@ -1023,6 +1022,7 @@ export function App() {
   const displayedPly = game === null ? 0 : replayPly(
     analysisOpen && analysis !== null ? mainAncestorPly(analysis)
       : selectedReplayPly ?? game.history.length, game.history.length);
+  const opening = useGameOpening(game?.history, displayedPly, analysisOpen ? analysis : null, imported?.headers);
   const liveBrowsingHistory = isViewingLiveHistory(game?.status,
     selectedReplayPly, game?.history.length ?? 0);
   const canMove = game?.status === 'active' && !liveBrowsingHistory
@@ -1090,19 +1090,6 @@ export function App() {
     if (event.target instanceof Element && event.target.closest('.share-export-dialog')) return;
     const direction = moveNavigationDirection(event);
     if (direction === null) return;
-    if (event.target instanceof HTMLElement && event.target.matches('.analysis-view-tabs button')) {
-      const tabPanel = event.target.closest('.analysis-view-tabs')
-        ?.querySelector('button[aria-pressed="true"]')?.getAttribute('aria-controls');
-      const panel = tabPanel ? document.getElementById(tabPanel) : null;
-      if (panel && !panel.hidden) {
-        const moveList = panel.querySelector('.moves');
-        const target = moveList && !moveList.closest('[hidden]')
-          ? moveList.querySelector<HTMLElement>('.move-link[aria-current="step"]')
-            ?? moveList.querySelector<HTMLElement>('.moves-heading')
-          : panel;
-        target?.focus({ preventScroll: true });
-      }
-    }
     if (analysisOpen && analysis !== null) {
       setAnalysis(current => !current || current.gameId !== game.id ? current
         : direction === -1 ? previousPosition(current) : nextPosition(current, game));

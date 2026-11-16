@@ -29,9 +29,10 @@ export function ImportedPlayerRow({ imported, side, historicalMs }: {
   imported: ImportedGame; side: GameSide; historicalMs?: number | null | undefined;
 }) {
   const player = importedPlayer(imported, side);
-  return <div className={`clock clock-no-status imported-player${historicalMs !== undefined && historicalMs !== null && historicalMs <= 30_000 ? ' clock-warning' : ''}`}
-    aria-label={historicalMs === undefined ? undefined : `${side} clock at selected move`}>
+  const timed = historicalMs !== undefined && historicalMs !== null;
+  return <div className={`clock clock-no-status imported-player${timed && historicalMs <= 30_000 ? ' clock-warning' : ''}`}
+    aria-label={timed ? `${side} clock at selected move` : undefined}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
-    {historicalMs !== undefined && <PlayerClockValue milliseconds={historicalMs} fallback="—" />}
+    {timed && <PlayerClockValue side={side} milliseconds={historicalMs} />}
   </div>;
 }

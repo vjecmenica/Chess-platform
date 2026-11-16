@@ -16,18 +16,29 @@ export function namedOpeningAt(key: string): OpeningName | null {
   return opening ? { eco: opening.eco, name: opening.name } : null;
 }
 
-const historyOpenings = new WeakMap<readonly { afterFen: string }[], OpeningName | null>();
+type OpeningHistory = readonly { afterFen: string }[];
+const historyOpenings = new WeakMap<OpeningHistory, readonly (NamedPosition | null)[]>();
 
-/** Use only the recorded main line. Saved FENs are canonical chess-domain output. */
-export function identifyOpening(history: readonly { afterFen: string }[]): OpeningName | null {
-  const cached = historyOpenings.get(history);
-  if (cached !== undefined) return cached;
-  let best: NamedPosition | undefined;
-  for (let ply = 0; ply < Math.min(history.length, maxOpeningPly); ply++) {
-    const opening = index.get(canonicalPositionKey(history[ply]!.afterFen));
-    if (opening && (!best || opening.depth >= best.depth)) best = opening;
+function moreSpecificOpening(best: NamedPosition | null, fen: string): NamedPosition | null {
+  const opening = index.get(canonicalPositionKey(fen));
+  return opening && (!best || opening.depth >= best.depth) ? opening : best;
+}
+
+/** Use the selected main-line prefix and then its variation, if any. All FENs are canonical. */
+export function identifyOpening(history: OpeningHistory, ply = history.length, variation: readonly string[] = []): OpeningName | null {
+  let prefixes = historyOpenings.get(history);
+  if (!prefixes) {
+    const computed: (NamedPosition | null)[] = [null];
+    for (let i = 0; i < Math.min(history.length, maxOpeningPly); i++) {
+      computed.push(moreSpecificOpening(computed[i] ?? null, history[i]!.afterFen));
+    }
+    historyOpenings.set(history, computed);
+    prefixes = computed;
   }
-  const result = best ? { eco: best.eco, name: best.name } : null;
-  historyOpenings.set(history, result);
-  return result;
+  const prefix = Math.max(0, Math.min(ply, prefixes.length - 1));
+  let best = prefixes[prefix] ?? null;
+  for (let i = 0; i < Math.min(variation.length, maxOpeningPly - prefix); i++) {
+    best = moreSpecificOpening(best, variation[i]!);
+  }
+  return best ? { eco: best.eco, name: best.name } : null;
 }
