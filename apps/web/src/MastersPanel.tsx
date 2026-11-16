@@ -1,8 +1,9 @@
 import { ExplorerGames } from './ExplorerGames';
-import { memo, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { GameReadResponse } from '@chess/contracts';
 import { cursorFen, type AnalysisTree } from './analysis-model';
-import { playedPercentage, MastersClient, type MastersResult } from './masters-explorer';
+import { playedPercentage, mastersQuery, MastersClient, type MastersResult } from './masters-explorer';
+import { OpeningBookVisible } from './AnalysisSidebarTabs';
 
 const client = new MastersClient();
 
@@ -58,6 +59,7 @@ export function ExplorerContent({ result, onExplore, onRetry, examples }: {
 
 export function ExplorerExamples({ children, hasMoves }: { children: ReactNode; hasMoves: boolean }) {
   const [expanded, setExpanded] = useState(true);
+  const bookVisible = useContext(OpeningBookVisible);
   const id = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
@@ -167,7 +169,9 @@ export function ExplorerExamples({ children, hasMoves }: { children: ReactNode; 
       aria-description="Drag or use Up and Down to adjust the space for example games." />}
     <button type="button" className="book-examples-toggle" aria-expanded={expanded} aria-controls={id}
       onClick={() => setExpanded(value => !value)}>Example games <span aria-hidden="true">{expanded ? '−' : '+'}</span></button>
-    <div className="book-examples-content" id={id} hidden={!expanded}>{children}</div>
+    <div className="book-examples-content" id={id} hidden={!expanded}>
+      <OpeningBookVisible.Provider value={bookVisible && expanded}>{children}</OpeningBookVisible.Provider>
+    </div>
   </section>;
 }
 
@@ -175,21 +179,24 @@ export const MastersPanel = memo(function MastersPanel({ game, tree, onExplore }
   game: GameReadResponse; tree: AnalysisTree; onExplore: (uci: string) => void;
 }) {
   const fen = cursorFen(tree, game);
+  const visible = useContext(OpeningBookVisible);
+  const { fen: normalizedFen, url: key } = useMemo(() => mastersQuery(fen), [fen]);
   const [retry, setRetry] = useState(0);
-  const [state, setState] = useState<{ fen: string; result: MastersResult } | null>(null);
+  const [state, setState] = useState<{ key: string; result: MastersResult } | null>(null);
   useEffect(() => {
-    if (game.status !== 'finished') return;
+    if (!visible || game.status !== 'finished' || client.cached(key)) return;
     const controller = new AbortController();
     // Debounce rapid replay navigation; do not request every traversed ply.
     const timer = setTimeout(() => {
-      void client.lookup({ rootFen: fen, play: [], fen }, controller.signal).then(result => {
-        if (!controller.signal.aborted) setState({ fen, result });
+      void client.lookupQuery({ fen: normalizedFen, url: key }, controller.signal).then(result => {
+        if (!controller.signal.aborted) setState({ key, result });
       });
-    }, 150);
+    }, 65);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [fen, retry, game.id, game.status]);
+  }, [visible, key, normalizedFen, retry, game.id, game.status]);
   if (game.status !== 'finished') return null;
-  return <ExplorerContent result={state?.fen === fen ? state.result : null}
+  const cached = client.cached(key);
+  return <ExplorerContent result={cached ? { kind: 'ok', data: cached } : state?.key === key ? state.result : null}
     onExplore={onExplore} onRetry={() => { setState(null); setRetry(value => value + 1); }}
-    examples={<ExplorerGames key={fen} fen={fen} />} />;
+    examples={<ExplorerGames key={key} fen={normalizedFen} />} />;
 });

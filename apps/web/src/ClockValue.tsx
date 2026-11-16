@@ -9,6 +9,18 @@ export function formatClock(milliseconds: number): string {
 export function ClockValue({ milliseconds }: { milliseconds: number }) {
   const value = formatClock(milliseconds);
   const [main, fraction] = value.split('.');
-  return <><span>{main}</span>{fraction !== undefined &&
-    <span className="clock-hundredths">.{fraction}</span>}</>;
+  return <><span>{main}</span>
+    <span className="clock-hundredths" data-reserved={fraction === undefined ? '' : undefined}
+      aria-hidden={fraction === undefined ? true : undefined}>.{fraction ?? '00'}</span></>;
+}
+
+export function PlayerClockValue({ milliseconds, fallback }: { milliseconds: number | null; fallback: string }) {
+  const lowTime = milliseconds !== null && milliseconds <= 30_000;
+  return <strong className="player-clock-value" aria-live="off">
+    {milliseconds === null ? fallback : <>
+      <span className="low-time-marker" hidden={!lowTime} aria-hidden="true">!</span>
+      {lowTime && <span className="visually-hidden">Low time </span>}
+      <ClockValue milliseconds={milliseconds} />
+    </>}
+  </strong>;
 }

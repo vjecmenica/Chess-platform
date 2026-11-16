@@ -13,12 +13,13 @@ export interface GameRoomPresentation {
 }
 
 /** Every pane stays mounted, including the Game Room's shared chat controller. */
-export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, gameInfo, footer, gameId }: {
+export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom, gameInfo, footer, gameId, reviewOpening }: {
   enabled: boolean; children: ReactNode; reviewHost: (element: HTMLDivElement | null) => void;
   gameId?: string;
   gameRoom?: ((presentation: GameRoomPresentation) => ReactNode) | undefined;
   gameInfo?: ReactNode;
   footer?: ReactNode;
+  reviewOpening?: ReactNode;
 }) {
   const [view, dispatch] = useReducer(workspaceView, initialWorkspaceView, initial =>
     gameId && readReviewView(gameId, 'workspace') === 'review' ? { ...initial, active: 'review' as const } : initial);
@@ -53,6 +54,7 @@ export function AnalysisWorkspaceTabs({ enabled, children, reviewHost, gameRoom,
     </div>
     {enabled && <div className="workspace-review-pane" id={`${id}-review`} role="region"
       aria-labelledby={`${id}-review-button`} tabIndex={-1} hidden={active !== 'review'}>
+      {reviewOpening}
       <div ref={reviewHost} className="review-host" />
     </div>}
     {hasRoom && (

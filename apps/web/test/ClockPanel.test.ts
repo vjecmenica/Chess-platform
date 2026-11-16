@@ -93,7 +93,7 @@ describe('display clocks', () => {
     const shown = renderToStaticMarkup(createElement(ClockPanel,
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
     expect(shown).toContain('05:03');
-    expect(shown).not.toContain('clock-hundredths');
+    expect(shown).toContain('class="clock-hundredths" data-reserved="" aria-hidden="true"');
     expect(shown).not.toContain('At selected move');
     expect(shown).not.toContain('Stopped');
     expect(shown).not.toContain('clock-active');
@@ -128,11 +128,12 @@ describe('display clocks', () => {
       clock: running, side: 'black', isYou: false, historicalMs: 29_450,
     }));
     expect(live).toContain('clock-active clock-warning');
+    expect(live).toContain('Low time');
     expect(live).toContain('clock-hundredths');
     expect(history).toContain('clock-warning');
     expect(history).toContain('<span>00:29</span><span class="clock-hundredths">.45</span>');
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.clock-warning[^}]*background: var\(--color-danger-surface\)/);
+    expect(css).toMatch(/\.clock-warning \.player-clock-value[^}]*background: var\(--color-danger-surface\)/);
     expect(css).toMatch(/\.clock-hundredths[^}]*font-size: \.58em/);
   });
 });

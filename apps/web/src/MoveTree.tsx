@@ -8,6 +8,8 @@ import { filterNagGroups, moveNagLabel, nagDetails } from './pgn-nags';
 import { describeReviewedMove, reviewForGame, type GameReview } from './game-review';
 import { moveClassifications, reviewAnnotation } from './move-classification';
 import { MovesVisible, moveListScrollTop } from './move-list-scroll';
+import { OpeningLabel } from './OpeningLabel';
+import type { OpeningName } from '@chess/domain/openings';
 
 interface MoveTreeProps {
   readonly game: GameReadResponse;
@@ -16,6 +18,7 @@ interface MoveTreeProps {
   readonly interactive: boolean;
   readonly review?: GameReview | null;
   readonly bookMoves?: ReadonlySet<string> | undefined;
+  readonly opening?: OpeningName | null;
   readonly onSelect: (cursor: AnalysisCursor) => void;
   readonly onDelete: (id: number) => void;
   readonly onPromote?: (id: number) => void;
@@ -25,7 +28,7 @@ interface MoveTreeProps {
 interface OpenMenu { move: MoveView; x: number; y: number; trigger: HTMLElement }
 
 export const MoveTree = memo(function MoveTree({ game, tree, selected, interactive, onSelect, onDelete,
-  onPromote, onNote, review, bookMoves }: MoveTreeProps) {
+  onPromote, onNote, review, bookMoves, opening = null }: MoveTreeProps) {
   const [selection] = useState(() => new MoveSelection(selected));
   useLayoutEffect(() => selection.update(selected), [selection, selected]);
   const visible = useContext(MovesVisible);
@@ -110,6 +113,7 @@ export const MoveTree = memo(function MoveTree({ game, tree, selected, interacti
   return <nav ref={list} className={`moves${tree !== null ? ' analysis-moves' : live ? ' live-moves' : ' saved-replay-moves'}`}
     aria-label={live ? 'Confirmed move list' : 'Saved moves and local variations'}>
     <h3 className="moves-heading" tabIndex={-1}>Moves</h3>
+    <OpeningLabel opening={opening} />
     {view.main.moves.length === 0 ? <p>No confirmed moves yet.</p> : <MoveLines view={view} gameId={game.id}
       selection={selection} interactive={interactive} editable={tree !== null} review={reviewForGame(game, review)} bookMoves={bookMoves}
       selectEntry={selectEntry} menuEntry={menuEntry} />}

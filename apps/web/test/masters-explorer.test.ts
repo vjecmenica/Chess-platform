@@ -162,6 +162,45 @@ describe('Masters opening explorer', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it('coalesces concurrent requests for the same position and keeps the remaining subscriber', async () => {
+    const saved = game();
+    const path = mastersPath(saved, createAnalysisTree(saved));
+    let resolve!: (response: Response) => void;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise(done => { resolve = done; }));
+    const client = new MastersClient(fetcher);
+    const controller = new AbortController();
+    const first = client.lookup(path, controller.signal);
+    const second = client.lookup({ ...path, fen: path.fen.replace(/ \d+ \d+$/, ' 0 17') });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    controller.abort();
+    expect(await first).toEqual({ kind: 'cancelled' });
+    expect(fetcher.mock.calls[0]![1]?.signal?.aborted).toBe(false);
+    resolve(new Response(JSON.stringify(response)));
+    expect((await second).kind).toBe('ok');
+    expect(client.cached(mastersUrl(path))?.moves[0]?.san).toBe('Nf3');
+  });
+
+  it('skips an obsolete lookup and releases the active request before sending the latest position', async () => {
+    const firstPath = { rootFen: '', play: [], fen: game().history[0]!.beforeFen };
+    const stalePath = { ...firstPath, fen: game().history[0]!.afterFen };
+    const nextPath = { ...firstPath, fen: game().position.fen };
+    const fetcher = vi.fn<typeof fetch>().mockImplementationOnce((_url, init) =>
+      new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason))))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response)));
+    const client = new MastersClient(fetcher);
+    const active = new AbortController(), obsolete = new AbortController();
+    const first = client.lookup(firstPath, active.signal);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    const second = client.lookup(stalePath, obsolete.signal);
+    const latest = client.lookup(nextPath);
+    obsolete.abort();
+    active.abort();
+    expect((await first).kind).toBe('cancelled');
+    expect((await second).kind).toBe('cancelled');
+    expect((await latest).kind).toBe('ok');
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([mastersUrl(firstPath), mastersUrl(nextPath)]);
+  });
+
   it('distinguishes expired sessions, access errors, and successful local lookups', async () => {
     const path = mastersPath(game(), createAnalysisTree(game()));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response('', { status: 401 }))

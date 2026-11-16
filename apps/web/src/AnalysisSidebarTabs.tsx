@@ -1,8 +1,10 @@
-import { useContext, useEffect, useId, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react';
 import { MovesVisible } from './move-list-scroll';
 
 export type SidebarTab = 'moves' | 'book';
-/** Keep both panes mounted: visibility changes must not discard trees, requests or scroll offsets. */
+export const OpeningBookVisible = createContext(false);
+
+/** Keep both panes mounted to preserve their state and scroll offsets. */
 export function AnalysisSidebarTabs({ enabled, book, children }: {
   enabled: boolean; book: ReactNode; children: ReactNode;
 }) {
@@ -23,6 +25,8 @@ export function AnalysisSidebarTabs({ enabled, book, children }: {
       <MovesVisible.Provider value={workspaceVisible && active === 'moves'}>{children}</MovesVisible.Provider>
     </div>
     <div className="sidebar-tab-content sidebar-book" role="region" tabIndex={0}
-      id={`${id}-book-panel`} aria-labelledby={`${id}-book-tab`} hidden={active !== 'book'}>{book}</div>
+      id={`${id}-book-panel`} aria-labelledby={`${id}-book-tab`} hidden={active !== 'book'}>
+      <OpeningBookVisible.Provider value={workspaceVisible && active === 'book'}>{book}</OpeningBookVisible.Provider>
+    </div>
   </div>;
 }

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { normalizedPositionKey, STANDARD_STARTING_FEN } from '@chess/domain';
+import { namedOpeningAt } from '@chess/domain/openings';
 import { buildApp } from '../src/app.js';
 import { loadEnvironment, databaseUrl } from '../src/config.js';
 import { createPool } from '../src/database.js';
@@ -36,7 +37,11 @@ describe('local opening explorer in PostgreSQL', () => {
       expect(listing.games).toHaveLength(3);
       expect(listing.totalPages).toBe(1);
       expect(listing.games.every((g: { ply: number; uci: string }) => g.ply === 4 && g.uci === 'c2c4')).toBe(true);
-      expect(response.json()).toEqual({ opening: null, moves: [{ uci: 'c2c4', san: 'c4', white: 1, draws: 1, black: 1 }] });
+      expect(response.json()).toEqual({ opening: namedOpeningAt(normalizedPositionKey(fen)),
+        moves: [{ uci: 'c2c4', san: 'c4', white: 1, draws: 1, black: 1 }] });
+      const namedWithoutSamples = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+      expect((await app.inject({ url: `/opening-explorer?fen=${encodeURIComponent(namedWithoutSamples)}`, headers })).json())
+        .toEqual({ opening: { eco: 'B00', name: "King's Pawn Game" }, moves: [] });
       const changedCounters = await app.inject({ url: `/opening-explorer?fen=${encodeURIComponent(fen.replace('4 3', '0 17'))}`, headers });
       expect(changedCounters.json()).toEqual(response.json());
       expect((await app.inject({ url: '/opening-explorer?fen=invalid-position', headers })).statusCode).toBe(400);

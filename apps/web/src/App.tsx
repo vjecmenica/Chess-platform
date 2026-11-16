@@ -19,6 +19,7 @@ import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
 import { MastersPanel } from './MastersPanel';
+import { OpeningLabel, useGameOpening } from './OpeningLabel';
 import { applyAcceptedAction, applyAcceptedMove, boardRows, mergeConfirmedGame, replayFen, replayPly,
   pieceBelongsTo, type Piece, type Square } from './board-model';
 import { availableClaimForPlayer } from './draw-claim-control';
@@ -146,6 +147,7 @@ export function App() {
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [chatRevision, setChatRevision] = useState(0);
   const [imported, setImported] = useState<ImportedGame | null>(null);
+  const opening = useGameOpening(game?.history, imported?.headers);
   const [pgnText, setPgnText] = useState('');
   const [pgnError, setPgnError] = useState<string | null>(null);
   const [pgnErrorSource, setPgnErrorSource] = useState<'file' | 'text'>('file');
@@ -1473,6 +1475,7 @@ export function App() {
             </div>
             <div className="position-column">
             <AnalysisWorkspaceTabs key={`workspace-${game.id}`} gameId={game.id} enabled={analysisOpen} reviewHost={setReviewHost}
+              reviewOpening={<OpeningLabel opening={opening} />}
               footer={!game.id.startsWith('blank-') || gameError !== null || gameInfo !== null ?
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
@@ -1615,6 +1618,7 @@ export function App() {
                 {analysisError !== null && <p className="error" role="alert">{analysisError}</p>}
                 <div className="analysis-pane">
                 <MoveTree game={game} tree={analysisOpen ? analysis : null} interactive={replaying || game.status === 'active'}
+                  opening={opening}
                   review={completedReview} bookMoves={bookMoves}
                   selected={analysisOpen && analysis !== null ? analysis.cursor
                     : { kind: 'main', ply: displayedPly }}

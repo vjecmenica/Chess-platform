@@ -1,30 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import type { ExplorerGamePage } from '@chess/contracts';
 import { explorerAnalysisUrl } from './analysis-links';
+import { OpeningBookVisible } from './AnalysisSidebarTabs';
+import { ExplorerRequests, type ExplorerResult } from './explorer-requests';
+
+const requests = new ExplorerRequests<ExplorerGamePage>(64);
 
 export function ExplorerGames({ fen }: { fen: string }) {
   const [page, setPage] = useState(0);
-  const [data, setData] = useState<ExplorerGamePage | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<{ url: string; result: ExplorerResult<ExplorerGamePage> } | null>(null);
   const [retry, setRetry] = useState(0);
+  const visible = useContext(OpeningBookVisible);
+  const url = `/api/opening-explorer/games?${new URLSearchParams({ fen, page: String(page) })}`;
+  const data = requests.cached(url) ?? (state?.url === url && state.result.kind === 'ok' ? state.result.data : null);
+  const error = !data && state?.url === url && state.result.kind === 'error' ? state.result.message : null;
   useEffect(() => {
-    const controller = new AbortController(); setData(null); setError(null);
-    const timeout = setTimeout(() => { setError('Games request timed out.'); controller.abort(); }, 5_000);
+    if (!visible || requests.cached(url)) return;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      void fetch(`/api/opening-explorer/games?${new URLSearchParams({ fen, page: String(page) })}`,
-        { signal: controller.signal, credentials: 'same-origin' }).then(async response => {
-        if (!response.ok) throw new Error(response.status === 429 ? 'Too many requests. Try again in a minute.'
-          : response.status === 401 ? 'Your session expired. Refresh to reconnect.' : 'Games could not be loaded.');
-        const value = await response.json() as ExplorerGamePage;
-        if (!controller.signal.aborted) setData(value);
-        clearTimeout(timeout);
-      }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Games could not be loaded.'); })
-        .finally(() => clearTimeout(timeout));
+      void requests.lookup(url, controller.signal, signal => fetch(url, { signal, credentials: 'same-origin' }),
+        value => value as ExplorerGamePage, 'Example games').then(result => {
+        if (!controller.signal.aborted) setState({ url, result });
+      });
     }, 150);
-    return () => { clearTimeout(timeout); clearTimeout(timer); controller.abort(); };
-  }, [fen, page, retry]);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [visible, url, retry]);
   return <section className="explorer-games" aria-label="Games reaching this position">
-    {error && <p role="status">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
+    {error && <p role="status">{error} <button type="button" onClick={() => { setState(null); setRetry(value => value + 1); }}>Retry</button></p>}
     {!data && !error && <p role="status">Loading games…</p>}
     {data && data.games.length === 0 && <p>No games available.</p>}
     <ExplorerGameList data={data} page={page} fen={fen} onPage={setPage} />

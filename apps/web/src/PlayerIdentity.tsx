@@ -1,6 +1,6 @@
 import type { GamePlayerNames, GameSide } from '@chess/contracts';
 import type { ImportedGame } from './pgn-import';
-import { ClockValue } from './ClockValue';
+import { PlayerClockValue } from './ClockValue';
 
 export function sitePlayerName(names: GamePlayerNames | undefined, side: GameSide): string {
   return names?.[side] ?? 'Guest';
@@ -18,7 +18,7 @@ export function PlayerIdentity({ side, name, rating }: {
   side: GameSide; name: string; rating?: string | null;
 }) {
   return <span className="player-label">
-    <span className="player-name-line"><span className="player-name">{name}</span>
+    <span className="player-name-line"><span className="player-name" title={name}>{name}</span>
       {rating && <span className="player-rating" aria-label={`Rating ${rating}`}>{rating}</span>}
     </span>
     {name.toLowerCase() !== side && <b>{side === 'white' ? 'White' : 'Black'}</b>}
@@ -32,7 +32,6 @@ export function ImportedPlayerRow({ imported, side, historicalMs }: {
   return <div className={`clock clock-no-status imported-player${historicalMs !== undefined && historicalMs !== null && historicalMs <= 30_000 ? ' clock-warning' : ''}`}
     aria-label={historicalMs === undefined ? undefined : `${side} clock at selected move`}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
-    {historicalMs !== undefined && <strong aria-live="off">{historicalMs === null
-      ? '—' : <ClockValue milliseconds={historicalMs} />}</strong>}
+    {historicalMs !== undefined && <PlayerClockValue milliseconds={historicalMs} fallback="—" />}
   </div>;
 }

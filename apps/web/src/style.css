@@ -231,26 +231,37 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .analysis-workspace .analysis-board-controls .color-choice { width: 36px; min-width: 36px; }
 .color-choice span { display: block; width: 17px; height: 17px; border-radius: 50%; }
 
-.clock { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; min-width: 0; padding: 9px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-raised); color: var(--color-text); }
-.clock-active { border-color: var(--color-accent); background: var(--color-surface-selected); box-shadow: inset 3px 0 var(--color-accent); }
-.clock-warning, .clock-active.clock-warning { border-color: var(--color-error); background: var(--color-danger-surface);
-  box-shadow: inset 3px 0 var(--color-error); color: var(--color-error); }
-.clock-warning small { color: var(--color-error); }
-.player-label { font-size: var(--text-body); font-weight: 650; line-height: 1.25; }
-.player-name-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 7px; min-width: 0; }
+.clock { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
+  min-width: 0; padding: 4px 0; color: var(--color-text); }
+.clock-active .player-clock-value { background: var(--color-surface-selected); box-shadow: inset 2px 0 var(--color-accent); }
+.clock-warning .player-clock-value { background: var(--color-danger-surface); color: var(--color-error); }
+.clock-active.clock-warning .player-clock-value { box-shadow: inset 2px 0 var(--color-error); }
+.player-label { min-width: 0; display: flex; align-items: baseline; gap: 7px; font-size: var(--text-body); font-weight: 650; line-height: 1.25; }
+.player-name-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .player-name { font-family: var(--font-display); min-width: 0; overflow-wrap: anywhere; }
+.player-name-line .player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-rating { color: var(--color-accent-text); font-size: var(--text-body); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.player-label b { display: block; color: var(--color-text-muted); font-size: var(--text-meta); font-weight: 600; letter-spacing: .02em; }
+.player-label b { flex: none; color: var(--color-text-muted); font-size: var(--text-meta); font-weight: 600; letter-spacing: .02em; }
 .clock-no-status { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; min-height: 72px; }
-.clock strong { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; font-size: clamp(24px, 2.5vw, 32px); line-height: 1; }
-.clock-hundredths { font-size: .58em; font-weight: 600; opacity: .76; }
+.player-clock-value { grid-column: 2; grid-row: 1 / span 2; display: inline-flex; align-items: baseline;
+  justify-content: flex-end; white-space: nowrap; padding: 5px 7px; border-radius: 5px;
+  font: 700 clamp(24px, 2.5vw, 32px)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+.clock-hundredths { font-size: .58em; font-weight: 600; }
+.clock-hundredths[data-reserved] { visibility: hidden; }
+.low-time-marker { font-size: .55em; margin-inline-end: 5px; }
+.low-time-marker[hidden] { display: inline; visibility: hidden; }
 .clock small { color: var(--color-text-muted); font-size: var(--text-meta); }
 .first-move-countdown { grid-column: 1 / -1; display: flex; justify-content: space-between;
   gap: 8px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--color-border);
   color: var(--color-accent-text); font-size: var(--text-compact); font-weight: 600; }
 .first-move-countdown b { font-variant-numeric: tabular-nums; }
 .move-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.opening-label { display: flex; align-items: baseline; gap: 6px; min-width: 0; margin: 0 0 5px;
+  color: var(--color-text-muted); font: 500 .875rem/1.5 var(--font-display); }
+.opening-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening-label small { flex: none; color: var(--color-text-muted); font: 600 var(--text-caption)/1 var(--font-ui); }
+.workspace-review-pane > .opening-label { margin: 0; padding: 6px 12px 0; }
 .engine-panel { display: grid; gap: 7px; width: min(100%, calc(100dvh - 96px), 720px);
   position: relative; min-width: 0; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--color-border);
   border-radius: 8px; background: var(--color-surface); font-size: var(--text-body); color: var(--color-text-secondary); }
@@ -606,10 +617,10 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .analysis-footer-row, .engine-panel { width: 100%; }
   .review-summary { grid-template-columns: minmax(0, 1fr); }
   .piece { font-size: clamp(24px, 8vw, 38px); }
-  .clock { padding: 7px; gap: 2px 4px; }
+  .clock { gap: 2px 5px; }
   .clock-no-status { min-height: 62px; }
   .clock-no-status .player-label, .clock-no-status .player-rating { font-size: var(--text-compact); }
-  .clock strong { font-size: clamp(21px, 6vw, 28px); }
+  .player-clock-value { font-size: clamp(21px, 6vw, 28px); }
   .player-label { font-size: var(--text-body); }
   .player-label b, .clock small { font-size: var(--text-meta); }
   .seats { flex-direction: column; }
@@ -676,9 +687,7 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .play-column .player-material-top > .player-material-row { bottom: calc(100% + 3px); }
 .play-column .player-material-bottom > .player-material-row { position: static; height: auto;
   min-height: 43px; padding-top: 3px; gap: 4px; }
-.play-column .clock { min-height: 54px; padding: 8px 12px; }
-.play-column .player-label b { display: inline; margin-left: 8px; }
-.play-column .player-name-line { display: inline-flex; }
+.play-column .clock { min-height: 54px; padding: 4px 0; }
 .position-column { display: grid; grid-template-rows: minmax(0,1fr); min-width: 0; min-height: 0; }
 .game-layout:not(.analysis-workspace) .position-column {
   --workspace-height: var(--player-workspace-height, 480px);

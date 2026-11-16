@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type pg from 'pg';
 import { explorerBookMaxPlies, type ExplorerBookCandidate } from '@chess/contracts';
-import { createPositionFromFen, normalizedPositionKey } from '@chess/domain';
+import { legalMoveNotations, normalizedPositionKey } from '@chess/domain';
+import { namedOpeningAt } from '@chess/domain/openings';
 import { registerExplorerGameRoutes } from './explorer-game-routes.js';
 import { requireGuest } from './guest-session.js';
 
@@ -35,7 +36,7 @@ export function registerExplorerRoutes(app: FastifyInstance, pool: pg.Pool) {
     let positions: string[];
     try { positions = request.body.moves.map(move => normalizedPositionKey(move.fen)); }
     catch { return reply.code(400).send({ error: 'invalid_position' }); }
-    return explorerRead(app, pool, reply, async client => {
+    const result = await explorerRead(app, pool, reply, async client => {
       const { rows } = await client.query<{ position_games: string; move_games: string }>(
         `SELECT counts.position_games, counts.move_games
          FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS candidate(position, uci, ply)
@@ -48,6 +49,7 @@ export function registerExplorerRoutes(app: FastifyInstance, pool: pg.Pool) {
         positionGames: Number(row.position_games), moveGames: Number(row.move_games),
       })) };
     });
+    return result ?? reply;
   });
   app.get<{ Querystring: { fen: string } }>('/opening-explorer', { schema: { querystring: {
     type: 'object', required: ['fen'], additionalProperties: false,
@@ -58,21 +60,24 @@ export function registerExplorerRoutes(app: FastifyInstance, pool: pg.Pool) {
     let key: string;
     try { key = normalizedPositionKey(request.query.fen); }
     catch { return reply.code(400).send({ error: 'invalid_position' }); }
-    return explorerRead(app, pool, reply, async client => {
-      const { rows } = await client.query<{ uci: string; white: string; draws: string; black: string }>(
+    const rows = await explorerRead(app, pool, reply, async client =>
+      (await client.query<{ uci: string; white: string; draws: string; black: string }>(
         `SELECT uci, white, draws, black FROM chess.explorer_moves WHERE position = $1
-         ORDER BY white + draws + black DESC, uci LIMIT 218`, [key]);
+         ORDER BY white + draws + black DESC, uci LIMIT 218`, [key])).rows);
+    if (rows === undefined) return reply;
+    try {
+      const notation = rows.length > 0 ? legalMoveNotations(`${key} 0 1`) : null;
       const moves = rows.map(row => {
-        const position = createPositionFromFen(request.query.fen);
-        const move = position.submitMove({ side: position.getPosition().sideToMove,
-          from: row.uci.slice(0, 2), to: row.uci.slice(2, 4),
-          ...(row.uci.length === 5 ? { promotion: row.uci[4] as 'q' | 'r' | 'b' | 'n' } : {}) });
-        if (!move.accepted) throw new Error('Invalid explorer candidate.');
-        return { uci: row.uci, san: move.move.san, white: Number(row.white),
+        const san = notation?.get(row.uci);
+        if (!san) throw new Error('Invalid explorer candidate.');
+        return { uci: row.uci, san, white: Number(row.white),
           draws: Number(row.draws), black: Number(row.black) };
       });
-      return { opening: null, moves };
-    });
+      return { opening: namedOpeningAt(key), moves };
+    } catch {
+      app.log.error('Invalid opening explorer candidate.');
+      return reply.code(503).send({ error: 'explorer_unavailable' });
+    }
   });
 }
 
@@ -90,6 +95,7 @@ async function explorerRead<T>(app: FastifyInstance, pool: pg.Pool, reply: Fasti
     await client?.query('ROLLBACK').catch(() => {});
     app.log.error({ code: typeof error === 'object' && error !== null && 'code' in error ? error.code : 'explorer_query' },
       'Opening explorer query failed.');
-    return reply.code(503).send({ error: 'explorer_unavailable' });
+    reply.code(503).send({ error: 'explorer_unavailable' });
+    return undefined;
   } finally { client?.release(); }
 }

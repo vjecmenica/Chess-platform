@@ -1,15 +1,14 @@
-import { createPositionFromFen, normalizedPositionKey } from '@chess/domain';
+import { legalMoveNotations, normalizedPositionKey } from '@chess/domain';
 import type { GameReadResponse } from '@chess/contracts';
 import { cursorFen, type AnalysisCursor, type AnalysisTree } from './analysis-model';
+import { ExplorerRequests, type ExplorerResult } from './explorer-requests';
 
 export interface MastersPath { readonly rootFen: string; readonly play: readonly string[]; readonly fen: string }
 export interface MastersMove { readonly uci: string; readonly san: string; readonly games: number;
   readonly white: number; readonly draws: number; readonly black: number }
 export interface MastersData { readonly opening: { readonly eco: string; readonly name: string } | null;
   readonly moves: readonly MastersMove[] }
-export type MastersResult = { readonly kind: 'ok'; readonly data: MastersData }
-  | { readonly kind: 'error'; readonly message: string }
-  | { readonly kind: 'cancelled' };
+export type MastersResult = ExplorerResult<MastersData>;
 
 export function mastersPath(game: GameReadResponse, tree: AnalysisTree,
   cursor: AnalysisCursor = tree.cursor): MastersPath {
@@ -39,8 +38,13 @@ export function previousMastersPath(game: GameReadResponse, tree: AnalysisTree):
   return node ? { path: mastersPath(game, tree, node.parent), uci: node.uci } : null;
 }
 
+export function mastersQuery(fen: string): { fen: string; url: string } {
+  const normalized = `${normalizedPositionKey(fen)} 0 1`;
+  return { fen: normalized, url: '/api/opening-explorer?' + new URLSearchParams({ fen: normalized }) };
+}
+
 export function mastersUrl(path: MastersPath): string {
-  return '/api/opening-explorer?' + new URLSearchParams({ fen: `${normalizedPositionKey(path.fen)} 0 1` }).toString();
+  return mastersQuery(path.fen).url;
 }
 
 function count(value: unknown): number | null {
@@ -57,20 +61,18 @@ export function parseMastersResponse(value: unknown, fen: string): MastersData {
     ? { eco: (source.opening as { eco: string }).eco,
       name: (source.opening as { name: string }).name } : null;
   const moves: MastersMove[] = [];
+  const notation = source.moves.length > 0 ? legalMoveNotations(fen) : null;
   for (const item of source.moves.slice(0, 218)) {
     if (typeof item !== 'object' || item === null) continue;
     const move = item as Record<string, unknown>;
     const white = count(move.white), draws = count(move.draws), black = count(move.black);
     if (typeof move.uci !== 'string' || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move.uci)
       || white === null || draws === null || black === null) continue;
-    const position = createPositionFromFen(fen);
-    const result = position.submitMove({ side: position.getPosition().sideToMove,
-      from: move.uci.slice(0, 2), to: move.uci.slice(2, 4),
-      ...(move.uci.length === 5 ? { promotion: move.uci[4] as 'q' | 'r' | 'b' | 'n' } : {}) });
-    if (!result.accepted) continue;
+    const san = notation?.get(move.uci);
+    if (!san) continue;
     const games = white + draws + black;
     if (games === 0) continue;
-    moves.push({ uci: move.uci, san: result.move.san, games, white, draws, black });
+    moves.push({ uci: move.uci, san, games, white, draws, black });
   }
   return { opening, moves };
 }
@@ -81,57 +83,24 @@ export function isBookMove(data: MastersData, uci: string): boolean {
 
 // Bounded, short-lived aggregate responses; replay samples use a separate bounded route.
 export class MastersClient {
-  private queue: Promise<void> = Promise.resolve();
-  private cache = new Map<string, { data: MastersData; at: number }>();
-  private cooldownUntil = 0;
+  private requests: ExplorerRequests<MastersData>;
   constructor(private readonly fetcher: typeof fetch = (input, init) => fetch(input, init),
-    private readonly now: () => number = Date.now) {}
-
-  lookup(path: MastersPath, signal?: AbortSignal): Promise<MastersResult> {
-    const task = this.queue.then(() => this.perform(path, signal));
-    this.queue = task.then(() => undefined, () => undefined);
-    return task;
+    now: () => number = Date.now) {
+    this.requests = new ExplorerRequests(128, now);
   }
 
-  private async perform(path: MastersPath,
-    signal?: AbortSignal): Promise<MastersResult> {
-    if (signal?.aborted) return { kind: 'cancelled' };
-    const key = mastersUrl(path);
-    const cached = this.cache.get(key);
-    if (cached && this.now() - cached.at < 300_000) {
-      this.cache.delete(key); this.cache.set(key, cached);
-      return { kind: 'ok', data: cached.data };
-    }
-    if (this.now() < this.cooldownUntil)
-      return { kind: 'error', message: 'Opening explorer is rate-limited. Try again in a minute.' };
-    const controller = new AbortController();
-    let timedOut = false;
-    const abort = () => controller.abort();
-    signal?.addEventListener('abort', abort, { once: true });
-    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 5_000);
-    try {
-      const response = await this.fetcher(key, { signal: controller.signal, credentials: 'same-origin',
-        headers: { Accept: 'application/json' } });
-      if (response.status === 401) return { kind: 'error', message: 'Your guest session expired. Refresh the page to reconnect.' };
-      if (response.status === 403) return { kind: 'error',
-        message: 'Opening explorer access was denied.' };
-      if (response.status === 429) {
-        this.cooldownUntil = this.now() + 60_000;
-        return { kind: 'error', message: 'Opening explorer is rate-limited. Try again in a minute.' };
-      }
-      if (!response.ok) return { kind: 'error', message: 'Opening explorer is unavailable.' };
-      const data = parseMastersResponse(await response.json(), path.fen);
-      if (signal?.aborted) return { kind: 'cancelled' };
-      this.cache.set(key, { data, at: this.now() });
-      if (this.cache.size > 32) this.cache.delete(this.cache.keys().next().value!);
-      return { kind: 'ok', data };
-    } catch {
-      return signal?.aborted ? { kind: 'cancelled' } : { kind: 'error',
-        message: timedOut ? 'Opening explorer timed out.' : 'Opening explorer is unavailable.' };
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', abort);
-    }
+  cached(key: string): MastersData | undefined {
+    return this.requests.cached(key);
+  }
+
+  lookup(path: MastersPath, signal?: AbortSignal): Promise<MastersResult> {
+    return this.lookupQuery(mastersQuery(path.fen), signal);
+  }
+
+  lookupQuery({ fen, url }: ReturnType<typeof mastersQuery>, signal?: AbortSignal): Promise<MastersResult> {
+    return this.requests.lookup(url, signal, requestSignal => this.fetcher(url, {
+      signal: requestSignal, credentials: 'same-origin', headers: { Accept: 'application/json' },
+    }), value => parseMastersResponse(value, fen), 'Opening explorer');
   }
 }
 

@@ -15,13 +15,13 @@ describe('shared game presentation', () => {
       for (const historicalMs of [undefined, 287_000]) {
         const html = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side,
           isYou: false, playerNames, historicalMs, showStatus: false }));
-        expect(html).toContain(`player-name">${playerNames[side]}</span>`);
+        expect(html).toContain(`class="player-name" title="${playerNames[side]}">${playerNames[side]}</span>`);
         expect(html).toContain(`<b>${side === 'white' ? 'White' : 'Black'}</b>`);
       }
     }
     const guest = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side: 'black',
       isYou: true, playerNames: { white: 'walnut_white', black: null } }));
-    expect(guest).toContain('player-name">Guest</span>');
+    expect(guest).toContain('class="player-name" title="Guest">Guest</span>');
     expect(guest).not.toContain('walnut_white');
   });
 
@@ -32,7 +32,8 @@ describe('shared game presentation', () => {
     const white = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'white' }));
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'black' }));
     expect(white).toContain('class="clock clock-no-status imported-player"');
-    expect(white).toMatch(/player-name">Ada<\/span>.*player-rating.*1820.*<b>White<\/b>/);
+    expect(white).toMatch(/player-name"[^>]*>Ada<\/span>.*player-rating.*1820.*<b>White<\/b>/);
+    expect(white).not.toContain('player-clock-value');
     expect(white).not.toContain('(1820)');
     expect(white).not.toContain('At selected move');
     expect(white).not.toContain('Stopped');
@@ -41,7 +42,7 @@ describe('shared game presentation', () => {
     const guest = renderToStaticMarkup(createElement(ClockPanel, {
       clock: null, side: 'white', isYou: true,
     }));
-    expect(guest).toMatch(/player-name">Guest<\/span>.*<b>White<\/b>/);
+    expect(guest).toMatch(/player-name"[^>]*>Guest<\/span>.*<b>White<\/b>/);
     expect(guest).not.toContain('player-rating');
   });
 

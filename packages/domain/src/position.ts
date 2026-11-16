@@ -64,6 +64,12 @@ export function createPositionFromFen(fen: string): ChessPosition {
   return createPositionAdapter(fen).position;
 }
 
+/** Get SAN for all legal UCI moves from this position without committing a move. */
+export function legalMoveNotations(fen: string): ReadonlyMap<string, string> {
+  return new Map(new Chess(fen).moves({ verbose: true })
+    .map(move => [move.from + move.to + (move.promotion ?? ''), move.san]));
+}
+
 /** Accept a standalone position for analysis without creating or loading a game. */
 export function parseAnalysisPosition(fen: string): PositionSnapshot | null {
   if (fen.length > 120 || fen.trim() !== fen

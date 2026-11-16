@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./openings": {
+      "types": "./dist/openings.d.ts",
+      "default": "./dist/openings.js"
     }
   },
   "scripts": {
