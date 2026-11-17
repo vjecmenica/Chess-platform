@@ -25,13 +25,14 @@ it('previews all twelve themed pieces and keeps advanced controls bounded and in
     for (const side of ['w', 'b']) for (const piece of 'KQRBNP')
         expect(html).toContain(`/pieces/chessnut/${side}${piece}.svg`);
     expect(html).toContain('Piece artwork credits and licenses');
-    expect(html).toContain('Guest preferences stay in this browser');
-    expect(html).toMatch(/aria-label="Piece scale" min="80" max="110"/);
-    expect(html).toMatch(/aria-label="Vertical offset" min="-8" max="8"/);
+    expect(html).not.toMatch(/Guest preferences stay|Saved appearance is stored|Reset restores defaults/);
+    expect(html).toMatch(/<label for="([^"]+)">Piece scale<\/label>.*?id="\1"[^>]+type="range" min="80" max="110"/);
+    expect(html).toMatch(/<label for="([^"]+)">Vertical offset<\/label>.*?id="\1"[^>]+type="range" min="-8" max="8"/);
     expect(html).toContain('aria-label="Reset Piece scale"');
     expect(html).toContain('aria-label="Reset Vertical offset"');
-    expect(html).toContain('aria-controls="appearance-advanced"');
+    expect(html).toMatch(/aria-controls="([^"]+advanced)".*?id="\1" hidden/);
     expect(html).toContain('aria-expanded="false"');
+    expect(html).toMatch(/aria-label="Board &amp; Pieces actions".*?>Reset<\/button>.*?>Save<\/button>/);
 });
 it('defaults old appearance records to Outside and retains valid coordinate preferences', () => {
     const { coordinates, ...legacy } = { ...defaultAppearance, theme: 'naturalwood', pieceSet: 'kosal',

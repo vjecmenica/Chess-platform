@@ -13,6 +13,8 @@ shrink with available space and stops growing at 550px. Board utilities sit at
 the right end of the material row directly below the lower player strip. The
 initial sizing budget retains its previous spacing allowance, so the shorter
 tool row does not change the automatic board size.
+The upper player row sits 5px above the board. The lower gap holds the outside
+file labels and resize grip and stays constant across coordinate modes.
 
 `AnalysisWorkspaceTabs` owns presentation only:
 
@@ -39,11 +41,11 @@ owns the independent interactive and review workers. Switching views does not
 cancel workers, clear reports, rebuild the tree or request the explorer again.
 Pressed buttons reserve Left/Right keys for existing board navigation.
 
-The existing measured `--analysis-sidebar-height` remains the Analysis panel's
-outer desktop height. Play aligns the sidebar with the measured upper and lower
-clock edges. All primary
-views share their shell's dimensions; extensive content scrolls inside it. Mobile
-and very short viewports use natural page flow.
+Play aligns its sidebar with the measured upper and lower clock edges. Analysis
+uses the same measurements, with a 600px minimum when the viewport has room.
+This keeps the move list usable when several engine lines and game actions are
+visible. All primary views share their shell's dimensions, with internal
+scrolling for longer content. Mobile and very short viewports use natural page flow.
 
 Play's Game Room switches between Info, Chat, and Notes. Analysis lets Chat/Notes
 fill the space above the Game Info summary. Long conversations scroll inside the

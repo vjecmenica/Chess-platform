@@ -1156,8 +1156,8 @@ export function App() {
         const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
         const frame = boardFrameRef.current?.getBoundingClientRect();
         const tools = workspace.querySelector('.player-material-bottom > .player-material-row')?.getBoundingClientRect();
-        // Retain the original 26px material gap, 22px tool gap and 40px tool row in the default sizing budget.
-        const upperChrome = play && frame && tools ? play.height - frame.height - boardLayoutClearance - tools.height + 88 : 180;
+        // Keep the automatic board sizing budget independent of player and tool row spacing.
+        const upperChrome = play && frame && tools ? play.height - frame.height - boardLayoutClearance - tools.height + 95 : 180;
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           // Retain the previous horizontal header budget for the automatic default.

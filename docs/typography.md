@@ -56,3 +56,22 @@ there and add their identifiers to `apps/web/src/interface-theme.ts`. Settings
 applies the selected palette immediately and saves it under
 `chess.interface-theme.v1` in local storage. Board & Pieces has its own saved
 appearance and uses the separate `--appearance-*` variables.
+
+## Settings layout and UI conventions
+
+Use the Settings spacing scale in `apps/web/src/style.css`. On desktop, the
+dialog uses 24px content insets and 24px between major sections, 16px between
+groups, 12px between form rows, and 8px between closely related controls. At
+narrow widths, stack the labels and keep the controls at a usable size. Let
+the content area own the padding so nested sections share the same alignment.
+
+Reuse 40px control heights, native select and range inputs, and the existing
+semantic theme and Roundness tokens. Use Fraunces for headings and the system
+font for controls, labels, and feedback. Use spacing and type to organize
+content, with subtle dividers between major sections. Reserve visible outlines
+for meaningful control boundaries and keyboard focus.
+
+Use labels and control placement to explain ordinary actions. Include supporting
+copy when it conveys a consequence, limitation, required credit, or actionable
+feedback. Consolidate related styles where they are defined when refining a
+component. Keep the interface centered on the board, moves, and decisions at hand.

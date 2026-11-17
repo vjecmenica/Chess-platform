@@ -85,15 +85,15 @@ describe('shared game presentation', () => {
 
   it('aligns the board and sidebar on desktop and removes the offset when stacked', () => {
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-    expect(css).toMatch(/--board-top-offset: 36px/);
     expect(css).toMatch(/\.captured-row \{[^}]*height: 33px/);
     expect(css).toMatch(/\.player-material-row \{ position: absolute/);
     expect(css).toMatch(/\.player-material-top > \.player-material-row \{ bottom: calc\(100% \+ 16px\)/);
     expect(css).toMatch(/\.player-material-bottom > \.player-material-row \{ position: static/);
     expect(css).toMatch(/\.position-column \{[^}]*--workspace-height: var\(--player-workspace-height[^}]*margin-top: var\(--player-alignment-offset/);
+    expect(css).toMatch(/--workspace-height: min\(max\(600px, var\(--player-workspace-height[^\n]*\n\s*var\(--analysis-sidebar-height/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.position-column \{ grid-column: 1; margin-top: 0/);
-    expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
-    expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
+    expect(css).toMatch(/\.clock \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto[^}]*min-height: 54px/);
+    expect(css).toMatch(/\.player-avatar \{ --avatar-size: 52px/);
     expect(css).toMatch(/\.player-meta \{[^}]*min-height: 1lh;[^}]*font: 500 var\(--text-meta\)\/1\.5 var\(--font-ui\)/);
     expect(css).toMatch(/\.player-label \{[^}]*font-size: var\(--text-body\)/);
   });
