@@ -300,6 +300,64 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await read(app, white, `/account/games?before=${first.next}`)).json()).toEqual(second);
     expect((await read(app, white, '/account/games?before=not-a-cursor')).statusCode).toBe(400);
     expect((await read(app, white, '/account/games?accountId=someone-else')).statusCode).toBe(400);
+    expect((await read(app, white, '/account/games?filter=unrecognized')).statusCode).toBe(400);
+
+    const mark = (gameId: string) => app.inject({ method: 'PUT',
+      url: `/account/games/${gameId}/favorite`, headers: headers(white) });
+    expect((await mark(id)).statusCode).toBe(200);
+    const oldest = (await read(app, white, '/account/games?filter=favorites')).json();
+    expect(oldest.games).toEqual([expect.objectContaining({ id, favorite: true })]);
+    expect(oldest.summary).toEqual(first.summary);
+    const favorites = [...expected.slice(1, 22), expected.at(-1)!];
+    for (const game of favorites.slice(0, -1)) expect((await mark(game.id)).statusCode).toBe(200);
+    const filtered = (await read(app, white, '/account/games?filter=favorites')).json();
+    expect(filtered.games.map((game: { id: string }) => game.id)).toEqual(favorites.slice(0, 20).map(game => game.id));
+    expect(filtered.games.every((game: { favorite: boolean }) => game.favorite)).toBe(true);
+    const more = (await read(app, white, `/account/games?filter=favorites&before=${filtered.next}`)).json();
+    expect(more.games.map((game: { id: string }) => game.id)).toEqual(favorites.slice(20).map(game => game.id));
+    expect(more.next).toBeNull();
+    expect(more.summary).toEqual(first.summary);
+  });
+
+  it('stores one favorite per linked account and game with CSRF, ownership, and session isolation', async () => {
+    const { app, white, black, outsider, id } = await setup();
+    const name = username();
+    const path = `/account/games/${id}/favorite`;
+    const edit = (who: Browser, method: 'PUT' | 'DELETE', extra: Record<string, string> = {}) =>
+      app.inject({ method, url: path, headers: { ...headers(who), ...extra } });
+    expect((await edit(white, 'PUT')).statusCode).toBe(401);
+
+    const registered = await auth(app, white, 'register', { username: name, password });
+    const owner = registered.json().account.id;
+    expect((await edit(white, 'PUT')).statusCode).toBe(404);
+    await seedHistoricalGuestLink(pool, white.cookie);
+    await auth(app, black, 'register', { username: username(), password });
+    await seedHistoricalGuestLink(pool, black.cookie);
+    await auth(app, outsider, 'register', { username: username(), password });
+
+    expect((await read(app, white, '/account/games/not-a-uuid/favorite')).statusCode).toBe(400);
+    expect((await read(app, white, `/account/games/${randomUUID()}/favorite`)).statusCode).toBe(404);
+    expect((await edit(outsider, 'PUT')).statusCode).toBe(404);
+    expect((await edit(white, 'PUT', { 'x-csrf-token': 'bad' })).statusCode).toBe(403);
+    expect((await edit(black, 'PUT', { 'x-favorite-owner': owner })).statusCode).toBe(409);
+    const initial = await read(app, white, path);
+    expect(initial.json()).toEqual({ gameId: id, favorite: false });
+    expect(initial.headers['cache-control']).toBe('no-store');
+    for (const response of await Promise.all([edit(white, 'PUT'), edit(white, 'PUT')]))
+      expect(response.json()).toEqual({ gameId: id, favorite: true });
+    expect((await pool.query('SELECT game_id FROM chess.account_game_favorites WHERE account_id = $1', [owner])).rows)
+      .toEqual([{ game_id: id }]);
+
+    expect((await auth(app, white, 'logout')).statusCode).toBe(200);
+    expect((await read(app, white, path)).statusCode).toBe(401);
+    expect((await auth(app, white, 'login', { username: name, password })).statusCode).toBe(200);
+    expect((await read(app, white, path)).json()).toEqual({ gameId: id, favorite: true });
+    expect((await read(app, black, path)).json()).toEqual({ gameId: id, favorite: false });
+    expect((await edit(black, 'PUT')).statusCode).toBe(200);
+    for (const response of await Promise.all([edit(white, 'DELETE'), edit(white, 'DELETE')]))
+      expect(response.json()).toEqual({ gameId: id, favorite: false });
+    expect((await read(app, black, path)).json()).toEqual({ gameId: id, favorite: true });
+    expect((await read(app, white, '/account/games?filter=favorites')).json().games).toEqual([]);
   });
 
   it('validates credentials and CSRF, hashes passwords, and rotates HttpOnly/SameSite/Secure sessions', async () => {

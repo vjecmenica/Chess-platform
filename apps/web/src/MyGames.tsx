@@ -1,11 +1,14 @@
 import { loadGuestSession } from './guest-session-client';
 import { useEffect, useRef, useState } from 'react';
-import { avatarUploadMaxBytes, type AccountAvatarResponse, type AccountGame, type AccountGames, type AccountState } from '@chess/contracts';
+import { avatarUploadMaxBytes, type AccountAvatarResponse, type AccountGame, type AccountGames,
+  type AccountGamesFilter, type AccountState } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
 import { resultDisplay } from './result-display';
 import { AnalysisNavigation } from './AnalysisNavigation';
 import { ProfileAvatar } from './ProfileAvatar';
+import { FavoriteButton } from './FavoriteButton';
+import { saveGameFavorite } from './game-favorites';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -43,16 +46,25 @@ export function CompletedGamesSummary({ summary }: { summary: AccountGames['summ
   );
 }
 
-export function GameArchive({ page }: { page: AccountGames }) {
+interface ArchiveFavoriteControls {
+  pending: ReadonlyMap<string, boolean>;
+  onToggle: (game: AccountGame) => void;
+}
+
+export function GameArchive({ page, filter = 'all', favorites }: {
+  page: AccountGames; filter?: AccountGamesFilter; favorites?: ArchiveFavoriteControls | undefined;
+}) {
   return <>
-    {page.games.length === 0 ? <p>No account games yet. Create or accept a game while signed in.</p>
-      : <div className="archive-games">
+    {page.games.length === 0 ? page.next ? null : <p>{filter === 'favorites' ? 'No favorites yet.'
+      : 'No account games yet. Create or accept a game while signed in.'}</p>
+      : <div className="archive-games" data-favorite-controls={favorites ? '' : undefined}>
         <div className="archive-columns" aria-hidden="true"><span>Players · rating unavailable</span><span>Time control</span>
           <span>Result / status</span><span>Date</span></div>
         <ul aria-label="Your linked games, newest first">{page.games.map(game => {
           const white = game.side === 'white' ? page.account.username : game.opponent ?? 'Guest';
           const black = game.side === 'black' ? page.account.username : game.opponent ?? 'Guest';
           const result = archiveResult(game);
+          const pending = favorites?.pending.get(`${page.account.id}:${game.id}`);
           return <li key={game.id}><a className="archive-game" href={`/challenge/${game.id}`} target="_blank" rel="noopener"
             aria-label={`White: ${white}. Black: ${black}. ${result}. Opens in a new tab.`}>
             <span className="archive-players">{[['White', white], ['Black', black]].map(([side, name]) =>
@@ -63,7 +75,8 @@ export function GameArchive({ page }: { page: AccountGames }) {
             <span className="archive-result" title={game.result?.reason.replaceAll('_', ' ')}>{result}</span>
             <time dateTime={game.createdAt}>{new Date(game.createdAt).toLocaleString(undefined,
               { dateStyle: 'medium', timeStyle: 'short' })}</time>
-          </a></li>;
+          </a>{favorites && <FavoriteButton favorite={pending ?? game.favorite} pending={pending !== undefined}
+            description={`White: ${white}. Black: ${black}.`} onToggle={() => favorites.onToggle(game)} />}</li>;
         })}</ul>
       </div>}
   </>;
@@ -85,12 +98,12 @@ export function AccountProfileHeader({ state, section }: { state: AccountState; 
   </div>;
 }
 
-export function AccountOverview({ page }: { page: AccountGames }) {
+export function AccountOverview({ page, favorites }: { page: AccountGames; favorites?: ArchiveFavoriteControls | undefined }) {
   return <>
     <div className="account-overview-summary"><CompletedGamesSummary summary={page.summary} />
       <aside className="account-ratings"><h3>Ratings</h3><p>Ratings are not available yet.</p></aside></div>
     <div className="section-heading"><h3>Recent linked games</h3><a href="#games">View all games</a></div>
-    <GameArchive page={{ ...page, games: page.games.slice(0, 5) }} />
+    <GameArchive page={{ ...page, games: page.games.slice(0, 5) }} favorites={favorites} />
   </>;
 }
 
@@ -110,7 +123,16 @@ export function AccountPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [csrf, setCsrf] = useState<string>();
-  const [page, setPage] = useState<AccountGames | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<AccountGamesFilter>('all');
+  const filter = section === 'games' ? selectedFilter : 'all';
+  const currentFilter = useRef(filter);
+  currentFilter.current = filter;
+  const [archive, setArchive] = useState<{ filter: AccountGamesFilter; page: AccountGames } | null>(null);
+  const page = archive?.filter === filter && archive.page.account.id === details?.account?.id ? archive.page : null;
+  const [archiveRevision, setArchiveRevision] = useState(0);
+  const favoriteRequests = useRef(new Map<string, boolean>());
+  const [favoritePending, setFavoritePending] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [favoriteError, setFavoriteError] = useState<{ owner: string; message: string } | null>(null);
   const [signedOut, setSignedOut] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,32 +144,77 @@ export function AccountPage() {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     setLoading(true); setError(null);
-    if (!before) setPage(null);
+    if (!before) setArchive(null);
     try {
       const session = await loadGuestSession(refreshSession);
       if (controller.signal.aborted) return;
       setCsrf(session.csrfToken);
       const accountResponse = await fetch('/api/account', { cache: 'no-store', signal: controller.signal });
       if (controller.signal.aborted) return;
-      if (accountResponse.status === 401) { setPage(null); setDetails(null); setSignedOut(true); return; }
+      if (accountResponse.status === 401) { setArchive(null); setDetails(null); setSignedOut(true); return; }
       if (!accountResponse.ok) throw new Error();
       const state = await accountResponse.json() as AccountState;
       if (controller.signal.aborted) return;
       setDetails(state);
       setSignedOut(!state.account);
-      if (!state.account) { setPage(null); setSignedOut(true); return; }
-      const response = await fetch(`/api/account/games${before ? `?before=${encodeURIComponent(before)}` : ''}`,
+      if (!state.account) { setArchive(null); return; }
+      const query = new URLSearchParams();
+      if (before) query.set('before', before);
+      if (filter === 'favorites') query.set('filter', filter);
+      const response = await fetch(`/api/account/games${query.size ? '?' + query : ''}`,
         { cache: 'no-store', signal: controller.signal });
       if (controller.signal.aborted) return;
-      if (response.status === 401) { setPage(null); setDetails(null); setSignedOut(true); return; }
+      if (response.status === 401) { setArchive(null); setDetails(null); setSignedOut(true); return; }
       if (!response.ok) throw new Error();
       const next = await response.json() as AccountGames;
-      if (!controller.signal.aborted) setPage(previous => before ? appendGamePage(previous, next) : next);
+      if (controller.signal.aborted) return;
+      if (next.account.id !== state.account.id) throw new Error();
+      setArchive(previous => ({ filter, page: before && previous?.filter === filter
+        ? appendGamePage(previous.page, next) : next }));
     } catch {
       if (!controller.signal.aborted) setError('Could not load your games. Please try again.');
     } finally {
       if (request.current === controller) { request.current = null; setLoading(false); }
     }
+  }
+
+  async function toggleFavorite(game: AccountGame) {
+    const owner = page?.account.id;
+    if (!owner || !csrf) return;
+    const key = `${owner}:${game.id}`;
+    if (favoriteRequests.current.has(key)) return;
+    favoriteRequests.current.set(key, !game.favorite);
+    setFavoritePending(new Map(favoriteRequests.current));
+    setFavoriteError(null);
+    try {
+      const favorite = await saveGameFavorite(game.id, owner, csrf, !game.favorite);
+      setArchive(current => {
+        if (!current || current.page.account.id !== owner) return current;
+        const games = current.filter === 'favorites' && !favorite
+          ? current.page.games.filter(item => item.id !== game.id)
+          : current.page.games.map(item => item.id === game.id ? { ...item, favorite } : item);
+        return { ...current, page: { ...current.page, games } };
+      });
+      // An overlapping page load may have read the old favorite state.
+      if (request.current || favorite && currentFilter.current === 'favorites') {
+        request.current?.abort();
+        setArchiveRevision(revision => revision + 1);
+      }
+    } catch (cause) {
+      setFavoriteError({ owner, message: cause instanceof Error && cause.message
+        ? cause.message : 'Could not update favorite. Try again.' });
+    } finally {
+      favoriteRequests.current.delete(key);
+      setFavoritePending(new Map(favoriteRequests.current));
+    }
+  }
+  const favoriteControls = { pending: favoritePending, onToggle: (game: AccountGame) => void toggleFavorite(game) };
+
+  function selectFilter(next: AccountGamesFilter) {
+    if (next === filter) return;
+    request.current?.abort();
+    setArchive(null);
+    setSelectedFilter(next);
   }
 
   async function action(path: string, body?: Record<string, string>) {
@@ -221,7 +288,7 @@ export function AccountPage() {
     const refresh = () => { if (!changingAvatar.current) void load(undefined, true); };
     window.addEventListener('focus', refresh);
     return () => { request.current?.abort(); window.removeEventListener('focus', refresh); };
-  }, []);
+  }, [filter, archiveRevision]);
 
   useEffect(() => {
     const navigate = () => {
@@ -241,11 +308,17 @@ export function AccountPage() {
       {error && <p role="alert" className="error">{error} <button className="secondary"
         onClick={() => void load(page?.next ?? undefined)}>Retry loading</button></p>}
       {notice && <p role="status">{notice}</p>}
+      {favoriteError && favoriteError.owner === details?.account?.id && <p role="status" className="error">{favoriteError.message}</p>}
       {details?.account && !signedOut && <section className="account-section" aria-labelledby="account-section-heading">
         <h2 id="account-section-heading" tabIndex={-1} ref={sectionHeading}>{section[0]!.toUpperCase() + section.slice(1)}</h2>
-        {section === 'overview' && page && <AccountOverview page={page} />}
-        {section === 'games' && page && <><GameArchive page={page} />
-          {page.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
+        {section === 'overview' && page && <AccountOverview page={page} favorites={favoriteControls} />}
+        {section === 'games' && <>
+          <div className="analysis-view-tabs archive-filters" role="group" aria-label="Filter games">
+            <button type="button" aria-pressed={filter === 'all'} onClick={() => selectFilter('all')}>All games</button>
+            <button type="button" aria-pressed={filter === 'favorites'} onClick={() => selectFilter('favorites')}>Favorites</button>
+          </div>
+          {page && <GameArchive page={page} filter={filter} favorites={favoriteControls} />}
+          {page?.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
         {section === 'stats' && page && <AccountStats summary={page.summary} />}
         {section === 'settings' && <AccountSettings key={details.account.id} state={details} busy={busy}
           onAvatarChange={changeAvatar} onAction={(path, body) => void action(path, body)} />}

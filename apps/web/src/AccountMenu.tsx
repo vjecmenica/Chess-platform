@@ -42,12 +42,16 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken, current = false }: { csrfToken: string | undefined; current?: boolean }) {
+export function AccountMenu({ csrfToken, current = false, onAccountChange }: {
+  csrfToken: string | undefined; current?: boolean; onAccountChange?: (owner: string | null) => void;
+}) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const owner = state?.account?.id ?? null;
+  useEffect(() => { onAccountChange?.(owner); }, [onAccountChange, owner]);
 
   async function request<T>(path: string, body?: Record<string, string> | null): Promise<T> {
     const response = await fetch(`/api/account${path}`, { cache: 'no-store', ...(body !== undefined ? {
@@ -62,12 +66,15 @@ export function AccountMenu({ csrfToken, current = false }: { csrfToken: string 
 
   useEffect(() => {
     if (!csrfToken) return;
-    let active = true;
-    const refresh = () => { void request<AccountState>('').then(value => { if (active) setState(value); })
-      .catch(() => { if (active) setState(null); }); };
+    let generation = 0;
+    const refresh = () => {
+      const current = ++generation;
+      void request<AccountState>('').then(value => { if (current === generation) setState(value); })
+        .catch(() => { if (current === generation) setState(null); });
+    };
     refresh();
     window.addEventListener('focus', refresh);
-    return () => { active = false; window.removeEventListener('focus', refresh); };
+    return () => { generation++; window.removeEventListener('focus', refresh); };
   }, [csrfToken]);
 
   async function load() {

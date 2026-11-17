@@ -175,7 +175,10 @@ export interface AccountState { readonly email?: AccountEmailState | null; reado
   readonly createdAt: string | null }
 export interface AccountGame { readonly id: string; readonly side: 'white' | 'black';
   readonly status: GameState['status']; readonly createdAt: string;
-  readonly opponent: string | null; readonly result: GameState['result']; readonly timeControl: string | null }
+  readonly opponent: string | null; readonly result: GameState['result']; readonly timeControl: string | null;
+  readonly favorite: boolean }
+export type AccountGamesFilter = 'all' | 'favorites';
+export interface AccountGameFavorite { readonly gameId: string; readonly favorite: boolean }
 export interface AccountGames { readonly account: AccountIdentity; readonly games: readonly AccountGame[];
   readonly next: string | null; readonly summary: { readonly wins: number; readonly draws: number; readonly losses: number } }
 

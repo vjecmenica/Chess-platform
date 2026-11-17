@@ -2,7 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
-import { accountGames, parseGameCursor } from './account-games.js';
+import type { AccountGamesFilter } from '@chess/contracts';
+import { accountGameFavorite, accountGames, parseGameCursor } from './account-games.js';
 import { accountCookie, accountIdentity, currentAccount, type Account } from './account-session.js';
 import { cookieToken, createGuest, requireGuest, rotateGuest, setSessionCookie, tokenHash } from './guest-session.js';
 import { passwordOptions, passwordSchema, rateAllowed } from './account-security.js';
@@ -185,8 +186,11 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
     }
   });
 
-  app.get<{ Querystring: { before?: string } }>('/account/games', { schema: { querystring: {
-    type: 'object', additionalProperties: false, properties: { before: { type: 'string', minLength: 1, maxLength: 256 } },
+  app.get<{ Querystring: { before?: string; filter?: AccountGamesFilter } }>('/account/games', { schema: { querystring: {
+    type: 'object', additionalProperties: false, properties: {
+      before: { type: 'string', minLength: 1, maxLength: 256 },
+      filter: { type: 'string', enum: ['all', 'favorites'] },
+    },
   } } }, async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const guest = await requireGuest(pool, request, reply);
@@ -196,6 +200,29 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
     let cursor;
     try { cursor = parseGameCursor(request.query.before); }
     catch { return reply.code(400).send({ error: 'invalid_game_cursor' }); }
-    return accountGames(pool, account, cursor);
+    return accountGames(pool, account, cursor, request.query.filter ?? 'all');
   });
+
+  for (const method of ['GET', 'PUT', 'DELETE'] as const) {
+    app.route<{ Params: { gameId: string } }>({ method, url: '/account/games/:gameId/favorite',
+      schema: { params: { type: 'object', required: ['gameId'], properties: {
+        gameId: { type: 'string', pattern: '^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$' },
+      } }, querystring: { type: 'object', additionalProperties: false, properties: {} } },
+      async handler(request, reply) {
+        reply.header('Cache-Control', 'no-store');
+        const guest = await requireGuest(pool, request, reply, method !== 'GET');
+        if (!guest) return;
+        const account = await currentAccount(pool, request, guest);
+        if (!account) return reply.code(401).send({ error: 'account_required' });
+        const expectedOwner = request.headers['x-favorite-owner'];
+        if (expectedOwner !== undefined && expectedOwner !== account.id)
+          return reply.code(409).send({ error: 'favorite_owner_changed' });
+        if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
+        const { gameId } = request.params;
+        const favorite = await accountGameFavorite(pool, account.id, gameId, method);
+        if (favorite === null) return reply.code(404).send({ error: 'game_not_found' });
+        return { gameId, favorite };
+      },
+    });
+  }
 }

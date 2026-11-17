@@ -6,7 +6,7 @@ import { appendGamePage, archiveResult, GameArchive, AccountPage, accountSection
   AccountProfileHeader, AccountOverview, AccountStats } from '../src/MyGames';
 
 const game: AccountGame = { id: 'game-1', side: 'white', status: 'active', result: null,
-  createdAt: '2026-10-26T10:00:00.000001Z', opponent: null, timeControl: '5+3' };
+  createdAt: '2026-10-26T10:00:00.000001Z', opponent: null, timeControl: '5+3', favorite: false };
 const page: AccountGames = { account: { id: 'account-1', username: 'player' }, games: [game], next: 'cursor',
   summary: { wins: 3, draws: 2, losses: 1 } };
 
@@ -101,9 +101,18 @@ it('derives Stats from all completed result counts rather than the loaded page a
 });
 
 it('offers a clear empty archive and exposes loading without any private rows', () => {
-  expect(renderToStaticMarkup(createElement(GameArchive, { page: { ...page, games: [] } }))).toContain('No account games yet');
+  expect(renderToStaticMarkup(createElement(GameArchive, { page: { ...page, next: null, games: [] } }))).toContain('No account games yet');
   const loading = renderToStaticMarkup(createElement(AccountPage));
   expect(loading).toContain('role="status"');
   expect(loading).toContain('Loading account and games');
   expect(loading).not.toContain('archive-game');
+});
+
+it('keeps archive favorite controls next to the link and indicates an optimistic pending state', () => {
+  const html = renderToStaticMarkup(createElement(GameArchive, { page,
+    favorites: { pending: new Map([['account-1:game-1', true]]), onToggle: () => {} } }));
+  expect(html).toMatch(/<\/time><\/a><button[^>]+aria-pressed="true"[^>]+aria-label="Remove from favorites"[^>]+aria-disabled="true"/);
+  expect(html).toContain('fill="currentColor"');
+  const empty = renderToStaticMarkup(createElement(GameArchive, { page: { ...page, next: null, games: [] }, filter: 'favorites' }));
+  expect(empty).toContain('No favorites yet.');
 });

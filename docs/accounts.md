@@ -200,8 +200,8 @@ linked username (otherwise Guest). Em dashes indicate unavailable site ratings;
 they are not imported or FIDE ratings. Rows show challenge creation time in the
 browser's local timezone, the saved site time control, and White-perspective final
 scores or explicit unfinished/aborted statuses. Legacy untimed games display
-Unavailable rather than a default. Each complete row is a native link opening the
-private game in a new tab, in both the Overview preview and Games archive.
+Unavailable rather than a default. The game entry opens the private game in a
+new tab. Its Favorites button is a separate control.
 
 `GET /account/games` requires a current bound account session. It returns at most
 20 games and an opaque `before` cursor. Ordering is descending creation timestamp
@@ -220,6 +220,22 @@ It adds chronological indexes for each original guest seat without changing
 ownership or existing data. Totals still scan the account's linked games; there is
 no global leaderboard, public archive, or new per-message identity lookup.
 
+### Game Favorites
+
+Apply migration `027_game_favorites.sql` with `npm run db:migrate`. Favorites
+store an account and game pair in PostgreSQL and use the archive's existing
+linked-seat rule, including historical links. Imported and explorer games
+stay outside this collection.
+
+`GET /account/games/:gameId/favorite` returns the signed-in account's state.
+`PUT` adds the pair and `DELETE` removes it. Both writes are idempotent and
+require the existing CSRF header. The session determines the account. The web
+client also sends its expected owner so a change of session rejects stale edits.
+
+`GET /account/games?filter=favorites` applies the filter before the cursor
+limit and keeps the existing ordering and all-game result totals. Switching
+the filter starts a new page sequence.
+
 ## Account settings
 
 The private /account page combines username, creation date, this browser's explicit
@@ -234,9 +250,9 @@ Stats uses those same all-game totals, never extrapolating from a loaded page.
 Settings contains logout and the existing secure username
 and password forms. Edit profile opens Settings; no personal details or uploads
 are offered. Ordinary links to `#overview`, `#games`, `#stats`, and `#settings`
-preserve the selected section on refresh and browser Back/Forward. Switching
-sections does not refetch or discard loaded archive pages. This is an owner-only
-frontend presentation, with no new endpoint, stored data, or migration.
+preserve the selected section on refresh and browser Back/Forward. Overview
+and Stats continue using the unfiltered archive data when the Games section
+is set to Favorites.
 
 POST /account/username requires the current password and the existing username
 validation/uniqueness policy. It rotates the current guest/CSRF and account bearer.

@@ -15,6 +15,7 @@ import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
 import { ShareExportLauncher } from './ShareExportDialog';
+import { GameFavorite } from './FavoriteButton';
 import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
@@ -144,6 +145,7 @@ const initialAnalysisEntry = analysisEntry(new URL(window.location.href));
 export function App() {
   const {value:appearance} = useAppearance();
   const [session, setSession] = useState<GuestSessionResponse | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [challenge, setChallenge] = useState<ChallengeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -258,8 +260,8 @@ export function App() {
     const clearOnLeftDown = (event: PointerEvent) => {
       if (!isLeftPointerPress(event.button, event.pointerType)) return;
       const target = event.target instanceof Element ? event.target : null;
-      // A display-only flip must preserve queued premoves and drawn arrows.
-      if (target?.closest('[data-board-display-control]')) return;
+      // Board display and favorite controls preserve queued premoves and annotations.
+      if (target?.closest('[data-board-display-control], .favorite-button')) return;
       if (analysisOpenRef.current) return;
       const square = target?.closest('[data-square]');
       const boardSquare = square !== null && square !== undefined && !!boardRef.current?.contains(square);
@@ -1087,6 +1089,10 @@ export function App() {
       embedUrl: embedUrlForGame(initialAnalysisEntry, game.id, orientation, displayedPly),
       board: boardRef, orientation, appearance,
     }} /> : null;
+  const favorite = game !== null && imported === null && accountId && session
+    ? <GameFavorite key={`${accountId}:${game.id}`} gameId={game.id} owner={accountId} csrfToken={session.csrfToken} /> : null;
+  const endActions = share || favorite
+    ? <div className="workspace-end-actions">{share}{favorite}</div> : null;
   const showHints = selected !== null && (analysisOpen ? game?.status === 'finished' : canMove);
   const moveHints = useMemo(() => showHints && selected !== null && displayedFen !== null
     ? legalMoveHints(displayedFen, displayedFen.split(' ')[1] === 'w' ? 'white' : 'black', selected)
@@ -1121,12 +1127,12 @@ export function App() {
     const frame = boardFrameRef.current;
     const layout = gameLayoutRef.current;
     if (frame === null || layout === null) return;
-    const upperClock = layout.querySelector('.player-material-top > .clock');
-    const lowerClock = layout.querySelector('.player-material-bottom > .clock');
+    const upperPlayer = layout.querySelector('.player-material-top .player-avatar');
+    const lowerPlayer = layout.querySelector('.player-material-bottom .player-avatar');
     const update = () => {
-      if (upperClock && lowerClock) {
-        const top = upperClock.getBoundingClientRect().top;
-        const bottom = lowerClock.getBoundingClientRect().bottom;
+      if (upperPlayer && lowerPlayer) {
+        const top = upperPlayer.getBoundingClientRect().top;
+        const bottom = lowerPlayer.getBoundingClientRect().bottom;
         layout.style.setProperty('--player-alignment-offset', `${top - layout.getBoundingClientRect().top}px`);
         layout.style.setProperty('--player-workspace-height', `${bottom - top}px`);
         if (!resizeGesture.current) {
@@ -1139,8 +1145,8 @@ export function App() {
     update();
     const observer = new ResizeObserver(update);
     observer.observe(frame);
-    if (upperClock) observer.observe(upperClock);
-    if (lowerClock) observer.observe(lowerClock);
+    if (upperPlayer) observer.observe(upperPlayer);
+    if (lowerPlayer) observer.observe(lowerPlayer);
     if (frame.parentElement?.parentElement) observer.observe(frame.parentElement.parentElement);
     window.addEventListener('resize', update);
     return () => { observer.disconnect(); window.removeEventListener('resize', update); };
@@ -1221,7 +1227,7 @@ export function App() {
   return (
     <>
     <AnalysisNavigation section={analysisOpen ? 'analysis' : 'play'}
-      accountControl={<AccountMenu csrfToken={session?.csrfToken} />} />
+      accountControl={<AccountMenu csrfToken={session?.csrfToken} onAccountChange={setAccountId} />} />
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       {challengeId === null && imported === null && <section className="intro">
@@ -1482,17 +1488,16 @@ export function App() {
             <div className="position-column">
             <AnalysisWorkspaceTabs key={`workspace-${game.id}`} gameId={game.id} enabled={analysisOpen} reviewHost={setReviewHost}
               reviewOpening={<OpeningLabel opening={opening} />}
-              footer={!blankBoard || share || gameError !== null || gameInfo !== null ?
+              footer={!blankBoard || endActions || gameError !== null || gameInfo !== null ?
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {result !== null ? <FinishedResultArea key={game.id} score={result.score}
-                  explanation={result.explanation} share={share}
+                  explanation={result.explanation} endActions={endActions}
                   beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
                   analysisHref={!analysisOpen && imported === null
                     ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   /> : !blankBoard && liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
-                {result === null && share && <div className="finished-result-actions">{share}</div>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
@@ -1535,6 +1540,7 @@ export function App() {
                         disabled={submitting || pending !== null || pendingAction !== null}
                         onClick={() => setResignConfirmationVersion(game.version)}><ActionIcon kind="resign" />Resign</button>}
                   </>}
+                  {result === null && endActions}
                 </div>
                 {pending !== null && !submitting && <div className="retry">
                   <p>The move has not been confirmed. Retry the same request to learn whether it was saved.</p>

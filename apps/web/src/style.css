@@ -241,8 +241,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .analysis-workspace .analysis-board-controls .color-choice { width: 36px; min-width: 36px; }
 .color-choice span { display: block; width: 17px; height: 17px; border-radius: 50%; }
 
-.clock { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px;
-  min-width: 0; min-height: 54px; padding: 1px 0; color: var(--color-text); }
+.clock { --player-row-size: 52px; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: var(--player-row-size); align-items: center; gap: 2px 8px;
+  min-width: 0; color: var(--color-text); }
 .player-label { min-width: 0; display: flex; align-items: center; gap: 8px; font-size: var(--text-body); font-weight: 650; line-height: 1.25; }
 .player-identity-text { display: grid; gap: 2px; min-width: 0; }
 .player-name { font-family: var(--font-display); min-width: 0; overflow-wrap: anywhere; }
@@ -257,10 +258,10 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   font-size: var(--text-caption); font-weight: 650; }
 .profile-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
 .profile-avatar svg { inline-size: 60%; block-size: 60%; }
-.profile-avatar.player-avatar { --avatar-size: 52px; }
+.profile-avatar.player-avatar { --avatar-size: var(--player-row-size); }
 .player-clock-value { grid-column: 2; grid-row: 1; justify-self: end;
-  display: inline-grid; place-items: center; white-space: nowrap; padding: 6px 9px;
-  min-block-size: calc(1em + 12px); border-radius: var(--radius-compact); opacity: .65;
+  display: inline-grid; place-items: center; white-space: nowrap; padding: 0 9px;
+  block-size: var(--player-row-size); border-radius: var(--radius-compact); opacity: .65;
   font: 700 clamp(28px, 3vw, 34px)/1 var(--font-ui); font-variant-numeric: lining-nums tabular-nums; font-kerning: none; }
 .player-clock-value[data-side="white"] { background: var(--evaluation-white); color: var(--evaluation-white-text); }
 .player-clock-value[data-side="black"] { background: var(--evaluation-black); color: var(--evaluation-black-text); }
@@ -592,9 +593,8 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   .board-frame, .board-hint, .clock-policy, .analysis-board-controls, .analysis-footer-row, .engine-panel { width: 100%; }
   .review-summary { grid-template-columns: minmax(0, 1fr); }
   .piece { font-size: clamp(24px, 8vw, 38px); }
-  .clock { gap: 2px 5px; }
+  .clock { --player-row-size: 40px; gap: 2px 5px; }
   .clock-no-status .player-label { font-size: var(--text-compact); }
-  .profile-avatar.player-avatar { --avatar-size: 40px; }
   .player-clock-value { font-size: clamp(21px, 6vw, 28px); }
   .seats { flex-direction: column; }
   .section-heading { align-items: flex-start; flex-direction: column; }
@@ -1019,10 +1019,14 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .archive-summary dd { margin: 4px 0; font-size: 24px; font-weight: 650; }
 .archive-summary p { color: var(--color-text-muted); font-size: var(--text-compact); margin-bottom: 0; }
 .archive-games { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-panel); margin-bottom: 20px; }
+.archive-filters { margin-bottom: 12px; }
 .archive-games ul { list-style: none; padding: 0; margin: 0; }
 .archive-columns, .archive-game { display: grid; grid-template-columns: minmax(0, 2fr) minmax(80px, .6fr) minmax(100px, .8fr) minmax(130px, 1fr);
   align-items: center; gap: 20px; padding: 14px 18px; }
 .archive-columns { color: var(--color-text-muted); font-size: var(--text-compact); border-bottom: 1px solid var(--color-border); }
+.archive-games[data-favorite-controls] .archive-columns { padding-inline-end: 66px; }
+.archive-games[data-favorite-controls] li { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: stretch; }
+.archive-games li > .favorite-button { align-self: center; }
 .account-section .archive-game { color: inherit; text-decoration: none; font-size: var(--text-compact); }
 .archive-games li + li { border-top: 1px solid var(--color-border-subtle); }
 .archive-game:hover { background: var(--color-surface-hover); }
@@ -1150,8 +1154,19 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .game-layout :is(.board-utilities button, .workspace-share, .chat-mute) { display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; min-width: 40px; min-height: 40px; margin: 0; padding: 8px;
   border: 0; border-radius: var(--radius-small); background: transparent; box-shadow: none; color: var(--color-accent-text); }
-.game-layout button.workspace-share { width: 36px; min-width: 36px; height: 36px; min-height: 36px;
-  margin-inline-start: auto; padding: 7px; }
+.game-layout button.workspace-share { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 7px; }
+.workspace-end-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; }
+.workspace-end-actions:empty, .finished-result-actions:has(> .workspace-end-actions:only-child:empty) { display: none; }
+button.favorite-button {
+  --favorite-color: #df5461;
+  display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; margin: 0; padding: 7px;
+  background: transparent; color: var(--color-text-muted); border: 0; border-radius: var(--radius-small);
+}
+.favorite-button svg { display: block; width: 22px; height: 22px; }
+.favorite-button[aria-pressed="true"], .favorite-button:hover { color: var(--favorite-color); }
+.favorite-button:hover { background: color-mix(in srgb, var(--favorite-color) 6%, var(--color-surface)); }
+.favorite-button[aria-disabled="true"] { cursor: wait; }
+.favorite-feedback { max-inline-size: 22ch; font-size: var(--text-caption); color: var(--color-error); }
 :is(.board-utilities, .workspace-share) svg { flex: none; width: 22px; height: 22px; }
 .game-layout :is(.board-utilities button, .workspace-share, .chat-mute):hover { background: var(--color-surface-hover); color: var(--color-text); }
 .game-layout :is(.board-utilities button, .workspace-share, .chat-mute):active { background: var(--color-surface-selected); }

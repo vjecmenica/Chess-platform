@@ -92,8 +92,9 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.position-column \{[^}]*--workspace-height: var\(--player-workspace-height[^}]*margin-top: var\(--player-alignment-offset/);
     expect(css).toMatch(/\.analysis-workspace \.position-column \{[^}]*--workspace-height: var\(--analysis-sidebar-height/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.position-column \{ grid-column: 1; margin-top: 0/);
-    expect(css).toMatch(/\.clock \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto[^}]*min-height: 54px/);
-    expect(css).toMatch(/\.player-avatar \{ --avatar-size: 52px/);
+    expect(css).toMatch(/\.clock \{ --player-row-size: 52px[^}]*grid-template-rows: var\(--player-row-size\)/);
+    expect(css).toMatch(/\.player-avatar \{ --avatar-size: var\(--player-row-size\)/);
+    expect(css).toMatch(/\.player-clock-value \{[^}]*block-size: var\(--player-row-size\)/);
     expect(css).toMatch(/\.player-meta \{[^}]*min-height: 1lh;[^}]*font: 500 var\(--text-meta\)\/1\.5 var\(--font-ui\)/);
     expect(css).toMatch(/\.player-label \{[^}]*font-size: var\(--text-body\)/);
   });

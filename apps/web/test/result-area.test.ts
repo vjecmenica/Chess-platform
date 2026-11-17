@@ -10,7 +10,7 @@ describe('finished-game result area', () => {
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
       score: '1-0', explanation: 'White won by resignation.',
       beforeAnalysis: createElement('a', { href: '/challenge/rematch' }, 'Open game'),
-      share: createElement('button', { 'aria-label': 'Share & Export' }),
+      endActions: createElement('button', { 'aria-label': 'Share & Export' }),
     }));
     expect(html).toContain('class="finished-result-area"');
     expect(html).not.toContain('Resize result area');
