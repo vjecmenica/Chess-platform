@@ -12,10 +12,20 @@ interface RatingRow {
 }
 
 /** Initialize only the requested pool, leaving any existing account and pool state intact. */
-export async function loadOrCreateAccountRating(db: pg.Pool | pg.PoolClient, accountId: string,
+export function loadOrCreateAccountRating(db: pg.Pool | pg.PoolClient, accountId: string,
   pool: RatingPool): Promise<RatingState> {
+  return loadRating(db, accountId, pool, false);
+}
+
+/** Initialize and lock this rating through the caller's transaction. */
+export function lockAccountRating(client: pg.PoolClient, accountId: string, pool: RatingPool): Promise<RatingState> {
+  return loadRating(client, accountId, pool, true);
+}
+
+async function loadRating(db: pg.Pool | pg.PoolClient, accountId: string, pool: RatingPool,
+  lock: boolean): Promise<RatingState> {
   const read = () => db.query<RatingRow>(`SELECT rating, rd, volatility, rated_games, last_rated_at
-    FROM chess.account_ratings WHERE account_id = $1 AND pool = $2`, [accountId, pool]);
+    FROM chess.account_ratings WHERE account_id = $1 AND pool = $2${lock ? ' FOR NO KEY UPDATE' : ''}`, [accountId, pool]);
   let row = (await read()).rows[0];
   if (!row) {
     const initial = initialRatingState();

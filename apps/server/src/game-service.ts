@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { appendSystemChat } from './game-chat-events.js';
 import { avatarUrl } from './account-session.js';
+import { settleGameRatings } from './rating-settlement.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
 import { timeControlPresets, type TimeControlId } from '@chess/contracts';
@@ -25,6 +26,7 @@ type Status = 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'abor
 type ClockPhase = 'legacy_untimed' | 'waiting' | 'awaiting_first_move' | 'running' | 'handoff' | 'stopped' | 'flagged';
 interface GameRow {
   id: string;
+  rated: boolean;
   time_control: TimeControlId;
   creator_guest_id: string;
   acceptor_guest_id: string;
@@ -233,7 +235,7 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
     clocks: clockResponse(row, atMs),
     clockStatus: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
     timeControl: timeControlPresets[row.time_control],
-    rated: false, yourSeat };
+    rated: row.rated, yourSeat };
 }
 
 function savedMove(record: MoveRecord, remainingMsAfterMove: number | null): SavedMove {
@@ -296,6 +298,7 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       row.timeout_search_retry_after, row.white_first_move_deadline_at,
       row.black_first_move_deadline_at],
   );
+  if (row.rated && row.status === 'finished') await settleGameRatings(client, row.id);
   // PostgreSQL delivers this notification only if the surrounding transaction commits.
   await client.query("SELECT pg_notify('chess_game_updates', $1)",
     [JSON.stringify({ id: row.id, version: row.version })]);
@@ -501,7 +504,7 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   async function transaction<T>(action: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
       const result = await action(client);
       await client.query('COMMIT');
       return result;

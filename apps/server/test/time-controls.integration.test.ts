@@ -45,7 +45,7 @@ describe('selected challenge clocks in PostgreSQL', () => {
     expect((await create()).json().id).toBe(gameId);
     expect((await app.inject({ url: `/challenges/${gameId}`, headers: black })).json().game).toMatchObject(preset);
     const accept = () => app.inject({ method: 'POST', url: `/challenges/${gameId}/accept`, headers: black });
-    expect((await accept()).json().game).toMatchObject(preset);
+    expect((await accept()).json().game).toMatchObject({ ...preset, rated: false });
     expect((await accept()).statusCode).toBe(200);
     expect((await pool.query('SELECT time_control FROM chess.challenges WHERE id = $1', [gameId])).rows[0].time_control).toBe(id);
     const read = async (server = app) => (await server.inject({ url: `/games/${gameId}`, headers: white })).json();
@@ -69,7 +69,7 @@ describe('selected challenge clocks in PostgreSQL', () => {
     expect((await move(black, 1, 'e7', 'e5', moveId)).json()).toEqual(played.json());
     time.value += 300;
     expect((await move(white, 2, 'g1', 'f3')).statusCode).toBe(200);
-    const expected = { siteInfo, timeControl: preset, clocks: { remainingMs: {
+    const expected = { siteInfo, timeControl: preset, rated: false, clocks: { remainingMs: {
       white: preset.initialMs - 300 + preset.incrementMs,
       black: preset.initialMs - 200 + preset.incrementMs } }, history: [
       { remainingMsAfterMove: preset.initialMs },
@@ -86,7 +86,7 @@ describe('selected challenge clocks in PostgreSQL', () => {
     const owner = await guest(app);
     for (const body of [{ timeControl: '2+0' }, { timeControl: '5+0' }, { timeControl: 300 },
       { timeControl: null }, { timeControl: '__proto__' }, {}, { initialMs: 1, incrementMs: 1 },
-      { timeControl: '5+3', initialMs: 1 }]) {
+      { timeControl: '5+3', initialMs: 1 }, { timeControl: '5+3', rated: true }]) {
       const response = await app.inject({ method: 'POST', url: '/challenges',
         headers: { ...owner, 'idempotency-key': randomUUID() }, payload: body });
       expect(response.statusCode).toBe(400);

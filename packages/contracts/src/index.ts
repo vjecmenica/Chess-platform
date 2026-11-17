@@ -14,7 +14,7 @@ export interface ChallengeSummary {
   readonly seats: { readonly white: 'occupied'; readonly black: 'open' | 'occupied' };
   readonly game: { readonly id: string | null;
     readonly status: 'not_created' | 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted';
-    readonly clocks: 'not_integrated' | 'authoritative'; readonly rated: false;
+    readonly clocks: 'not_integrated' | 'authoritative'; readonly rated: boolean;
     readonly initialMs: number; readonly incrementMs: number };
   readonly createdAt: string;
 }
@@ -65,7 +65,7 @@ export interface GameState {
   readonly clockStatus: 'not_integrated' | 'authoritative';
   readonly timeControl: { readonly initialMs: number; readonly incrementMs: number }
     | { readonly source: 'pgn'; readonly raw: string } | null;
-  readonly rated: false;
+  readonly rated: boolean;
   readonly yourSeat: GameSide;
 }
 

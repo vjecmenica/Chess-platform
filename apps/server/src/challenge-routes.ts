@@ -20,6 +20,7 @@ interface ChallengeRow {
   created_at: Date;
   time_control: TimeControlId;
   game_status: 'waiting' | 'active' | 'pending_adjudication' | 'finished' | 'aborted' | null;
+  game_rated: boolean | null;
   clock_mode: 'legacy_untimed' | 'five_plus_three' | null;
 }
 
@@ -34,7 +35,7 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
     game: { id: row.game_status === null ? null : row.id,
       status: row.game_status ?? 'not_created',
       clocks: row.clock_mode === 'five_plus_three' ? 'authoritative' : 'not_integrated',
-      rated: false, ...timeControlPresets[row.time_control] },
+      rated: row.game_rated ?? false, ...timeControlPresets[row.time_control] },
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -42,7 +43,7 @@ function summary(row: ChallengeRow, guestId: string): ChallengeSummary {
 async function findChallenge(query: Pick<pg.Pool, 'query'>, id: string): Promise<ChallengeRow | null> {
   const { rows } = await query.query<ChallengeRow>(
     `SELECT c.id, c.creator_guest_id, c.acceptor_guest_id, c.created_at, c.time_control,
-      g.status AS game_status, g.clock_mode
+      g.status AS game_status, g.rated AS game_rated, g.clock_mode
       FROM chess.challenges c LEFT JOIN chess.games g ON g.id = c.id WHERE c.id = $1`, [id],
   );
   const row = rows[0];
@@ -169,7 +170,9 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
     await pool.query('SELECT token_hash FROM chess.account_email_tokens LIMIT 0');
     await pool.query('SELECT id, time_control FROM chess.challenges LIMIT 0');
     await pool.query(`SELECT id, clock_mode, clock_start_mode, deadline_at,
-      white_first_move_deadline_at, black_first_move_deadline_at FROM chess.games LIMIT 0`);
+      white_first_move_deadline_at, black_first_move_deadline_at, rated,
+      rated_white_account_id, rated_black_account_id, rating_pool FROM chess.games LIMIT 0`);
+    await pool.query('SELECT game_id FROM chess.game_rating_settlements LIMIT 0');
     await pool.query('SELECT admission_id, applied FROM chess.game_move_receipts LIMIT 0');
     await pool.query('SELECT instance_id FROM chess.clock_ingress_watermarks LIMIT 0');
     await pool.query('SELECT kind, event_key FROM chess.game_chat_messages LIMIT 0');
