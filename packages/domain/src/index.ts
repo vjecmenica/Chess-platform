@@ -20,3 +20,6 @@ export type { MateLine, MateSearchBudget, MateSearchResult } from './mate-search
 export { createTimedGame, FIVE_PLUS_THREE } from './timed-game.js';
 export type { TimedGame, TimedGameSnapshot, MonotonicTimeSource, ClockSnapshot, ClockReceipt,
   ClockEnqueueResult, ClockCommandResolution, ClockCommandOutcome } from './timed-game.js';
+export { ratingParameters, initialRatingState, isRatingState, calculateGlicko2Period,
+  effectiveRatingDeviation, isProvisionalRating, rateGame } from './glicko2.js';
+export type { RatingValues, RatingState, RatingScore, RatingResult } from './glicko2.js';

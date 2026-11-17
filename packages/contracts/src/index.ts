@@ -141,6 +141,8 @@ export interface GameClaimAcceptedResponse extends GameActionAcceptedResponse {
 }
 export { timeControlPresets, defaultTimeControl, isTimeControlId } from './time-controls.js';
 export type { TimeControlId } from './time-controls.js';
+export { ratingPools, ratingPoolByTimeControl } from './rating-pools.js';
+export type { RatingPool } from './rating-pools.js';
 export const explorerBookMaxPlies = 24;
 
 export interface ExplorerBookCandidate {

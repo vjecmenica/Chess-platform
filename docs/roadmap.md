@@ -25,7 +25,9 @@ The milestone is complete when all [first playable acceptance criteria](product-
 
 ## Accounts, ratings, and matchmaking
 
-The first [account milestone](accounts.md) now supports registration, login/logout, and account-owned play seats across browsers and preserved historical guest links. Optional verified email and password recovery are implemented; configuring and validating real email delivery remains a prerequisite for public launch. Ratings, rated/casual selection, and matchmaking remain separate milestones. Document Glicko-2 parameters and rating periods before adding calculations. A reference calculation must pass; an eligible result must affect only its pool, once, and casual results must leave every rating unchanged.
+The first [account milestone](accounts.md) now supports registration, login/logout, and account-owned play seats across browsers and preserved historical guest links. Optional verified email and password recovery are implemented. Configuring and validating real email delivery remains a prerequisite for public launch.
+
+[Rating Phase 1](ratings.md) provides the Glicko-2 calculations, exact preset mapping, and per-account pool storage. Phase 2 will integrate eligible rated games with settlement. It must update the two participants and record audit history in one transaction, with concurrent-result and retry tests proving that each result is applied once. Rated/casual selection and matchmaking remain separate milestones.
 
 Next, add matchmaking in three small changes: exact time-control/type queues, rating-range expansion, and cancellation with concurrent reservations. Tests must show that elapsed time widens the search without changing the selected control or type. No self-pairing, double reservation, or match from a canceled request is allowed.
 

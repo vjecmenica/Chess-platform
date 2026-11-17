@@ -23,7 +23,9 @@ The domain supports checkmate, stalemate, resignation, agreement, automatic five
 
 ### Ratings and matchmaking
 
-Each player has separate Glicko-2 ratings for bullet, blitz, rapid, and classical. An eligible rated result affects only its own pool and must be applied once. Casual games never change ratings. The treatment of abandoned or voided games remains open.
+Phase 1 implements the [Glicko-2 rating foundation](ratings.md), including independent Bullet, Blitz, Rapid, and Classical pools. Rated game creation and settlement are future work. Existing games remain unrated.
+
+Only registered players may play rated games, and the two seats must belong to different accounts. A completed rated result will update both players immediately in the game's pool. Casual and aborted games never change ratings. Disconnect forfeits will be handled separately. Rated settlement must be transactional and idempotent, with rating history for auditing and future corrections.
 
 Matchmaking requires the exact same time control and game type. A player seeking rated 3+0 must not be matched into casual 3+0 or rated 3+2. Within that queue, the search starts with similar ratings from the relevant pool and gradually widens. Waiting longer does not change the chosen time control or rated status.
 
@@ -118,7 +120,7 @@ Acceptance criteria:
 
 ### Before the relevant feature
 
-**Ratings and matchmaking.** Select initial rating, rating deviation (RD), volatility, tau, rating periods, inactivity treatment, provisional status, and abandoned/voided-game rules. Updating after every match is not automatically the same as the intended Glicko-2 method. Choose the initial search range, widening interval and amount, waiting limit, cancellation behavior, and treatment of new players. FIFO among mutually compatible candidates is a suggestion.
+**Ratings and matchmaking.** The rating parameters and elapsed-time policy are documented in the [rating foundation](ratings.md). Future work includes disconnect forfeits and handling voided results. Choose the initial search range, widening interval and amount, waiting limit, cancellation behavior, and treatment of new players. FIFO among mutually compatible candidates is a suggestion.
 
 **Analysis and review.** Choose browser versus server engine execution, CPU/memory budgets, the multiple-line (MultiPV) limit, caching, and package licensing before interactive analysis. The local accuracy and CPL methods are versioned; validate them more broadly before comparing players or producing long-term analytics.
 

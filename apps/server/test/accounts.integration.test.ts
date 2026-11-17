@@ -6,6 +6,7 @@ import { databaseUrl, loadEnvironment } from '../src/config.js';
 import { createPool } from '../src/database.js';
 import { migrate } from '../src/migrations.js';
 import { buildApp } from '../src/app.js';
+import { loadOrCreateAccountRating } from '../src/account-ratings.js';
 import { seedHistoricalGuestLink } from './legacy-account-fixture.js';
 
 interface Browser { cookie: string; csrf: string; ip: string }
@@ -53,6 +54,7 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     const restarted = server();
     const whiteName = username(), blackName = username();
     const whiteAccount = (await auth(app, white, 'register', { username: whiteName, password })).json().account;
+    const startingRating = await loadOrCreateAccountRating(pool, whiteAccount.id, 'blitz');
     await auth(app, black, 'register', { username: blackName, password });
     const second = await browser(app); await auth(app, second, 'login', { username: whiteName, password });
     const key = randomUUID();
@@ -87,7 +89,8 @@ describe('accounts and original guest seats against PostgreSQL', () => {
     expect((await post(app, outsider, `/games/${id}/moves`, { expectedVersion: 1, from: 'e7', to: 'e5' })).statusCode).toBe(403);
     expect((await post(app, black, `/games/${id}/resign`, { expectedVersion: 1 })).statusCode).toBe(200);
     expect((await read(restarted, second, '/account/games')).json().summary).toEqual({ wins: 1, draws: 0, losses: 0 });
-    expect((await read(app, black, `/games/${id}`)).json()).toMatchObject({ status: 'finished', playerNames: { white: whiteName, black: blackName } });
+    expect((await read(app, black, `/games/${id}`)).json()).toMatchObject({ status: 'finished', rated: false, playerNames: { white: whiteName, black: blackName } });
+    expect(await loadOrCreateAccountRating(pool, whiteAccount.id, 'blitz')).toEqual(startingRating);
   });
 
   it('keeps earlier guest creations and acceptances unlinked on login and on retries, while new games use the account', async () => {
