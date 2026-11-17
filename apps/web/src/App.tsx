@@ -1053,10 +1053,17 @@ export function App() {
   const coordinates = game === null ? null : boardCoordinates(orientation);
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
+  const replayTurn = replaying ? displayedFen?.split(' ', 2)[1] : undefined;
+  const replaySide = replayTurn === 'w' ? 'white' : replayTurn === 'b' ? 'black' : null;
+  const onVariation = analysisOpen && analysis?.cursor.kind === 'branch';
+  const siteTimeControl = game?.timeControl;
+  const siteInitialMs = siteTimeControl && 'initialMs' in siteTimeControl ? siteTimeControl.initialMs : null;
+  const siteHistoricalMs = (side: GameSide): number | null | undefined => !replaying || game === null ? undefined
+    : onVariation ? null : historicalClockMs(game.history, displayedPly, side, siteInitialMs, true);
   const importedHasClocks = imported?.game.history.some(move => move.remainingMsAfterMove !== null) ?? false;
   const importedInitialMs = simplePgnTimeControl(imported?.headers.TimeControl)?.initialMs ?? null;
   const importedHistoricalMs = (side: GameSide): number | null | undefined => !importedHasClocks ? undefined
-    : analysis?.cursor.kind === 'branch' ? null
+    : onVariation ? null
       : historicalClockMs(game?.history ?? [], displayedPly, side, importedInitialMs, true);
   const lastMove = game === null ? null : highlightedMove(game, displayedPly,
     analysisOpen ? analysis : null);
@@ -1303,14 +1310,12 @@ export function App() {
               <PlayerMaterialPanel side={topSide} pieces={captured?.[topSide] ?? []}
                 advantage={material} placement="top">
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={topSide}
-                  historicalMs={importedHistoricalMs(topSide)} />
+                  historicalMs={importedHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />
                   : <ClockPanel clock={game.clocks} side={topSide}
                   playerNames={game.playerNames}
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
-                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, topSide,
-                    game.timeControl !== null && 'initialMs' in game.timeControl
-                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
+                  historicalMs={siteHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />}
               </PlayerMaterialPanel>
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
@@ -1448,13 +1453,11 @@ export function App() {
               <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
                 advantage={material} placement="bottom" utilities={boardUtilities}>
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
-                  historicalMs={importedHistoricalMs(bottomSide)} />
+                  historicalMs={importedHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                   playerNames={game.playerNames}
                   showStatus={!analysisOpen && game.status !== 'finished'}
-                  historicalMs={analysisOpen ? historicalClockMs(game.history, displayedPly, bottomSide,
-                    game.timeControl !== null && 'initialMs' in game.timeControl
-                      ? game.timeControl.initialMs : null, game.clocks !== null) : undefined} />}
+                  historicalMs={siteHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />}
               </PlayerMaterialPanel>
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,

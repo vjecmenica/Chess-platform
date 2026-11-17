@@ -66,14 +66,17 @@ describe('shared game presentation', () => {
   it('shows only annotated historical clocks for imported players', () => {
     const imported = importPgn('[White "Ada"]\n[Black "Ben"]\n\n1. e4 {[%clk 0:00:29.45]} e5 *', 'timed');
     const white = renderToStaticMarkup(createElement(ImportedPlayerRow,
-      { imported, side: 'white', historicalMs: 29_450 }));
+      { imported, side: 'white', historicalMs: 29_450, isReplayTurn: true }));
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow,
-      { imported, side: 'black', historicalMs: null }));
+      { imported, side: 'black', historicalMs: null, isReplayTurn: true }));
     expect(white).toContain('00:29');
     expect(white).toContain('clock-hundredths');
     expect(white).toContain('data-low-time="true"');
+    expect(white).toContain('clock-replay-turn');
+    expect(white).not.toContain('clock-active');
     expect(white).toContain('class="player-clock-value" data-side="white"');
     expect(black).not.toContain('player-clock-value');
+    expect(black).not.toContain('clock-replay-turn');
     expect(black).not.toContain('05:00');
   });
 

@@ -25,12 +25,13 @@ export function PlayerIdentity({ side, name, rating }: {
   </span>;
 }
 
-export function ImportedPlayerRow({ imported, side, historicalMs }: {
+export function ImportedPlayerRow({ imported, side, historicalMs, isReplayTurn = false }: {
   imported: ImportedGame; side: GameSide; historicalMs?: number | null | undefined;
+  isReplayTurn?: boolean;
 }) {
   const player = importedPlayer(imported, side);
   const timed = historicalMs !== undefined && historicalMs !== null;
-  return <div className="clock clock-no-status imported-player"
+  return <div className={`clock clock-no-status imported-player${timed && isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={timed ? `${side} clock at selected move` : undefined}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
     {timed && <PlayerClockValue side={side} milliseconds={historicalMs} />}

@@ -156,4 +156,16 @@ describe('display clocks', () => {
       expect(html).not.toContain('clock-active');
     }
   });
+
+  it('emphasizes the replay turn and displays the supplied balance without reporting a live clock', () => {
+    const html = renderToStaticMarkup(createElement(ClockPanel, {
+      clock: { ...running, firstMoveDeadlineMs: { white: 1_000_030_000, black: null } },
+      side: 'white', isYou: true, historicalMs: 291_000, isReplayTurn: true,
+    }));
+    expect(html).toContain('clock-replay-turn');
+    expect(html).toContain('04:51');
+    expect(html).not.toContain('clock-active');
+    expect(html).not.toContain('05:00');
+    expect(html).not.toContain('first-move-countdown');
+  });
 });
