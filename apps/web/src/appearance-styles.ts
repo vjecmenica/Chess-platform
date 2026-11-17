@@ -7,12 +7,28 @@ const textures: Partial<Record<keyof typeof boardThemes, readonly [string, strin
   oaksquares: ['/boards/oak-squares-v1.jpg', '/boards/oak-squares-v1.jpg'],
 };
 
+function luminance(hex: string): number {
+  return [0.2126, 0.7152, 0.0722].reduce((total, weight, index) => {
+    const channel = Number.parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255;
+    return total + weight * (channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+  }, 0);
+}
+
+const coordinateInk = '#211912';
+const coordinateIvory = '#fff9ef';
+const coordinateContrastPivot = Math.sqrt((luminance(coordinateInk) + .05) * (luminance(coordinateIvory) + .05));
+const coordinateColor = (surface: string) => luminance(surface) + .05 >= coordinateContrastPivot ? coordinateInk : coordinateIvory;
+
 export function appearanceVariables(value: BoardAppearance): Record<string, string> {
   const colors = boardThemes[value.theme];
   const texture = textures[value.theme];
+  const light = value.light ?? colors[0];
+  const dark = value.dark ?? colors[1];
   return {
-    '--appearance-light': value.light ?? colors[0],
-    '--appearance-dark': value.dark ?? colors[1],
+    '--appearance-light': light,
+    '--appearance-dark': dark,
+    '--appearance-coordinate-on-light': coordinateColor(light),
+    '--appearance-coordinate-on-dark': coordinateColor(dark),
     '--appearance-light-texture': texture ? `url("${texture[0]}")` : 'none',
     '--appearance-dark-texture': texture ? `url("${texture[1]}")` : 'none',
     '--appearance-texture-size': ['naturalwood', 'oaksquares'].includes(value.theme) ? '800% 800%' : texture ? '400% 400%' : 'cover',

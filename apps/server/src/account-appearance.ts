@@ -6,7 +6,7 @@ import { currentAccount } from './account-session.js';
 export function registerAppearance(app: FastifyInstance, pool: pg.Pool) {
     for (const method of ['GET', 'PUT'] as const)
         app.route<{
-            Body: BoardAppearance;
+            Body: Omit<BoardAppearance, 'coordinates'> & Partial<Pick<BoardAppearance, 'coordinates'>>;
         }>({ method, url: '/account/appearance', schema: method === 'PUT' ? { body: appearanceSchema } : {}, handler: async (req, reply) => {
                 reply.header('Cache-Control', 'no-store');
                 const guest = await requireGuest(pool, req, reply, method === 'PUT');
@@ -21,7 +21,8 @@ export function registerAppearance(app: FastifyInstance, pool: pg.Pool) {
                     return reply.code(401).send({ error: 'account_required' });
                 if (req.headers['x-appearance-owner'] !== account.id)
                     return reply.code(409).send({ error: 'appearance_owner_changed' });
-                await pool.query('UPDATE chess.accounts SET board_appearance=$2::jsonb WHERE id=$1', [account.id, JSON.stringify(req.body)]);
-                return { owner: account.id, appearance: req.body };
+                const appearance = restoreAppearance(req.body);
+                await pool.query('UPDATE chess.accounts SET board_appearance=$2::jsonb WHERE id=$1', [account.id, JSON.stringify(appearance)]);
+                return { owner: account.id, appearance };
             } });
 }

@@ -52,7 +52,7 @@ import { applyEngineVariation } from './engine-variation';
 import { EnginePanel } from './EnginePanel';
 import { EvaluationBar } from './EvaluationBar';
 import { createResizePreview } from './board-resize';
-import { analysisSidebarHeight, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
+import { analysisSidebarHeight, boardLayoutClearance, defaultAnalysisBoardSize, availableAnalysisBoardWidth, resizedBoardSize } from './analysis-workspace';
 import type { EngineEvaluation } from './engine-analysis';
 import { describeReviewedMove, reviewedBoardMove, reviewForGame, type GameReview } from './game-review';
 import { useReviewBookMoves } from './review-book';
@@ -1050,7 +1050,8 @@ export function App() {
   const material = displayedFen === null ? null : materialAdvantage(displayedFen);
   const captured = useMemo(() => game === null ? null : capturedPieces(game, displayedPly,
     analysisOpen ? analysis : null), [game, displayedPly, analysisOpen, analysis]);
-  const coordinates = game === null ? null : boardCoordinates(orientation);
+  const coordinates = boardCoordinates(orientation);
+  const insideCoordinates = appearance.coordinates === 'inside';
   const topSide = orientation === 'white' ? 'black' : 'white';
   const bottomSide = orientation;
   const replayTurn = replaying ? displayedFen?.split(' ', 2)[1] : undefined;
@@ -1131,7 +1132,7 @@ export function App() {
         }
       }
       if (resizeGesture.current) return;
-      setBoardRowHeight(Math.round(frame.getBoundingClientRect().height));
+      setBoardRowHeight(Math.round(frame.getBoundingClientRect().height + boardLayoutClearance));
     };
     update();
     const observer = new ResizeObserver(update);
@@ -1156,7 +1157,7 @@ export function App() {
         const frame = boardFrameRef.current?.getBoundingClientRect();
         const tools = workspace.querySelector('.player-material-bottom > .player-material-row')?.getBoundingClientRect();
         // Retain the original 26px material gap, 22px tool gap and 40px tool row in the default sizing budget.
-        const upperChrome = play && frame && tools ? play.height - frame.height - tools.height + 88 : 180;
+        const upperChrome = play && frame && tools ? play.height - frame.height - boardLayoutClearance - tools.height + 88 : 180;
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           // Retain the previous horizontal header budget for the automatic default.
@@ -1301,6 +1302,7 @@ export function App() {
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}${imported === null ? ' site-game-workspace' : ''}`}
             ref={gameLayoutRef}
             style={{
+              '--board-layout-clearance': `${boardLayoutClearance}px`,
               '--analysis-board-column': `min(${(boardSize ?? automaticBoardSize ?? 440) + 50}px, calc(100% - 320px))`,
               ...((boardSize ?? (analysisOpen ? automaticBoardSize : null)) === null ? {} : {
                 '--board-size': `${boardSize ?? automaticBoardSize}px`,
@@ -1384,6 +1386,10 @@ export function App() {
                       {ghost !== null && <img className="premove-ghost" src={pieceImage(ghost, appearance.pieceSet)} alt=""
                         aria-hidden="true" draggable={false} />}
                       {badge && <MoveClassificationBadge classification={badge.classification} />}
+                      {insideCoordinates && square[0] === coordinates.files[0] &&
+                        <span className="board-coordinate board-coordinate-rank" aria-hidden="true">{square[1]}</span>}
+                      {insideCoordinates && square[1] === coordinates.ranks.at(-1) &&
+                        <span className="board-coordinate board-coordinate-file" aria-hidden="true">{square[0]}</span>}
                     </button>})}
                   {analysisOpen && engineMove?.gameId === game.id && engineMove.fen === displayedFen
                     && <EngineBestMoveArrow move={engineMove} orientation={orientation} />}
@@ -1391,17 +1397,19 @@ export function App() {
                     && <EngineBestMoveArrow move={threatMove} orientation={orientation} threat />}
                   <BoardArrows arrows={visibleArrows} orientation={orientation} />
                 </div>
-                <div className="board-ranks" aria-hidden="true">{coordinates?.ranks.map(rank =>
-                  <span key={rank}>{rank}</span>)}</div>
-                <div className="board-files" aria-hidden="true">{coordinates?.files.map(file =>
-                  <span key={file}>{file}</span>)}</div>
+                {appearance.coordinates === 'outside' && <>
+                  <div className="board-ranks" aria-hidden="true">{coordinates.ranks.map(rank =>
+                    <span key={rank}>{rank}</span>)}</div>
+                  <div className="board-files" aria-hidden="true">{coordinates.files.map(file =>
+                    <span key={file}>{file}</span>)}</div>
+                </>}
                 <button type="button" className="board-resize-grip"
                   aria-label="Resize board" aria-description="Drag to resize board; use arrow keys for small steps"
                   onPointerDown={event => {
                     if (event.button !== 0 && event.pointerType === 'mouse') return;
                     event.preventDefault(); event.stopPropagation();
                     resizeGesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY,
-                      size: (boardRef.current?.clientWidth ?? 0) + 14 };
+                      size: (boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance };
                     const limit = resizeLimit();
                     resizePreview.current = createResizePreview(size => {
                       const layout = gameLayoutRef.current;
@@ -1429,7 +1437,7 @@ export function App() {
                     if (delta === null) return;
                     event.preventDefault(); event.stopPropagation();
                     resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
-                    commitBoardSize(resizedBoardSize((boardRef.current?.clientWidth ?? 0) + 14,
+                    commitBoardSize(resizedBoardSize((boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance,
                       delta, delta, resizeLimit()));
                   }} onClick={event => event.stopPropagation()} />
                 </div>
@@ -1484,8 +1492,8 @@ export function App() {
                     }
                     else if (analysis !== null && selectedReplayPly !== null)
                       setAnalysis(selectMain(analysis, game, selectedReplayPly));
-                    if (!analysisOpen)
-                      setBoardSize(boardFrameRef.current?.getBoundingClientRect().width ?? boardSize);
+                    if (!analysisOpen && boardFrameRef.current)
+                      setBoardSize(boardFrameRef.current.getBoundingClientRect().width + boardLayoutClearance);
                     setAnalysisOpen(!analysisOpen);
 
                     setGameReview(null);

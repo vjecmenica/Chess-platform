@@ -1,9 +1,10 @@
 import {useState} from 'react';
+import {createPortal} from 'react-dom';
 import {readSettings, saveSettings, defaultEngineSettings, type EngineSettingsValue} from './settings-store';
 import {browserEngineThreadCapabilities,engineThreadFailure,resolveEngine,effectiveThreads,maximumEngineThreads} from './engine-builds';
 import {depthSlider,timeSlider,updateDepthSlider,updateTimeSlider} from './interactive-engine';
 import type {MultiPvCount} from './engine-analysis';
-export function EngineSettings(){
+export function EngineSettings({ actionTarget }: { actionTarget: HTMLElement | null }){
  const [base,setBase]=useState(readSettings),[draft,setDraft]=useState(base),[status,setStatus]=useState('');
  const preference=draft.preference,searchSettings=draft.search,lineCount=draft.lines;
  const {depth,timeMs,unlimitedDepth,unlimitedTime}=searchSettings.current;
@@ -60,5 +61,11 @@ export function EngineSettings(){
     <a className="engine-credit" href="/engine/NOTICE.md" target="_blank" rel="noreferrer"
       >Engine license and source</a>
 
- <div className="appearance-actions"><button className="primary" onClick={()=>{try{saveSettings(draft,base);setBase(draft);setStatus('Saved');}catch(e){setStatus(e instanceof Error?e.message:'Could not save');}}}>Save</button><button className="secondary" onClick={()=>{setDraft(defaultEngineSettings());setStatus('');}}>Reset</button></div><p>Reset restores defaults in this draft. Save applies them to this browser.</p><p role="status">{status || (dirty?'Unsaved engine changes':'')}</p></section>;
+    <p>Reset restores defaults in this draft. Save applies them to this browser.</p>
+    {actionTarget && createPortal(<div className="appearance-actions" role="group" aria-label="Engine settings actions">
+      <button type="button" className="primary" onClick={()=>{try{saveSettings(draft,base);setBase(draft);setStatus('Saved');}catch(e){setStatus(e instanceof Error?e.message:'Could not save');}}}>Save</button>
+      <button type="button" className="secondary" onClick={()=>{setDraft(defaultEngineSettings());setStatus('');}}>Reset</button>
+      <span role="status" className="settings-save-status">{status || (dirty ? 'Unsaved engine changes' : '')}</span>
+    </div>, actionTarget)}
+  </section>;
 }

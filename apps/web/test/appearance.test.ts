@@ -33,6 +33,23 @@ it('previews all twelve themed pieces and keeps advanced controls bounded and in
     expect(html).toContain('aria-controls="appearance-advanced"');
     expect(html).toContain('aria-expanded="false"');
 });
+it('defaults old appearance records to Outside and retains valid coordinate preferences', () => {
+    const { coordinates, ...legacy } = { ...defaultAppearance, theme: 'naturalwood', pieceSet: 'kosal',
+        light: '#cbb39b', scale: 105, frame: false, grid: true, shadow: 12 };
+    expect(coordinates).toBe('outside');
+    expect(restoreAppearance(legacy)).toEqual({ ...legacy, coordinates: 'outside' });
+    for (const mode of ['outside', 'inside', 'off'])
+        expect(restoreAppearance({ ...legacy, coordinates: mode })).toEqual({ ...legacy, coordinates: mode });
+    expect(restoreAppearance({ ...legacy, coordinates: 'unknown' })).toEqual({ ...legacy, coordinates: 'outside' });
+});
+it('chooses inside coordinate contrast based on actual square colors', () => {
+    const wood = appearanceVariables({ ...defaultAppearance, theme: 'naturalwood' });
+    const inverted = appearanceVariables({ ...defaultAppearance, light: '#121212', dark: '#efefef' });
+    expect(wood['--appearance-coordinate-on-light']).toBe('#211912');
+    expect(wood['--appearance-coordinate-on-dark']).toBe('#fff9ef');
+    expect(inverted['--appearance-coordinate-on-light']).toBe('#fff9ef');
+    expect(inverted['--appearance-coordinate-on-dark']).toBe('#211912');
+});
 it('bundles complete pinned sets with matching hashes and full license texts, without remote SVG resources', () => {
     const root = new URL('../public/pieces/', import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));

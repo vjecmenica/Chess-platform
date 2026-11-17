@@ -1,4 +1,6 @@
 export const pieceSets = ['chessnut', 'kosal', 'celtic', 'fantasy', 'spatial', 'rhosgfx'] as const;
+export const boardCoordinateModes = ['outside', 'inside', 'off'] as const;
+export type BoardCoordinateMode = typeof boardCoordinateModes[number];
 export const boardThemes = {
     default: ['#f0dfbd', '#aa7953'], classic: ['#f0d9b5', '#b58863'],
     wood: ['#e8cc9e', '#956b45'], green: ['#e7ead5', '#7e9472'],
@@ -19,6 +21,7 @@ export interface BoardAppearance {
     version: 1;
     pieceSet: typeof pieceSets[number];
     theme: keyof typeof boardThemes;
+    coordinates: BoardCoordinateMode;
     light: string | null;
     dark: string | null;
     scale: number;
@@ -29,8 +32,9 @@ export interface BoardAppearance {
     grid: boolean;
     shadow: number;
 }
-export const defaultAppearance: BoardAppearance = { version: 1, pieceSet: 'chessnut', theme: 'default', light: null, dark: null, scale: 100, offset: 0, frame: true, frameColor: '#755740', frameWidth: 2, grid: false, shadow: 0 };
-export const appearanceSchema = { type: 'object', additionalProperties: false, required: Object.keys(defaultAppearance), properties: { version: { const: 1 }, pieceSet: { enum: pieceSets }, theme: { enum: Object.keys(boardThemes) }, light: { anyOf: [{ type: 'null' }, { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }] }, dark: { anyOf: [{ type: 'null' }, { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }] }, scale: { type: 'integer', minimum: 80, maximum: 110 }, offset: { type: 'integer', minimum: -8, maximum: 8 }, frame: { type: 'boolean' }, frameColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, frameWidth: { type: 'integer', minimum: 1, maximum: 5 }, grid: { type: 'boolean' }, shadow: { type: 'integer', minimum: 0, maximum: 30 } } } as const;
+export const defaultAppearance: BoardAppearance = { version: 1, pieceSet: 'chessnut', theme: 'default', coordinates: 'outside', light: null, dark: null, scale: 100, offset: 0, frame: true, frameColor: '#755740', frameWidth: 2, grid: false, shadow: 0 };
+// Older v1 clients may omit coordinates. A supplied value must still be valid.
+export const appearanceSchema = { type: 'object', additionalProperties: false, required: Object.keys(defaultAppearance).filter(key => key !== 'coordinates'), properties: { version: { const: 1 }, pieceSet: { enum: pieceSets }, theme: { enum: Object.keys(boardThemes) }, coordinates: { enum: boardCoordinateModes }, light: { anyOf: [{ type: 'null' }, { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }] }, dark: { anyOf: [{ type: 'null' }, { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }] }, scale: { type: 'integer', minimum: 80, maximum: 110 }, offset: { type: 'integer', minimum: -8, maximum: 8 }, frame: { type: 'boolean' }, frameColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, frameWidth: { type: 'integer', minimum: 1, maximum: 5 }, grid: { type: 'boolean' }, shadow: { type: 'integer', minimum: 0, maximum: 30 } } } as const;
 export function restoreAppearance(value: unknown): BoardAppearance { const v = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}; const out = { ...defaultAppearance }; if (v.version !== 1)
     return out; for (const key of Object.keys(out) as (keyof BoardAppearance)[]) {
     const x = v[key];
@@ -39,6 +43,8 @@ export function restoreAppearance(value: unknown): BoardAppearance { const v = t
         valid = pieceSets.includes(x as never);
     else if (key === 'theme')
         valid = typeof x === 'string' && Object.hasOwn(boardThemes, x);
+    else if (key === 'coordinates')
+        valid = boardCoordinateModes.includes(x as BoardCoordinateMode);
     else if (key === 'light' || key === 'dark')
         valid = x === null || typeof x === 'string' && /^#[0-9a-f]{6}$/i.test(x);
     else if (key === 'frameColor')

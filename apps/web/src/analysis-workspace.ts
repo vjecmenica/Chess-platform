@@ -3,6 +3,8 @@ import { graphCentipawns } from './game-review';
 
 export const minimumAnalysisBoardSize = 240;
 export const maximumAnalysisBoardSize = 1080;
+// v1 size preferences and analysis links describe the playable edge plus this gap.
+export const boardLayoutClearance = 14;
 const minimumDefaultDesktopBoardSize = 334;
 
 /** Scrolling to reach a large board's grip must not enlarge the sidebar. */
@@ -13,11 +15,10 @@ export function analysisSidebarHeight(viewportHeight: number, stripTop: number, 
 export function availableAnalysisBoardWidth(workspaceWidth: number, stacked: boolean,
   chatRail = false, analysis = false): number {
   // The wide site-game grid reserves a 320px chat rail, a 440px move panel,
-  // its gaps, and analysis's evaluation rail. Live ranks sit in the gap; the
-  // saved frame size still includes their 14px, so the square is unchanged.
+  // its gaps, and analysis's evaluation rail. Convert to the shared v1 size unit.
   const reserve = stacked ? 36 : chatRail
-    ? 320 + 440 + (analysis ? 2 * 16 + 52 : 2 * 32 - 14)
-    : analysis ? 52 + 400 + 16 : 320 + 32 - 14;
+    ? 320 + 440 + (analysis ? 2 * 16 + 52 : 2 * 32 - boardLayoutClearance)
+    : analysis ? 52 + 400 + 16 : 320 + 32 - boardLayoutClearance;
   return Math.max(0, workspaceWidth - reserve);
 }
 

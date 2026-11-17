@@ -135,7 +135,8 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .game-layout.analysis-workspace { align-items: stretch; }
 .play-column { min-width: 0; display: flex; flex-direction: column; align-items: flex-end;
   padding-top: var(--board-top-offset); }
-.board-stage { display: flex; justify-content: flex-end; align-items: flex-start; width: 100%; min-width: 0; }
+.board-stage { display: flex; justify-content: flex-end; align-items: flex-start; width: 100%; min-width: 0;
+  column-gap: var(--board-layout-clearance); padding-bottom: var(--board-layout-clearance); }
 .player-material-panel { position: relative; min-width: 0; }
 /* Captures never participate in the player panel's size or grid placement. */
 .player-material-row { position: absolute; left: 0; right: 0;
@@ -155,10 +156,10 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .material-negative { color: var(--color-error); }
 .board-stage .board-frame {
   position: relative;
-  width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 36px), 1080px);
-  padding: 0 0 14px 14px;
+  width: var(--board-square-width);
+  container-type: inline-size;
 }
-.board-resize-grip { position: absolute; z-index: 3; right: -5px; bottom: -4px;
+.board-resize-grip { position: absolute; z-index: 3; right: -5px; bottom: calc(-4px - var(--board-layout-clearance));
   width: 24px; height: 18px; padding: 0; border: 0; border-radius: 0;
   background: transparent; color: var(--color-accent-text); cursor: nwse-resize; touch-action: none; }
 .board-resize-grip::before { content: ''; position: absolute; inset: 3px 5px;
@@ -166,7 +167,7 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .board-resize-grip:hover { background: transparent; color: var(--color-text); }
 .board-resize-grip:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .evaluation-bar { position: relative; display: flex; flex-direction: column; align-self: stretch; flex: 0 0 30px;
-  min-width: 0; margin: 0 6px 14px 0; border: 1px solid var(--appearance-evaluation-border, var(--color-border-strong));
+  min-width: 0; margin: 0 6px 0 0; border: 1px solid var(--appearance-evaluation-border, var(--color-border-strong));
   border-radius: var(--radius-small); background: transparent; }
 .evaluation-bar:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 .evaluation-track { position: relative; flex: 1; min-height: 0; background: var(--evaluation-black);
@@ -225,9 +226,15 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   transform: translate(-50%, -50%); pointer-events: none; user-select: none; }
 .board-files, .board-ranks { position: absolute; display: grid; color: var(--color-text-muted);
   font-size: 10px; font-weight: 600; line-height: 1; pointer-events: none; user-select: none; }
-.board-files { grid-template-columns: repeat(8, 1fr); left: 14px; right: 0; bottom: 0; height: 14px; }
-.board-ranks { grid-template-rows: repeat(8, 1fr); left: 0; top: 0; bottom: 14px; width: 14px; }
+.board-files { grid-template-columns: repeat(8, 1fr); left: 0; right: 0; top: 100%; height: var(--board-layout-clearance); }
+.board-ranks { grid-template-rows: repeat(8, 1fr); right: 100%; top: 0; bottom: 0; width: var(--board-layout-clearance); }
 .board-files span, .board-ranks span { display: grid; place-items: center; }
+.board-coordinate { position: absolute; z-index: 1; font: 650 clamp(9px, 2.25cqw, 13px)/1 var(--font-ui);
+  pointer-events: none; user-select: none; }
+.square.light .board-coordinate { color: var(--appearance-coordinate-on-light); }
+.square.dark .board-coordinate { color: var(--appearance-coordinate-on-dark); }
+.board-coordinate-rank { top: 2px; left: 3px; }
+.board-coordinate-file { bottom: 2px; right: 3px; }
 .board-hint, .clock-policy { width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 36px), 1080px); color: var(--color-text-muted); font-size: var(--text-body); margin: 6px 0 0; }
 .analysis-board-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
   width: min(var(--board-size, calc(100dvh - 96px)), calc(100% - 36px), 1080px); margin-top: 2px; }
@@ -255,12 +262,12 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   gap: 8px; min-height: 72px; }
 .profile-avatar { --avatar-size: 34px; display: grid; place-items: center; flex: 0 0 var(--avatar-size);
   inline-size: var(--avatar-size); block-size: var(--avatar-size); overflow: hidden;
-  border-radius: var(--radius-control); background: var(--color-surface-selected); color: var(--color-accent-text);
+  border-radius: 0; background: var(--color-surface-selected); color: var(--color-accent-text);
   font-size: var(--text-caption); font-weight: 650; }
 .profile-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
 .profile-avatar svg { inline-size: 60%; block-size: 60%; }
 /* Let the avatar extend 1px into the row padding on each side of the clock line. */
-.profile-avatar.player-avatar { --avatar-size: 44px; margin-block: -1px; border-radius: 0; }
+.profile-avatar.player-avatar { --avatar-size: 44px; margin-block: -1px; }
 .clock-no-status > .player-label { flex: 1; }
 .player-clock-value { grid-column: 2; grid-row: 1; justify-self: end;
   display: inline-grid; place-items: center; white-space: nowrap; padding: 6px 9px;
@@ -682,16 +689,15 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 
 /* Shared board-led workspace: identity strips follow the board in every mode. */
 .game-layout { --board-top-offset: 0px; --default-board-size: clamp(280px, calc(100dvh - 420px), 620px);
+  --board-requested-width: var(--board-size, var(--default-board-size));
+  --board-available-width: calc(100% - 36px - var(--board-layout-clearance));
+  --board-square-width: min(calc(var(--board-requested-width) - var(--board-layout-clearance)),
+    var(--board-available-width), calc(1080px - var(--board-layout-clearance)));
   --board-column-size: calc(var(--board-size, var(--default-board-size)) + 34px);
   grid-template-columns: minmax(0, min(var(--board-column-size, calc(var(--default-board-size) + 34px)), calc(100% - 338px))) minmax(320px, 430px); }
-/* The saved size includes 14px of coordinates. Keep the square unchanged while
-   live ranks use the normal column gap, with no hidden evaluation-bar rail. */
-.game-layout:not(.analysis-workspace) { --board-column-size: calc(var(--board-size, var(--default-board-size)) - 14px); }
-.game-layout:not(.analysis-workspace) .board-stage .board-frame,
-.game-layout:not(.analysis-workspace) .play-column > .player-material-panel {
-  width: min(calc(var(--board-size, var(--default-board-size)) - 14px), 100%, 1066px); padding-left: 0; }
-.game-layout:not(.analysis-workspace) .board-ranks { left: -14px; }
-.game-layout:not(.analysis-workspace) .board-files { left: 0; }
+/* Place outside labels in existing workspace gaps, independently of the square's size. */
+.game-layout:not(.analysis-workspace) { --board-available-width: 100%;
+  --board-column-size: calc(var(--board-requested-width) - var(--board-layout-clearance)); }
 .game-layout:not(.analysis-workspace) .board-frame { margin-inline: 0; }
 @media (min-width: 901px) {
   .game-layout:not(.analysis-workspace) { column-gap: 32px;
@@ -699,12 +705,12 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 }
 .game-layout.analysis-workspace { align-items: start; }
 .play-column { padding-top: 26px; }
-.board-stage .board-frame, .analysis-footer-row, .board-hint, .clock-policy {
+.analysis-footer-row, .board-hint, .clock-policy {
   width: min(var(--board-size, var(--default-board-size)), calc(100% - 36px), 1080px); }
-.play-column > .player-material-panel { width: min(var(--board-size, var(--default-board-size)), calc(100% - 36px), 1080px); padding-left: 14px; }
+.play-column > .player-material-panel { width: var(--board-square-width); }
 .play-column > .player-material-top { margin-bottom: 8px; }
 .play-column > .player-material-bottom { margin-top: 4px; }
-.play-column .player-material-row { left: 14px; }
+.game-layout:not(.analysis-workspace) .player-material-top > .player-material-row { left: var(--board-layout-clearance); }
 .play-column .player-material-top > .player-material-row { bottom: calc(100% + 3px); }
 .play-column .player-material-bottom > .player-material-row { position: static; height: auto;
   min-height: 43px; padding-top: 3px; gap: 4px; }
@@ -779,12 +785,10 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .explorer-games small { font-size: var(--text-meta); color: var(--color-text-muted); line-height: 1.45; }
 @media (max-width: 900px) {
   .game-layout, .game-layout.analysis-workspace { grid-template-columns: minmax(0, 1fr); }
-  .board-stage .board-frame, .play-column > .player-material-panel, .analysis-footer-row {
-    width: min(var(--board-size, 100%), calc(100% - 36px), 1080px); }
+  .game-layout.analysis-workspace { --board-requested-width: var(--board-size, 100%); }
+  .game-layout:not(.analysis-workspace) { --board-available-width: calc(100% - 48px); }
+  .analysis-footer-row { width: min(var(--board-size, 100%), calc(100% - 36px), 1080px); }
   .play-column { align-items: flex-end; }
-  .game-layout:not(.analysis-workspace) .board-stage .board-frame,
-  .game-layout:not(.analysis-workspace) .play-column > .player-material-panel {
-    width: min(calc(var(--board-size, var(--default-board-size)) - 14px), calc(100% - 48px), 1066px); }
   .game-layout .move-panel { height: min(360px, 45dvh); flex: none; }
   .game-layout .position-column { grid-column: 1; margin-top: 0; height: auto; }
   .workspace-room-pane { max-height: 75dvh; }
@@ -1000,7 +1004,7 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .my-games-page h1 { font-family: var(--font-display); font-size: 32px; line-height: 1.2; margin: 0 0 12px; }
 .account-profile-header { border: 1px solid var(--color-border); border-radius: var(--radius-dialog); background: var(--color-surface); overflow: hidden; }
 .account-profile-identity { display: flex; align-items: center; gap: 24px; padding: 28px; }
-.account-avatar { --avatar-size: 88px; border-radius: var(--radius-card); font-size: 30px; }
+.account-avatar { --avatar-size: 88px; font-size: 30px; }
 .account-profile-name { min-width: 0; }
 .my-games-page .account-profile-name h1 { overflow-wrap: anywhere;
   margin: 4px 0 8px; font-weight: 650; letter-spacing: -.02em; }
@@ -1279,6 +1283,14 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .appearance-settings button { min-height:36px; }
 
 .shared-settings-dialog { width:min(740px,calc(100% - 24px)); max-height:90dvh; padding:0; border:1px solid var(--color-border-strong); border-radius:var(--radius-dialog); background:var(--color-surface-raised); color:var(--color-text); overflow:auto; }
+.settings-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.settings-dialog > :is(header, .settings-footer) { flex: none; }
+.settings-dialog .settings-layout { min-height: 0; }
+.settings-dialog .settings-sections { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.settings-footer { padding: 9px 20px; border-top: 1px solid var(--color-border-subtle); background: var(--color-surface-raised); }
+.settings-footer .appearance-actions { align-items: center; margin: 0; }
+.settings-footer button { margin-bottom: 0; }
+.settings-save-status { flex: 1 1 11rem; color: var(--color-text-muted); font-size: var(--text-compact); }
 .shared-settings-dialog::backdrop {background:var(--color-backdrop);}
 .shared-settings-dialog>header {display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--color-border);}
 .shared-settings-dialog h2 {margin:0;font-size:var(--text-heading);font-weight:700;letter-spacing:normal;line-height:1.4;}
@@ -1314,7 +1326,6 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .interface-theme-swatches span:nth-child(2) { background: var(--color-surface); }
 .interface-theme-swatches span:nth-child(3) { background: var(--color-nav-bg); }
 .interface-theme-swatches span:nth-child(4) { background: var(--color-primary); }
-.settings-sections .appearance-actions {margin-top:8px;}
 .shared-settings-dialog>header {letter-spacing:normal;}
 .shared-settings-dialog>header button, button.profile-crop-close {display:grid;place-items:center;width:36px;height:36px;padding:7px;border:0;background:transparent;}
 .shared-settings-dialog>header button:hover, .profile-crop-close:hover:not(:disabled) {background:var(--color-surface-hover);}
@@ -1361,6 +1372,10 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .share-embed-preview { display: block; max-width: 100%; margin: 12px auto 0;
   border: 1px solid var(--color-border); border-radius: var(--radius-control); }
 @media(max-width:600px){.settings-layout{grid-template-columns:minmax(0,1fr)}.settings-layout>nav{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--color-border);padding:10px}.settings-sections{padding:14px}.appearance-settings label{gap:8px}.shared-settings-dialog{max-height:94dvh}.engine-settings-content{--settings-label-width:78px;--settings-value-width:44px}}
+@media (max-width: 600px) {
+  .settings-dialog .settings-layout { grid-template-rows: auto minmax(0, 1fr); }
+  .settings-footer { padding-inline: 14px; }
+}
 /* Primary workspace panes share the existing measured sidebar height. */
 .workspace-tabs-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; height: 100%; }
 .workspace-tabs { grid-area: 1 / 1; padding: 4px 10px 0; border-bottom: 1px solid var(--color-border); }

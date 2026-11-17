@@ -24,7 +24,11 @@ it('persists private account preferences across sessions and rejects guests, CSR
     const initial = (await read(a)).json();
     expect(initial.appearance).toEqual(defaultAppearance);
     const save = (w: typeof a, owner: string, value: object, csrf = w.csrf) => app.inject({ method: 'PUT', url: '/account/appearance', headers: { cookie: w.cookie, 'x-csrf-token': csrf, 'x-appearance-owner': owner }, payload: value });
-    const selected = { ...defaultAppearance, pieceSet: 'kosal', theme: 'goldenwood', scale: 105, frame: false, grid: false };
+    const { coordinates, ...legacy } = { ...defaultAppearance, pieceSet: 'kosal', theme: 'goldenwood', scale: 105, frame: false, grid: false };
+    const legacySave = await save(a, initial.owner, legacy);
+    expect(legacySave.statusCode).toBe(200);
+    expect(legacySave.json().appearance).toEqual({ ...legacy, coordinates });
+    const selected = { ...legacy, coordinates: 'inside' };
     expect((await save(a, initial.owner, selected)).statusCode).toBe(200);
     const second = await browser();
     await auth(second, 'login', name);
@@ -36,5 +40,6 @@ it('persists private account preferences across sessions and rejects guests, CSR
     expect((await save(a, initial.owner, selected, 'bad')).statusCode).toBe(403);
     expect((await save(a, initial.owner, { ...selected, scale: 1000 })).statusCode).toBe(400);
     expect((await save(a, initial.owner, { ...selected, pieceSet: 'future' })).statusCode).toBe(400);
+    expect((await save(a, initial.owner, { ...selected, coordinates: 'future' })).statusCode).toBe(400);
     expect((await read(a)).headers['cache-control']).toBe('no-store');
 });
