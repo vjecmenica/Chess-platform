@@ -86,7 +86,7 @@ describe('selected challenge clocks in PostgreSQL', () => {
     const owner = await guest(app);
     for (const body of [{ timeControl: '2+0' }, { timeControl: '5+0' }, { timeControl: 300 },
       { timeControl: null }, { timeControl: '__proto__' }, {}, { initialMs: 1, incrementMs: 1 },
-      { timeControl: '5+3', initialMs: 1 }, { timeControl: '5+3', rated: true }]) {
+      { timeControl: '5+3', initialMs: 1 }, { timeControl: '5+3', rated: true, accountId: randomUUID() }]) {
       const response = await app.inject({ method: 'POST', url: '/challenges',
         headers: { ...owner, 'idempotency-key': randomUUID() }, payload: body });
       expect(response.statusCode).toBe(400);

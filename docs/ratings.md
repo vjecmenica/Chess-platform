@@ -1,6 +1,20 @@
 # Glicko-2 ratings and settlement
 
-Phase 1 provides pure rating calculations, preset-to-pool mapping, and PostgreSQL storage for account ratings. Phase 2A settles eligible rated results in the game transaction. Public Rated/Casual selection and rated challenge creation are Phase 2B work. Public games and historical results remain Casual.
+Phase 1 provides Glicko-2 calculations and per-account ratings. Phase 2A settles eligible results in the game transaction. Phase 2B adds Rated/Casual selection, with Rated creation available only in explicitly enabled development environments. Public production games and historical challenges remain Casual.
+
+## Creating and accepting challenges
+
+Casual is the default and supports guests. For local Rated testing, set `ENABLE_DEV_RATED_CHALLENGES=true` and restart the API. The flag defaults to off and is ignored when `NODE_ENV=production`. The API enforces it for creating Rated invitations and accepting open Rated invitations. Accepted games can resume and settle after the flag is turned off.
+
+Migration `030_rated_challenges.sql` stores the selected mode and, for Rated invites, the creator's account ID. The creator and acceptor each authenticate with an account session to occupy a Rated seat. The seats must belong to different registered accounts. The acceptance transaction assigns Black and inserts the game with the two account IDs and the pool for the fixed time control. The account IDs then govern game access and settlement across sessions. Retrying a creation key with different terms returns a conflict.
+
+Rated rematches are unavailable during this phase. Casual rematches continue through the existing workflow.
+
+## Adjudication and first moves
+
+Development Rated games use the domain's `fide_proof_required` resignation and timeout policies. Unresolved mating decisions persist as pending with clocks stopped and ratings untouched. The server still needs a durable path to finish those decisions and validation of the competitive rules before unrestricted Rated play in Phase 2C. Casual games retain their existing adjudication policies.
+
+Both modes use the existing 30-second first-move grace period. A missed first-move deadline aborts the game and leaves ratings untouched. A voluntary resignation received before the deadline follows the applicable resignation policy even at ply zero. It can remain pending in a Rated game. Disconnect forfeits remain separate work.
 
 ## Parameters and pools
 
@@ -50,4 +64,4 @@ Settlement locks the game first, then checks for a committed settlement. It init
 
 A failed transaction rolls back the final game transition, both rating changes, history, and any command completion. A previously admitted command remains pending and can be retried by the existing receipt processor after restart. Due clocks likewise remain eligible for processing after rollback. Repeated processing, including across instances, sees the committed settlement under the game lock. PostgreSQL publishes game notifications on commit, and notification delivery is independent of rating durability.
 
-Production deployment requires migration `029` before starting the new server. Phase 2B will add authenticated rated challenge creation and Rated/Casual selection. Disconnect forfeits and administrative correction tools are separate work.
+Deployments require migration `030` before starting the updated API. Rating displays and administrative correction tools are separate work.

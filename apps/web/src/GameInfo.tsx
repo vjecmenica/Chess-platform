@@ -44,7 +44,7 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
       <div><dt>Time control</dt><dd><InfoTimeControl game={game} /></dd></div>
       <div className="game-info-date"><dt>{timestamp?.label ?? 'Start time'}</dt><dd>{timestamp
         ? <time dateTime={timestamp.at}>{timestamp.text}</time> : 'Unavailable'}</dd></div>
-      <div className="game-info-mode"><dt>Rated status</dt><dd>{game.rated === false ? 'Unrated' : 'Unavailable'}</dd></div>
+      <div className="game-info-mode"><dt>Mode</dt><dd>{game.rated ? 'Rated' : 'Casual'}</dd></div>
       <div className="game-info-mode"><dt>Variant</dt><dd>{game.siteInfo ? variantLabels[game.siteInfo.variant] : 'Unavailable'}</dd></div>
     </dl>
   </section>;

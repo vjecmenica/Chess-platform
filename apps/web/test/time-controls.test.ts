@@ -2,9 +2,16 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { defaultTimeControl, isTimeControlId, timeControlPresets } from '@chess/contracts';
-import { TimeControlSelect, timeControlLabel } from '../src/TimeControlSelect';
+import { ChallengeModeSelect, TimeControlSelect, timeControlLabel } from '../src/TimeControlSelect';
 
 describe('challenge time-control selection', () => {
+  it('preselects Casual and only makes Rated selectable for an eligible session', () => {
+    const render = (rated: boolean, ratedAvailable: boolean) => renderToStaticMarkup(createElement(
+      ChallengeModeSelect, { rated, ratedAvailable, disabled: false, onChange: () => {} }));
+    expect(render(false, false)).toContain('<option value="casual" selected="">Casual</option>');
+    expect(render(false, false)).toContain('<option value="rated" disabled="">Rated</option>');
+    expect(render(true, true)).toContain('<option value="rated" selected="">Rated</option>');
+  });
   it('offers the agreed presets in order and preselects 5+3', () => {
     expect(Object.keys(timeControlPresets)).toEqual(['1+0', '3+0', '3+2', '5+3',
       '10+0', '10+2', '10+5', '15+0', '15+2', '15+5',

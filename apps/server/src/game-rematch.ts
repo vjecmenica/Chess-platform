@@ -35,19 +35,22 @@ export function registerRematches(app: FastifyInstance, pool: pg.Pool, now: () =
         try {
           await client.query('BEGIN');
           // Account/guest locks precede the game lock, matching normal challenge acquisition.
-          const newSeat = method === 'POST' ? await newChallengeSeat(client, request, guest) : null;
+          const newSeat = method === 'POST' ? (await newChallengeSeat(client, request, guest)).id : null;
           const seat = await participantGuestId(client, request, guest, request.params.id);
           const game = (await client.query<{
             status: string;
+            rated: boolean;
             creator_guest_id: string;
             acceptor_guest_id: string;
             time_control: TimeControlId;
-          }>(`SELECT g.status,c.creator_guest_id,c.acceptor_guest_id,c.time_control FROM chess.games g JOIN chess.challenges c ON c.id=g.id WHERE g.id=$1 FOR UPDATE OF g`, [request.params.id])).rows[0];
+          }>(`SELECT g.status,g.rated,c.creator_guest_id,c.acceptor_guest_id,c.time_control FROM chess.games g JOIN chess.challenges c ON c.id=g.id WHERE g.id=$1 FOR UPDATE OF g`, [request.params.id])).rows[0];
           if (!game)
             return reply.code(404).send({ error: 'game_not_found' });
           const side = seat === game.creator_guest_id ? 'white' : seat === game.acceptor_guest_id ? 'black' : null;
           if (!side)
             return reply.code(403).send({ error: 'not_a_participant' });
+          if (game.rated) return method === 'POST'
+            ? reply.code(409).send({ error: 'rated_rematch_unavailable' }) : { offer: null } satisfies GameRematchResponse;
           let offer = (await client.query<Offer>('SELECT * FROM chess.game_rematches WHERE game_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1', [request.params.id])).rows[0];
           if (offer?.status === 'pending' && offer.expires_at.getTime() <= Date.now()) {
             await client.query("UPDATE chess.game_rematches SET status='expired' WHERE id=$1", [offer.id]);

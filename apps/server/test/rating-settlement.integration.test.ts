@@ -25,6 +25,7 @@ interface Settlement {
 }
 
 const startMs = 1_000_000_000_000;
+const whiteMateInOne = '7k/8/5KQ1/8/8/8/8/8 w - - 0 1';
 const services: GameService[] = [];
 const clock = { value: startMs, nowMs() { return this.value; } };
 let pool: pg.Pool;
@@ -165,7 +166,7 @@ it('settles checkmate for Black in the preset pool and replays the original move
 });
 
 it('settles resignation for White using frozen accounts and preserves idempotency after restart', async () => {
-  const game = await fixture();
+  const game = await fixture({ fen: whiteMateInOne });
   const unrelated = await player();
   // Test that settlement uses the identities saved at acceptance even if a legacy link changes.
   await pool.query('UPDATE chess.guest_sessions SET account_id = $2 WHERE id = $1', [game.white.seat, unrelated.account]);
@@ -216,6 +217,10 @@ it('settles a valid fifty-move claim and the automatic seventy-five-move draw', 
 it('settles a server-clock timeout once when two instances process the due game', async () => {
   const game = await fixture({ control: '1+0' });
   expect((await move(game, 'white', 0, 'e2', 'e4')).status).toBe(200);
+  expect(await service.registerTimeoutWitness(game.id, [
+    { from: 'e7', to: 'e5' }, { from: 'f1', to: 'c4' }, { from: 'b8', to: 'c6' },
+    { from: 'd1', to: 'h5' }, { from: 'g8', to: 'f6' }, { from: 'h5', to: 'f7' },
+  ])).toBe(true);
   const other = await server();
   clock.value = startMs + 60_000;
   await Promise.all([service.heartbeat(), other.heartbeat()]);
@@ -302,7 +307,7 @@ it('allows a trusted adjudication transaction to settle once while another trans
 
 it.each(['initialize', 'second rating update', 'history insertion'] as const)
   ('rolls back the final transition and all rating writes on failure at %s, then retries after restart', async failure => {
-    const game = await fixture();
+    const game = await fixture({ fen: whiteMateInOne });
     const request = randomUUID();
     const table = failure === 'history insertion' ? 'chess.game_rating_settlements' : 'chess.account_ratings';
     const check = failure === 'initialize' ? `account_id <> '${game.black.account}'`
@@ -331,10 +336,10 @@ it.each(['initialize', 'second rating update', 'history insertion'] as const)
   });
 
 it('serializes reversed seats with missing rating rows while unrelated games settle concurrently', async () => {
-  const first = await fixture();
-  const reversed = await fixture({ white: first.black, black: first.white });
-  const unrelatedOne = await fixture();
-  const unrelatedTwo = await fixture();
+  const first = await fixture({ fen: whiteMateInOne });
+  const reversed = await fixture({ white: first.black, black: first.white, fen: whiteMateInOne });
+  const unrelatedOne = await fixture({ fen: whiteMateInOne });
+  const unrelatedTwo = await fixture({ fen: whiteMateInOne });
   const other = await server();
   const commands = [first, reversed, unrelatedOne, unrelatedTwo].map((game, index) =>
     action(game, 'black', 'resign', 0, randomUUID(), index % 2 ? other : service));

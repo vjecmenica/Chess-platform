@@ -18,9 +18,10 @@ export function accountIdentity(row: { id: string; username: string; avatar_key:
 
 /** Called inside the challenge transaction; lock order matches login. */
 export async function newChallengeSeat(client: pg.PoolClient, request: FastifyRequest,
-  guest: GuestSession): Promise<string> {
+  guest: GuestSession): Promise<{ id: string; accountId: string | null }> {
   const account = await currentAccount(client, request, guest);
-  if (account) await client.query('SELECT id FROM chess.accounts WHERE id = $1 FOR UPDATE', [account.id]);
+  // Serialize seat creation while allowing the other player's game foreign keys to reference this account.
+  if (account) await client.query('SELECT id FROM chess.accounts WHERE id = $1 FOR NO KEY UPDATE', [account.id]);
   const locked = (await client.query<{ account_id: string | null; csrf_token: string }>(
     'SELECT account_id, csrf_token FROM chess.guest_sessions WHERE id = $1 FOR UPDATE', [guest.id])).rows[0]!;
   if (locked.csrf_token !== guest.csrfToken)
@@ -28,17 +29,17 @@ export async function newChallengeSeat(client: pg.PoolClient, request: FastifyRe
   const confirmed = await currentAccount(client, request, guest);
   if (confirmed?.id !== account?.id || (!account && locked.account_id !== null))
     throw Object.assign(new Error('Sign in again before occupying a new seat.'), { statusCode: 401 });
-  if (!account) return guest.id;
+  if (!account) return { id: guest.id, accountId: null };
   const existing = (await client.query<{ id: string }>(
     'SELECT id FROM chess.guest_sessions WHERE account_id = $1 AND account_play_seat', [account.id])).rows[0];
-  if (existing) return existing.id;
+  if (existing) return { id: existing.id, accountId: account.id };
   const id = randomUUID();
   // These random bearer values are never issued to a browser. Access requires an account session.
   await client.query(`INSERT INTO chess.guest_sessions
     (id, token_hash, csrf_token, expires_at, account_id, account_play_seat)
     VALUES ($1, $2, $3, now() + interval '30 days', $4, true)`,
   [id, tokenHash(randomBytes(32).toString('hex')), randomBytes(32).toString('hex'), account.id]);
-  return id;
+  return { id, accountId: account.id };
 }
 
 export async function currentAccount(pool: Pick<pg.Pool, 'query'>, request: FastifyRequest,
@@ -58,7 +59,12 @@ export async function participantGuestId(pool: Pick<pg.Pool, 'query'>, request: 
   if (!account) return guest.id;
   const { rows } = await pool.query<{ id: string }>(`SELECT s.id FROM chess.challenges c
     JOIN chess.guest_sessions s ON s.id IN (c.creator_guest_id, c.acceptor_guest_id)
-    WHERE c.id = $1 AND (s.id = $2 OR s.account_id = $3)
+    LEFT JOIN chess.games g ON g.id = c.id
+    WHERE c.id = $1 AND CASE
+      WHEN g.rated THEN $3 = CASE WHEN s.id = c.creator_guest_id THEN g.rated_white_account_id ELSE g.rated_black_account_id END
+      WHEN c.rated THEN s.id = c.creator_guest_id AND c.rated_creator_account_id = $3
+      ELSE s.id = $2 OR s.account_id = $3
+    END
     ORDER BY (s.id = $2) DESC LIMIT 1`, [gameId, guest.id, account.id]);
   return rows[0]?.id ?? guest.id;
 }

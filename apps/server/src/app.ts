@@ -18,7 +18,7 @@ import type { AvatarStorage } from './avatar-storage.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService; accountEmail?: AccountEmail | undefined;
-    avatarStorage?: AvatarStorage }) {
+    avatarStorage?: AvatarStorage; ratedChallengesEnabled?: boolean }) {
   const app = Fastify({ logger: logger ? { redact: ['req.headers.cookie', 'req.headers.authorization',
     'req.headers["x-csrf-token"]', 'req.body', 'req.url', 'res.headers["set-cookie"]'] } : false,
     ajv: { customOptions: { removeAdditional: false } } });
@@ -46,7 +46,7 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
     registerExplorerRoutes(app, challenges.pool);
     const gameService = challenges.gameService ?? createGameService(challenges.pool);
     registerChallengeRoutes(app, challenges.pool, challenges.secureCookies,
-      () => gameService.trustedNowMs());
+      () => gameService.trustedNowMs(), challenges.ratedChallengesEnabled ?? false);
     registerGameRoutes(app, challenges.pool, gameService);
     registerGameChatRoutes(app, challenges.pool);
     registerRematches(app, challenges.pool, () => gameService.trustedNowMs());

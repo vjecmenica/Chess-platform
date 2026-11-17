@@ -17,8 +17,8 @@ it('shows actual seat names, honest rating placeholders, time control and suppor
   expect(html).toContain('<dt>White</dt><dd><strong class="player-name">walnut</strong>');
   expect(html).toContain('<dt>Black</dt><dd><strong class="player-name">Guest</strong>');
   expect(html.match(/Rating unavailable/g)).toHaveLength(2);
-  expect(html.match(/>Unrated</g)).toHaveLength(1);
-  expect(html).toContain('<dt>Rated status</dt><dd>Unrated</dd>');
+  expect(html).toContain('<dt>Mode</dt><dd>Casual</dd>');
+  expect(render({ ...game, rated: true })).toContain('<dt>Mode</dt><dd>Rated</dd>');
   expect(html).toContain('<dt>Variant</dt><dd>Standard</dd>');
   expect(html).toContain('<dt>Time control</dt>');
   expect(html).toContain('>3+2</span>'); expect(html).toContain('>Blitz</small>');
@@ -54,7 +54,7 @@ it('handles live, waiting, pending, finished and aborted games without implying 
 });
 it('shows game details alongside the rest of the compact summary', () => {
   const html = render(game);
-  expect(html).toMatch(/<dl>[\s\S]*walnut[\s\S]*In progress[\s\S]*3\+2[\s\S]*Started \(local time\)[\s\S]*Unrated[\s\S]*Standard[\s\S]*<\/dl>/);
+  expect(html).toMatch(/<dl>[\s\S]*walnut[\s\S]*In progress[\s\S]*3\+2[\s\S]*Started \(local time\)[\s\S]*Casual[\s\S]*Standard[\s\S]*<\/dl>/);
   expect(html).not.toContain('More game details');
 });
 it('removes passive turn copy while preserving actionable adjudication, readiness and history guidance', () => {

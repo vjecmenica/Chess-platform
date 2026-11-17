@@ -4,6 +4,7 @@ export type ReadinessResponse =
 
 export interface GuestSessionResponse {
   readonly csrfToken: string;
+  readonly ratedChallengesEnabled?: boolean;
 }
 
 export interface ChallengeSummary {

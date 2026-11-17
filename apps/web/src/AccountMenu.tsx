@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import type { AccountState } from '@chess/contracts';
 
 export const accountMessages: Record<string, string> = {
@@ -42,8 +42,9 @@ export function AccountForm({ mode, busy, onSubmit, onMode }: {
   </form>;
 }
 
-export function AccountMenu({ csrfToken, current = false, onAccountChange }: {
+export function AccountMenu({ csrfToken, current = false, onAccountChange, signInRef }: {
   csrfToken: string | undefined; current?: boolean; onAccountChange?: (owner: string | null) => void;
+  signInRef?: Ref<() => void>;
 }) {
   const dialog = useRef<HTMLDialogElement | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
@@ -85,6 +86,12 @@ export function AccountMenu({ csrfToken, current = false, onAccountChange }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load your account.'); }
   }
 
+  function open() {
+    dialog.current?.showModal();
+    void load();
+  }
+  useImperativeHandle(signInRef, () => open);
+
   async function act(path: string, body: Record<string, string> | null = null) {
     setError(null); setBusy(true);
     try {
@@ -97,9 +104,8 @@ export function AccountMenu({ csrfToken, current = false, onAccountChange }: {
 
   return <>
     {state?.account ? <a className="account-trigger secondary player-name" href="/account" aria-current={current ? 'page' : undefined}>{state.account.username}</a> :
-      <button className="account-trigger secondary" aria-current={current ? 'page' : undefined} disabled={!csrfToken} onClick={() => {
-        dialog.current?.showModal(); void load();
-      }}>Account</button>}
+      <button className="account-trigger secondary" aria-current={current ? 'page' : undefined}
+        disabled={!csrfToken} onClick={open}>Account</button>}
     <dialog ref={dialog} className="account-dialog" aria-labelledby="account-heading">
       <div className="account-dialog-body">
         <div className="account-title"><h2 id="account-heading">{state?.account ? 'Your account' : mode === 'register' ? 'Register' : 'Log in'}</h2>

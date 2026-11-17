@@ -16,7 +16,7 @@ async function main() {
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService,
-    accountEmail: accountEmailFromEnvironment(), avatarStorage });
+    accountEmail: accountEmailFromEnvironment(), avatarStorage, ratedChallengesEnabled: config.ratedChallengesEnabled });
   let timer: ReturnType<typeof setInterval> | null = null;
   let avatarCleanupTimer: ReturnType<typeof setInterval> | null = null;
   let avatarCleanup: Promise<void> | null = null;

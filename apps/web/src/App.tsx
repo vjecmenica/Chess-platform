@@ -18,7 +18,7 @@ import { ShareExportLauncher } from './ShareExportDialog';
 import { GameFavorite } from './FavoriteButton';
 import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
-import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
+import { ChallengeModeSelect, TimeControlSelect, timeControlLabel } from './TimeControlSelect';
 import { AnalysisSidebarTabs } from './AnalysisSidebarTabs';
 import { MastersPanel } from './MastersPanel';
 import { OpeningLabel, useGameOpening } from './OpeningLabel';
@@ -92,6 +92,13 @@ const errors: Record<string, string> = {
   first_move_deadline_elapsed: 'The first-move deadline passed. The game was aborted.',
   request_id_conflict: 'This retry ID was used for a different request. Refresh the page.',
   invalid_time_control: 'Choose one of the supported time controls.',
+  invalid_challenge_mode: 'Choose Rated or Casual.',
+  rated_account_required: 'Sign in to play a Rated challenge.',
+  rated_challenges_disabled: 'Rated challenges are currently unavailable.',
+  rated_creator_unavailable: 'The creator’s Rated seat is no longer available.',
+  account_required: 'Sign in again to continue.',
+  session_changed: 'Your session changed. Refresh the page and try again.',
+  challenge_unavailable: 'Could not save the challenge. Please try again.',
   clock_not_started: 'Both guests must press Ready before White’s clock starts.',
   received_before_turn: 'This move arrived before your turn began. The position will be refreshed.',
   flag_fell: 'The server recorded a flag at the clock deadline. The position will be refreshed.',
@@ -146,8 +153,10 @@ export function App() {
   const {value:appearance} = useAppearance();
   const [session, setSession] = useState<GuestSessionResponse | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const signIn = useRef<() => void>(null);
   const [challenge, setChallenge] = useState<ChallengeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [challengeActionError, setChallengeActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [game, setGame] = useState<GameReadResponse | null>(null);
   const [chatRevision, setChatRevision] = useState(0);
@@ -190,6 +199,9 @@ export function App() {
   const [readyBusy, setReadyBusy] = useState(false);
   const createRequestId = useRef<string | null>(null);
   const [selectedTimeControl, setSelectedTimeControl] = useState<TimeControlId>(defaultTimeControl);
+  const [selectedRated, setSelectedRated] = useState(false);
+  const ratedEnabled = session?.ratedChallengesEnabled === true;
+  const canCreateRated = ratedEnabled && accountId !== null;
   const resignFocus = useRef<HTMLButtonElement | null>(null);
   const challengeFetch = useRef<Promise<void> | null>(null);
   const gameFetch = useRef<Promise<boolean> | null>(null);
@@ -531,20 +543,20 @@ export function App() {
   }
 
   async function createChallenge() {
-    if (session === null) return;
+    if (session === null || selectedRated && !canCreateRated) return;
     setBusy(true);
-    setError(null);
+    setChallengeActionError(null);
     createRequestId.current ??= crypto.randomUUID();
     try {
       const created = await responseBody<ChallengeSummary>(await fetch('/api/challenges', {
         method: 'POST',
         headers: { 'Idempotency-Key': createRequestId.current, 'X-CSRF-Token': session.csrfToken,
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeControl: selectedTimeControl }),
+        body: JSON.stringify({ timeControl: selectedTimeControl, rated: selectedRated }),
       }));
       window.location.assign(created.path);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not create the challenge.');
+      setChallengeActionError(cause instanceof Error ? cause.message : 'Could not create the challenge.');
       setBusy(false);
     }
   }
@@ -552,7 +564,7 @@ export function App() {
   async function acceptChallenge() {
     if (session === null || challengeId === null) return;
     setBusy(true);
-    setError(null);
+    setChallengeActionError(null);
     try {
       const accepted = await responseBody<ChallengeSummary>(await fetch(
         `/api/challenges/${challengeId}/accept`,
@@ -560,7 +572,7 @@ export function App() {
       ));
       setChallenge(accepted);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not accept the challenge.');
+      setChallengeActionError(cause instanceof Error ? cause.message : 'Could not accept the challenge.');
     } finally {
       setBusy(false);
     }
@@ -1227,13 +1239,11 @@ export function App() {
   return (
     <>
     <AnalysisNavigation section={analysisOpen ? 'analysis' : 'play'}
-      accountControl={<AccountMenu csrfToken={session?.csrfToken} onAccountChange={setAccountId} />} />
+      accountControl={<AccountMenu csrfToken={session?.csrfToken} onAccountChange={setAccountId} signInRef={signIn} />} />
     <main className={challengeId === null && imported === null ? 'home-page'
       : analysisOpen ? 'challenge-page analysis-page' : 'challenge-page'}>
       {challengeId === null && imported === null && <section className="intro">
-        <p className="eyebrow">Guest challenge preview</p>
         <h1>Challenge a friend.</h1>
-        <p className="description">Create a challenge and share its link with a second guest.</p>
       </section>}
       {challenge?.status !== 'accepted' && imported === null && <section className="notice"
         aria-labelledby="challenge-title">
@@ -1243,33 +1253,52 @@ export function App() {
         </div>
         {session === null && error === null && <p role="status">Starting your guest session…</p>}
         {error !== null && <p className="error" role="alert">{error}</p>}
+        {challengeActionError !== null && <p className="error" role="alert">{challengeActionError}</p>}
         {challengeId === null && session !== null && (
           <>
-          <TimeControlSelect value={selectedTimeControl} disabled={busy} onChange={value => {
-            setSelectedTimeControl(value);
-            createRequestId.current = null;
-          }} />
-          <button type="button" className="primary" disabled={busy} onClick={() => void createChallenge()}>
-            {busy ? 'Creating…' : 'Create challenge'}
-          </button>
+          <div className="challenge-terms">
+            <TimeControlSelect value={selectedTimeControl} disabled={busy} onChange={value => {
+              setSelectedTimeControl(value);
+              createRequestId.current = null;
+              setChallengeActionError(null);
+            }} />
+            <ChallengeModeSelect rated={selectedRated} ratedAvailable={canCreateRated} disabled={busy}
+              onChange={rated => {
+                setSelectedRated(rated);
+                createRequestId.current = null;
+                setChallengeActionError(null);
+              }} />
+          </div>
+          <div className="challenge-create-actions">
+            <button type="button" className="primary" disabled={busy || selectedRated && !canCreateRated}
+              onClick={() => void createChallenge()}>
+              {busy ? 'Creating…' : 'Create challenge'}
+            </button>
+            {ratedEnabled && accountId === null && <button type="button" className="secondary"
+              onClick={() => signIn.current?.()}>Sign in for Rated</button>}
+          </div>
           </>
         )}
         {challenge !== null && <details className="challenge-details" open>
           <summary>Challenge details</summary>
-          <p className="status">Waiting for a second guest</p>
-          <p>Casual · {timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)}</p>
+          <p className="status">Waiting for an opponent</p>
+          <p>{challenge.game.rated ? 'Rated' : 'Casual'} · {timeControlLabel(challenge.game.initialMs, challenge.game.incrementMs)}</p>
           <div className="seats">
             <p>White <strong>{challenge.yourSeat === 'white' ? 'You' : 'Occupied'}</strong></p>
             <p>Black <strong>{challenge.yourSeat === 'black' ? 'You' : challenge.seats.black === 'open' ? 'Open' : 'Occupied'}</strong></p>
           </div>
           <label htmlFor="challenge-link">Shareable link</label>
           <input id="challenge-link" readOnly value={link} onFocus={event => event.currentTarget.select()} />
-          {challenge.status === 'open' && challenge.yourSeat === 'white' &&
+          {challenge.status === 'open' && challenge.yourSeat === 'white' && !challenge.game.rated &&
             <p>Open the link in another browser or private window to use a different guest session.</p>}
-          {challenge.status === 'open' && challenge.yourSeat === null &&
-            <button type="button" className="primary" disabled={busy} onClick={() => void acceptChallenge()}>
-              {busy ? 'Joining…' : 'Accept challenge as Black'}
-            </button>}
+          {challenge.status === 'open' && challenge.yourSeat === null && (
+            challenge.game.rated && !ratedEnabled ? <p>Rated challenges are currently unavailable.</p>
+              : challenge.game.rated && accountId === null ? <button type="button" className="primary"
+                onClick={() => signIn.current?.()}>Sign in to accept</button>
+                : <button type="button" className="primary" disabled={busy} onClick={() => void acceptChallenge()}>
+                  {busy ? 'Joining…' : 'Accept challenge as Black'}
+                </button>
+          )}
         </details>}
       </section>}
 
@@ -1494,7 +1523,7 @@ export function App() {
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
                 {result !== null ? <FinishedResultArea key={game.id} score={result.score}
                   explanation={result.explanation} endActions={endActions}
-                  beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
+                  beforeAnalysis={imported===null&&session&&game.status==='finished'&&!game.rated?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
                   analysisHref={!analysisOpen && imported === null
                     ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   /> : !blankBoard && liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}

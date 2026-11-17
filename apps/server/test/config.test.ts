@@ -18,7 +18,15 @@ describe('startup configuration', () => {
   });
 
   it('binds to loopback by default and accepts an explicit port', () => {
-    expect(readConfig({ DATABASE_URL })).toEqual({ connectionString: DATABASE_URL, host: '127.0.0.1', port: 3001 });
+    expect(readConfig({ DATABASE_URL })).toEqual({ connectionString: DATABASE_URL, host: '127.0.0.1', port: 3001,
+      ratedChallengesEnabled: false });
     expect(readConfig({ DATABASE_URL, PORT: '4001' }).port).toBe(4001);
+  });
+
+  it('allows explicit Rated testing outside production only', () => {
+    expect(readConfig({ DATABASE_URL, ENABLE_DEV_RATED_CHALLENGES: 'true' }).ratedChallengesEnabled).toBe(true);
+    expect(readConfig({ DATABASE_URL, ENABLE_DEV_RATED_CHALLENGES: '1' }).ratedChallengesEnabled).toBe(false);
+    expect(readConfig({ DATABASE_URL, ENABLE_DEV_RATED_CHALLENGES: 'true', NODE_ENV: 'production' })
+      .ratedChallengesEnabled).toBe(false);
   });
 });
