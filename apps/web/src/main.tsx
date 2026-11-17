@@ -7,10 +7,12 @@ import { AccountPage } from './MyGames';
 import { RecoveryPage, type RecoveryMode } from './AccountRecovery';
 import { initializeInterfaceTheme } from './interface-theme';
 import { initializeInterfaceRoundness } from './interface-roundness';
+import { initializeInputModality } from './input-modality';
 import './style.css';
 
 initializeInterfaceTheme();
 initializeInterfaceRoundness();
+initializeInputModality();
 
 const recoveryMode = /^\/account\/(recover|verify-email|reset-password)\/?$/.exec(window.location.pathname)?.[1] as RecoveryMode | undefined;
 // Fragments never reach HTTP logs. Remove the token from browser history before rendering anything.
