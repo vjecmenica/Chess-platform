@@ -1,5 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
-import { avatarCropRect, boundAvatarCrop, initialAvatarCrop, maxAvatarZoom, renderAvatarCrop, type AvatarCrop } from './avatar-crop';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
+import { avatarCropRect, boundAvatarCrop, initialAvatarCrop, renderAvatarCrop, type AvatarCrop } from './avatar-crop';
 import { avatarSourceMaxBytes, checkAvatarDimensions, inspectAvatarSource, type ImageSize } from './avatar-source';
 
 export function ProfilePictureCropDialog({ file, onSave, onClose }: {
@@ -10,7 +10,7 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
   const stage = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const image = useRef<HTMLImageElement>(null);
-  const drag = useRef<{ id: number; x: number; y: number; width: number } | null>(null);
+  const drag = useRef<{ width: number; points: Map<number, { x: number; y: number }> } | null>(null);
   const [url, setUrl] = useState<string>();
   const [size, setSize] = useState<ImageSize>();
   const [crop, setCrop] = useState<AvatarCrop>();
@@ -23,6 +23,11 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
     element?.showModal();
     return () => element?.close();
   }, []);
+
+  const zoomBy = useCallback((direction: number) => {
+    if (!size || saving) return;
+    setCrop(value => value && boundAvatarCrop(size, { ...value, zoom: Math.round((value.zoom + direction * .1) * 20) / 20 }));
+  }, [size, saving]);
 
   useEffect(() => {
     let active = true;
@@ -48,11 +53,11 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
     const wheel = (event: WheelEvent) => {
       if (event.deltaY === 0 || event.ctrlKey) return;
       event.preventDefault();
-      setCrop(value => value && boundAvatarCrop(size, { ...value, zoom: Math.round((value.zoom - Math.sign(event.deltaY) * .1) * 20) / 20 }));
+      zoomBy(-Math.sign(event.deltaY));
     };
     element.addEventListener('wheel', wheel, { passive: false });
     return () => element.removeEventListener('wheel', wheel);
-  }, [size, saving]);
+  }, [size, saving, zoomBy]);
 
   function pan(horizontal: number, vertical: number) {
     if (!size || saving) return;
@@ -64,18 +69,28 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!crop || saving || event.button !== 0 || !event.isPrimary || !frame.current) return;
+    if (!crop || saving || event.button !== 0 || !frame.current) return;
+    if (drag.current && (event.pointerType !== 'touch' || drag.current.points.size >= 2)) return;
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, width: frame.current.getBoundingClientRect().width };
+    drag.current ??= { width: frame.current.getBoundingClientRect().width, points: new Map() };
+    drag.current.points.set(event.pointerId, { x: event.clientX, y: event.clientY });
   }
 
   function moveDrag(event: PointerEvent<HTMLDivElement>) {
-    const last = drag.current;
-    if (!last || event.pointerId !== last.id || last.width <= 0) return;
-    pan((event.clientX - last.x) / last.width, (event.clientY - last.y) / last.width);
-    last.x = event.clientX;
-    last.y = event.clientY;
+    const gesture = drag.current;
+    const last = gesture?.points.get(event.pointerId);
+    if (!gesture || !last || gesture.width <= 0 || !size || saving) return;
+    const { clientX: x, clientY: y } = event;
+    const other = [...gesture.points].find(([id]) => id !== event.pointerId)?.[1];
+    if (other) {
+      const distance = Math.hypot(last.x - other.x, last.y - other.y);
+      if (distance > 0) {
+        const scale = Math.hypot(x - other.x, y - other.y) / distance;
+        setCrop(value => value && boundAvatarCrop(size, { ...value, zoom: value.zoom * scale }));
+      }
+    } else pan((x - last.x) / gesture.width, (y - last.y) / gesture.width);
+    gesture.points.set(event.pointerId, { x, y });
   }
 
   async function save() {
@@ -97,15 +112,28 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
     <div className="profile-crop-heading">
       <h2 id={`${id}-title`}>Crop profile picture</h2>
       <button type="button" aria-label="Close crop dialog" className="secondary profile-crop-close"
-        disabled={saving} onClick={onClose}>×</button>
+        disabled={saving} onClick={onClose}>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path d="m6 6 12 12M18 6 6 18" />
+        </svg>
+      </button>
     </div>
     <div ref={stage} className="profile-crop-stage" tabIndex={crop ? 0 : undefined} role="group" aria-label="Position photo"
-      aria-describedby={crop ? `${id}-help` : undefined}
-      onPointerDown={startDrag} onPointerMove={moveDrag} onLostPointerCapture={() => { drag.current = null; }}
+      aria-description={crop ? 'Use the arrow keys to move the photo and plus or minus to zoom.' : undefined}
+      onPointerDown={startDrag} onPointerMove={moveDrag} onLostPointerCapture={event => {
+        drag.current?.points.delete(event.pointerId);
+        if (drag.current?.points.size === 0) drag.current = null;
+      }}
       onKeyDown={event => {
+        if (!crop || saving || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (event.key === '+' || event.key === '=' || event.key === '-') {
+          event.preventDefault();
+          zoomBy(event.key === '-' ? -1 : 1);
+          return;
+        }
         const step = event.shiftKey ? .15 : .035;
         const direction = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
-        if (direction && crop) { event.preventDefault(); pan(direction[0]!, direction[1]!); }
+        if (direction) { event.preventDefault(); pan(direction[0]!, direction[1]!); }
       }}>
       <div ref={frame} className="profile-crop-frame">
         {url && <img ref={image} src={url} alt="" draggable={false}
@@ -119,22 +147,11 @@ export function ProfilePictureCropDialog({ file, onSave, onClose }: {
       </div>
       {crop ? <div className="profile-crop-shade" aria-hidden="true" /> : !sourceError && <span role="status">Opening image…</span>}
     </div>
-    {crop && size && <>
-      <small id={`${id}-help`}>Drag the photo or use the arrow keys to position it.</small>
-      <div className="profile-crop-zoom">
-        <label htmlFor={`${id}-zoom`}>Zoom</label>
-        <input type="range" id={`${id}-zoom`} min={1} max={maxAvatarZoom} step={.05} value={crop.zoom}
-          aria-valuetext={`${Math.round(crop.zoom * 100)}%`} disabled={saving}
-          onChange={event => setCrop(boundAvatarCrop(size, { ...crop, zoom: event.currentTarget.valueAsNumber }))} />
-        <button type="button" className="secondary" disabled={saving} onClick={() => setCrop(initialAvatarCrop(size))}>Reset crop</button>
-      </div>
-    </>}
     {(sourceError || saveError) && <p className="error" role="alert">{sourceError || saveError}</p>}
     {saving && <span className="visually-hidden" role="status">Saving profile picture…</span>}
     <div className="profile-crop-actions">
       <button type="button" className="secondary" disabled={saving} onClick={onClose}>Cancel</button>
-      <button type="button" className="primary" disabled={!crop || saving} onClick={() => void save()}>
-        {saving ? 'Saving picture…' : 'Save picture'}</button>
+      <button type="button" className="primary" disabled={!crop || saving} onClick={() => void save()}>Save</button>
     </div>
   </dialog>;
 }

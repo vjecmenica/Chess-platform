@@ -4,6 +4,7 @@ import { expect, it } from 'vitest';
 import { ClockPanel } from '../src/ClockPanel';
 import { AccountProfileHeader } from '../src/MyGames';
 import { ImportedPlayerRow } from '../src/PlayerIdentity';
+import { ProfilePictureCropDialog } from '../src/ProfilePictureCropDialog';
 import { importPgn } from '../src/pgn-import';
 
 const avatarUrl = '/api/avatars/versioned-image.webp';
@@ -30,5 +31,18 @@ it('uses initials for accounts, a neutral guest symbol and no site avatar for PG
   expect(guest).not.toContain('<img ');
   const imported = importPgn('[White "ada"]\n\n1. e4 *', 'game');
   const row = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'white' }));
-  expect(row).not.toContain('player-avatar');
+  expect(row).toContain('player-avatar" aria-hidden="true"><svg');
+  expect(row).not.toContain('<img ');
+});
+
+it('keeps the crop dialog actions limited to the close icon, Cancel and Save', () => {
+  const html = renderToStaticMarkup(createElement(ProfilePictureCropDialog, {
+    file: new File([], 'profile.jpeg'), onClose: () => {}, onSave: async () => {},
+  }));
+  expect(html).toContain('Crop profile picture');
+  expect(html).toMatch(/aria-label="Close crop dialog"[^>]*><svg/);
+  expect(html).toContain('>Cancel</button>');
+  expect(html).toContain('>Save</button>');
+  expect(html.match(/<button /g)).toHaveLength(3);
+  expect(html).not.toMatch(/type="range"|Reset crop|Drag the photo/);
 });

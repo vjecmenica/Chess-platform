@@ -256,7 +256,7 @@ and hashes are never returned. No schema migration is required.
 
 ## Profile avatars
 
-Apply migration `026_profile_avatars.sql` with `npm run db:migrate` before running the avatar API. In Account Settings, choose a still JPEG, PNG, or WebP up to 10 MiB, 8192 pixels per side, and 24 megapixels. Position and zoom it in the square crop, then select **Save picture** to upload the processed 256 × 256 image. The original stays in the browser.
+Apply migration `026_profile_avatars.sql` with `npm run db:migrate` before running the avatar API. In Account Settings, choose a still JPEG, PNG, or WebP up to 10 MiB, 8192 pixels per side, and 24 megapixels. Drag to position the photo and scroll or pinch to zoom. With the crop area focused, use the arrow keys to reposition it and `+` or `-` to zoom. Select **Save** to upload the processed 256 × 256 image. The original stays in the browser.
 
 The upload endpoint still limits requests to 2 MiB and images to 4096 × 4096 pixels. It independently validates and normalizes the upload to 256 × 256 WebP with metadata removed. PostgreSQL stores the avatar's random object key and the deletion queue. Account profile pictures are public by URL. Accounts and saved games retain their existing access controls.
 

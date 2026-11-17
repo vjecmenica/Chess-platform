@@ -16,7 +16,9 @@ describe('shared game presentation', () => {
         const html = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side,
           isYou: false, playerNames, historicalMs, showStatus: false }));
         expect(html).toContain(`class="player-name" title="${playerNames[side]}">${playerNames[side]}</span>`);
-        expect(html).toContain(`<b>${side === 'white' ? 'White' : 'Black'}</b>`);
+        expect(html).toContain(`<span class="visually-hidden">${side === 'white' ? 'White' : 'Black'} player: </span>`);
+        expect(html).not.toMatch(/<b>(White|Black)<\/b>/);
+        expect(html).toContain('<span class="player-meta"></span>');
       }
     }
     const guest = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side: 'black',
@@ -32,7 +34,7 @@ describe('shared game presentation', () => {
     const white = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'white' }));
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'black' }));
     expect(white).toContain('class="clock clock-no-status imported-player"');
-    expect(white).toMatch(/player-name"[^>]*>Ada<\/span>.*player-rating.*1820.*<b>White<\/b>/);
+    expect(white).toMatch(/player-name"[^>]*>Ada<\/span><span class="player-meta"><span class="player-rating"[^>]*>1820<\/span>/);
     expect(white).not.toContain('player-clock-value');
     expect(white).not.toContain('(1820)');
     expect(white).not.toContain('At selected move');
@@ -42,7 +44,8 @@ describe('shared game presentation', () => {
     const guest = renderToStaticMarkup(createElement(ClockPanel, {
       clock: null, side: 'white', isYou: true,
     }));
-    expect(guest).toMatch(/player-name"[^>]*>Guest<\/span>.*<b>White<\/b>/);
+    expect(guest).toContain('<span class="visually-hidden">White player: </span>');
+    expect(guest).not.toContain('<b>White</b>');
     expect(guest).not.toContain('player-rating');
   });
 
@@ -91,7 +94,7 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.position-column \{ grid-column: 1; margin-top: 0/);
     expect(css).toMatch(/\.clock-no-status \{[^}]*display: flex; align-items: center;[^}]*min-height: 72px/);
     expect(css).toMatch(/@media \(max-width: 540px\)[\s\S]*?\.clock-no-status \{ min-height: 62px; \}/);
-    expect(css).toMatch(/\.player-rating \{[^}]*font-size: var\(--text-body\); font-weight: 700/);
+    expect(css).toMatch(/\.player-meta \{[^}]*min-height: 1lh;[^}]*font: 500 var\(--text-meta\)\/1\.5 var\(--font-ui\)/);
     expect(css).toMatch(/\.player-label \{[^}]*font-size: var\(--text-body\)/);
   });
 

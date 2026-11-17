@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { ClockState, GamePlayerNames, GameSide, PlayerAvatar, SavedMove } from '@chess/contracts';
 import { PlayerIdentity, sitePlayerName } from './PlayerIdentity';
 import { ClockValue, formatClock, PlayerClockValue } from './ClockValue';
-import { ProfileAvatar } from './ProfileAvatar';
 export { formatClock } from './ClockValue';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
@@ -60,15 +59,14 @@ export function ClockPanel({ clock, side, isYou, playerNames, avatar, historical
   const valueMs = historicalMs !== undefined ? historicalMs
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   const running = historicalMs === undefined && clock?.phase === 'running' && clock.activeSide === side;
-  return <div className={`clock site-player-clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
+  const status = !showStatus || historicalMs !== undefined ? null : clock === null ? 'Earlier untimed game'
+    : clock.startMode === 'readiness' ? clock.ready[side] ? 'Ready' : 'Not ready'
+      : clock.phase === 'awaiting_first_move' ? 'Clock paused' : clock.activeSide === side ? 'Running' : 'Stopped';
+  return <div className={`clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <ProfileAvatar className="player-avatar" name={playerNames?.[side] ?? null} url={avatar?.url} />
-      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} />
+      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} status={status}
+        accountName={playerNames?.[side]} avatarUrl={avatar?.url} />
       <PlayerClockValue side={side} milliseconds={valueMs} fallback={historicalMs !== undefined ? '—' : 'Untimed'} />
-      {showStatus && historicalMs === undefined && <small>{clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'
-        ? clock.phase === 'awaiting_first_move' ? 'Clock paused'
-          : clock.activeSide === side ? 'Running' : 'Stopped'
-        : clock.ready[side] ? 'Ready' : 'Not ready'}</small>}
       {graceMs !== null && <span className="first-move-countdown"
         aria-label={`${side === 'white' ? 'White' : 'Black'} first-move deadline, ${formatClock(graceMs)} remaining`}>
         First move <b aria-live="off"><ClockValue milliseconds={graceMs} /></b>
