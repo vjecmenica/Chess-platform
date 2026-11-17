@@ -14,6 +14,7 @@ import { GameRematch } from './GameRematch';
 import { ActionIcon } from './ActionIcon';
 import { GameChat } from './GameChat';
 import { BoardUtilities } from './BoardUtilities';
+import { ShareExportLauncher } from './ShareExportDialog';
 import { GameInfo, liveGameStatus, PgnGameInfo } from './GameInfo';
 import { DrawOfferControl } from './DrawOfferControl';
 import { TimeControlSelect, timeControlLabel } from './TimeControlSelect';
@@ -68,6 +69,8 @@ import { advanceDragVisual } from './drag-visual';
 const challengeId = /^\/challenge\/([0-9a-f-]{36})$/.exec(window.location.pathname)?.[1] ?? null;
 const pollIntervalMs = 4_000;
 const challengePollIntervalMs = 1_000;
+// Preserve the automatic board size budget independently of the rendered player and tool rows.
+const analysisBoardChromeBudget = 230;
 const pieceNames: Record<string, string> = {
   k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn',
 };
@@ -1074,17 +1077,16 @@ export function App() {
   const reviewHighlight = game && completedReview
     ? reviewedBoardMove(game, completedReview, analysis?.cursor ?? null, displayedFen, bookMoves) : null;
   const activeBranchId = analysis?.cursor.kind === 'branch' ? analysis.cursor.id : null;
-  const result = imported !== null ? importedResultDisplay(imported)
+  const blankBoard = game?.id.startsWith('blank-');
+  const result = blankBoard ? null : imported !== null ? importedResultDisplay(imported)
     : resultDisplay(game?.result ?? null);
-  const boardUtilities = game === null ? null : <BoardUtilities key={game.id}
-    share={displayedFen !== null && (game.status === 'finished' || game.status === 'aborted') ? {
+  const share = game !== null && displayedFen !== null && (game.status === 'finished' || game.status === 'aborted')
+    ? <ShareExportLauncher key={game.id} options={{
       game, headers: imported?.headers, fen: displayedFen,
       gameUrl: shareableGameUrl(initialAnalysisEntry, game.id, displayedPly),
       embedUrl: embedUrlForGame(initialAnalysisEntry, game.id, orientation, displayedPly),
       board: boardRef, orientation, appearance,
-    } : null}
-    onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
-      ? { ...current, flipped: !current.flipped } : current)} />;
+    }} /> : null;
   const showHints = selected !== null && (analysisOpen ? game?.status === 'finished' : canMove);
   const moveHints = useMemo(() => showHints && selected !== null && displayedFen !== null
     ? legalMoveHints(displayedFen, displayedFen.split(' ')[1] === 'w' ? 'white' : 'black', selected)
@@ -1153,18 +1155,13 @@ export function App() {
       frameId = requestAnimationFrame(() => {
         if (resizeGesture.current) return;
         const stacked = window.matchMedia('(max-width: 900px)').matches;
-        const play = workspace.querySelector('.play-column')?.getBoundingClientRect();
-        const frame = boardFrameRef.current?.getBoundingClientRect();
-        const tools = workspace.querySelector('.player-material-bottom > .player-material-row')?.getBoundingClientRect();
-        // Keep the automatic board sizing budget independent of player and tool row spacing.
-        const upperChrome = play && frame && tools ? play.height - frame.height - boardLayoutClearance - tools.height + 95 : 180;
         setAutomaticBoardSize(defaultAnalysisBoardSize(
           stacked ? workspace.clientWidth - 34 : (workspace.clientWidth - 18) / 2 - 34,
           // Retain the previous horizontal header budget for the automatic default.
           // Moving navigation must not implicitly enlarge an unsized board.
           window.innerHeight, workspace.getBoundingClientRect().top + window.scrollY
             + (window.matchMedia('(min-width: 701px)').matches ? 62 : 0),
-          upperChrome, 320, stacked));
+          analysisBoardChromeBudget, 320, stacked));
       });
     };
     const observer = new ResizeObserver(update);
@@ -1300,6 +1297,7 @@ export function App() {
         {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}${imported === null ? ' site-game-workspace' : ''}`}
+            data-coordinates={appearance.coordinates}
             ref={gameLayoutRef}
             style={{
               '--board-layout-clearance': `${boardLayoutClearance}px`,
@@ -1403,43 +1401,6 @@ export function App() {
                   <div className="board-files" aria-hidden="true">{coordinates.files.map(file =>
                     <span key={file}>{file}</span>)}</div>
                 </>}
-                <button type="button" className="board-resize-grip"
-                  aria-label="Resize board" aria-description="Drag to resize board; use arrow keys for small steps"
-                  onPointerDown={event => {
-                    if (event.button !== 0 && event.pointerType === 'mouse') return;
-                    event.preventDefault(); event.stopPropagation();
-                    resizeGesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY,
-                      size: (boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance };
-                    const limit = resizeLimit();
-                    resizePreview.current = createResizePreview(size => {
-                      const layout = gameLayoutRef.current;
-                      if (!layout) return;
-                      layout.style.setProperty('--board-size', `${size}px`);
-                      layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
-                    }, size => { commitBoardSize(size); setBoardRowHeight(size); }, limit);
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                  }}
-                  onPointerMove={event => {
-                    const active = resizeGesture.current;
-                    if (active?.id !== event.pointerId) return;
-                    resizePreview.current?.update(active.size, event.clientX - active.x, event.clientY - active.y);
-                    event.stopPropagation();
-                  }}
-                  onPointerUp={finishResize} onPointerCancel={finishResize}
-                  onLostPointerCapture={event => {
-                    if (resizeGesture.current?.id === event.pointerId) {
-                      resizePreview.current?.finish(); resizePreview.current = null; resizeGesture.current = null;
-                    }
-                  }}
-                  onKeyDown={event => {
-                    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 20
-                      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -20 : null;
-                    if (delta === null) return;
-                    event.preventDefault(); event.stopPropagation();
-                    resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
-                    commitBoardSize(resizedBoardSize((boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance,
-                      delta, delta, resizeLimit()));
-                  }} onClick={event => event.stopPropagation()} />
                 </div>
               </div>
               {promotion !== null && <PromotionPicker request={promotion}
@@ -1460,7 +1421,52 @@ export function App() {
                   }
                 }} />}
               <PlayerMaterialPanel side={bottomSide} pieces={captured?.[bottomSide] ?? []}
-                advantage={material} placement="bottom" utilities={boardUtilities}>
+                advantage={material} placement="bottom" utilities={<BoardUtilities
+                  onFlip={() => setAnalysisBoard(current => current?.gameId === game.id
+                    ? { ...current, flipped: !current.flipped } : current)}>
+                    <button type="button" className="board-resize-grip" data-board-display-control
+                      aria-label="Resize board" aria-description="Drag to resize board; use arrow keys for small steps"
+                      onPointerDown={event => {
+                        if (event.button !== 0 && event.pointerType === 'mouse') return;
+                        event.preventDefault(); event.stopPropagation();
+                        resizeGesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY,
+                          size: (boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance };
+                        const limit = resizeLimit();
+                        resizePreview.current = createResizePreview(size => {
+                          const layout = gameLayoutRef.current;
+                          if (!layout) return;
+                          layout.style.setProperty('--board-size', `${size}px`);
+                          layout.style.setProperty('--analysis-board-column', `min(${size + 50}px, calc(100% - 320px))`);
+                        }, size => { commitBoardSize(size); setBoardRowHeight(size); }, limit);
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      }}
+                      onPointerMove={event => {
+                        const active = resizeGesture.current;
+                        if (active?.id !== event.pointerId) return;
+                        resizePreview.current?.update(active.size, event.clientX - active.x, event.clientY - active.y);
+                        event.stopPropagation();
+                      }}
+                      onPointerUp={finishResize} onPointerCancel={finishResize}
+                      onLostPointerCapture={event => {
+                        if (resizeGesture.current?.id === event.pointerId) {
+                          resizePreview.current?.finish(); resizePreview.current = null; resizeGesture.current = null;
+                        }
+                      }}
+                      onKeyDown={event => {
+                        const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 20
+                          : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -20 : null;
+                        if (delta === null) return;
+                        event.preventDefault(); event.stopPropagation();
+                        resizeMoveScroll.current = gameLayoutRef.current?.querySelector('.moves')?.scrollTop ?? null;
+                        commitBoardSize(resizedBoardSize((boardFrameRef.current?.getBoundingClientRect().width ?? 0) + boardLayoutClearance,
+                          delta, delta, resizeLimit()));
+                      }} onClick={event => event.stopPropagation()}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                        strokeLinecap="round" aria-hidden="true" focusable="false">
+                        <path d="M8 19 19 8m-4 11 4-4" />
+                      </svg>
+                    </button>
+                </BoardUtilities>}>
                 {imported !== null ? <ImportedPlayerRow imported={imported} side={bottomSide}
                   historicalMs={importedHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
@@ -1476,33 +1482,17 @@ export function App() {
             <div className="position-column">
             <AnalysisWorkspaceTabs key={`workspace-${game.id}`} gameId={game.id} enabled={analysisOpen} reviewHost={setReviewHost}
               reviewOpening={<OpeningLabel opening={opening} />}
-              footer={!game.id.startsWith('blank-') || gameError !== null || gameInfo !== null ?
+              footer={!blankBoard || share || gameError !== null || gameInfo !== null ?
               <div className="game-controls">
                 {gameError !== null && <p className="error" role="alert">{gameError}</p>}
                 {gameInfo !== null && <p className="info" role="status">{gameInfo}</p>}
-                {game.id.startsWith('blank-') ? null : result !== null ? <FinishedResultArea key={game.id} score={result.score}
-                  explanation={result.explanation} analysisOpen={analysisOpen}
+                {result !== null ? <FinishedResultArea key={game.id} score={result.score}
+                  explanation={result.explanation} share={share}
                   beforeAnalysis={imported===null&&session&&game.status==='finished'?<GameRematch game={game} csrfToken={session.csrfToken} revision={chatRevision}/>:undefined}
-                  analysisHref={imported === null ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
-                  onToggleAnalysis={() => {
-                    if (analysisOpen && analysis !== null) {
-                      setSelectedReplayPly(mainAncestorPly(analysis));
-                      setAnalysisBoard(previous => previous ? { ...previous, positions: {} } : previous);
-                      setAnalysis(createAnalysisTree(game, imported?.game.id === game.id ? imported.notes : {}));
-                    }
-                    else if (analysis !== null && selectedReplayPly !== null)
-                      setAnalysis(selectMain(analysis, game, selectedReplayPly));
-                    if (!analysisOpen && boardFrameRef.current)
-                      setBoardSize(boardFrameRef.current.getBoundingClientRect().width + boardLayoutClearance);
-                    setAnalysisOpen(!analysisOpen);
-
-                    setGameReview(null);
-                    setPositionEvaluation(null);
-                    setEvaluationPendingFen(null);
-                    resizeGesture.current = null;
-                    setAnnotationFrom(null);
-                    setSelected(null); setPromotion(null); setAnalysisError(null);
-                  }} /> : liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
+                  analysisHref={!analysisOpen && imported === null
+                    ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
+                  /> : !blankBoard && liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
+                {result === null && share && <div className="finished-result-actions">{share}</div>}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'
@@ -1557,7 +1547,7 @@ export function App() {
                 {submitting && <p role="status">Waiting for server confirmation…</p>}
               </div> : null}
               gameInfo={imported !== null
-                ? !game.id.startsWith('blank-') && <PgnGameInfo headers={imported.headers} />
+                ? !blankBoard && <PgnGameInfo headers={imported.headers} />
                 : session !== null && <GameInfo game={game} />}
               gameRoom={imported === null && session !== null ? presentation => <GameChat {...presentation} key={game.id} gameId={game.id}
                 side={game.yourSeat} gameStatus={game.status} csrfToken={session.csrfToken} revision={chatRevision}

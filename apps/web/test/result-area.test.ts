@@ -8,16 +8,17 @@ import { isCompactResultHeight, resizedResultHeight } from '../src/result-area';
 describe('finished-game result area', () => {
   it('keeps Analysis expanded without a resize control and retains its actions', () => {
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
-      score: '1-0', explanation: 'White won by resignation.', analysisOpen: true,
+      score: '1-0', explanation: 'White won by resignation.',
       beforeAnalysis: createElement('a', { href: '/challenge/rematch' }, 'Open game'),
-      onToggleAnalysis: () => {},
+      share: createElement('button', { 'aria-label': 'Share & Export' }),
     }));
-    expect(html).toContain('finished-result-area analysis-result-area');
+    expect(html).toContain('class="finished-result-area"');
     expect(html).not.toContain('Resize result area');
     expect(html).not.toContain('style="height:');
     expect(html).not.toContain(' compact');
-    expect(html).toContain('Close analysis');
+    expect(html).not.toContain('Close analysis');
     expect(html).toContain('href="/challenge/rematch"');
+    expect(html.indexOf('Open game')).toBeLessThan(html.indexOf('Share &amp; Export'));
     expect(html).toContain('White won by resignation.');
   });
   it('starts at its natural maximum, shrinks, and cannot grow beyond that maximum', () => {
@@ -32,14 +33,14 @@ describe('finished-game result area', () => {
   it('keeps play results expanded without a handle and retains Analysis', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
-      score: '0-1', explanation: 'Black won by timeout.', analysisOpen: false,
-      onToggleAnalysis: () => {},
+      score: '0-1', explanation: 'Black won by timeout.',
+      analysisHref: '/challenge/game?analysis=1',
     }));
     const gameView = app.slice(app.indexOf('<AnalysisWorkspaceTabs key='));
     expect(html).toContain('class="finished-result-area"');
     expect(html).toContain('0-1');
     expect(html).toContain('Black won by timeout.');
-    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain('Open game Analysis in a new tab');
     expect(html).not.toContain('Resize result area');
     expect(html).not.toContain('style="height:');
     expect(gameView).toContain('<FinishedResultArea');

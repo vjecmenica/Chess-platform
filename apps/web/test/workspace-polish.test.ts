@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { BoardUtilities } from '../src/BoardUtilities';
+import { ShareExportLauncher } from '../src/ShareExportDialog';
 import { ChatMessage, ChatUnreadBadge } from '../src/GameChat';
 import { ClosedRematchStatus } from '../src/GameRematch';
 import { importPgn } from '../src/pgn-import';
@@ -37,18 +38,18 @@ describe('workspace utility presentation', () => {
     expect(html).not.toContain('>/challenge/');
   });
 
-  it('offers an accessible Share & Export launcher where sharing is available', () => {
+  it('keeps board controls in order and provides a separate accessible Share & Export launcher', () => {
+    const boardControls = renderToStaticMarkup(createElement(BoardUtilities, {
+      onFlip: () => {}, children: createElement('button', { 'aria-label': 'Resize board' }),
+    }));
+    expect(boardControls).toMatch(/aria-label="Board and piece appearance".*aria-label="Flip board".*aria-label="Resize board"/);
+    expect(boardControls).toContain('aria-label="Flip board" data-board-display-control="true"');
+    expect(boardControls).not.toContain('Share &amp; Export');
     const game = importPgn('1. e4 e5 1-0', 'site-game').game;
-    for (const enabled of [true, false]) {
-      const html = renderToStaticMarkup(createElement(BoardUtilities, {
-        share: enabled ? { game, fen: game.position.fen, gameUrl: null, embedUrl: null, board: { current: null },
-          appearance: defaultAppearance, orientation: 'white' }
-          : null, onFlip: () => {},
-      }));
-      expect(html).toContain('aria-label="Flip board" data-board-display-control="true"');
-      expect(html).not.toContain('>Flip board<');
-      expect(html).not.toContain('title=');
-      expect(html.includes('aria-label="Share &amp; Export" aria-haspopup="dialog"')).toBe(enabled);
-    }
+    const share = renderToStaticMarkup(createElement(ShareExportLauncher, {
+      options: { game, fen: game.position.fen, gameUrl: null, embedUrl: null, board: { current: null },
+        appearance: defaultAppearance, orientation: 'white' },
+    }));
+    expect(share).toContain('class="workspace-share" aria-label="Share &amp; Export" aria-haspopup="dialog"');
   });
 });

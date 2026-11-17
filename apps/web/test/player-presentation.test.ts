@@ -53,13 +53,13 @@ describe('shared game presentation', () => {
     const imported = importPgn('1. e4 1-0', 'imported');
     const result = importedResultDisplay(imported);
     const html = renderToStaticMarkup(createElement(FinishedResultArea, {
-      ...result, analysisOpen: true, onToggleAnalysis: () => {},
+      ...result,
     }));
-    expect(html).toContain('class="finished-result-area analysis-result-area"');
+    expect(html).toContain('class="finished-result-area"');
     expect(html).toContain('class="final-result"');
     expect(html).toContain('1-0');
     expect(html).toContain('White won.');
-    expect(html).toContain('Close analysis');
+    expect(html).not.toContain('Close analysis');
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     expect(app).toContain('imported !== null ? importedResultDisplay(imported)');
     expect(app).toContain('<FinishedResultArea key={game.id} score={result.score}');
@@ -90,7 +90,7 @@ describe('shared game presentation', () => {
     expect(css).toMatch(/\.player-material-top > \.player-material-row \{ bottom: calc\(100% \+ 16px\)/);
     expect(css).toMatch(/\.player-material-bottom > \.player-material-row \{ position: static/);
     expect(css).toMatch(/\.position-column \{[^}]*--workspace-height: var\(--player-workspace-height[^}]*margin-top: var\(--player-alignment-offset/);
-    expect(css).toMatch(/--workspace-height: min\(max\(600px, var\(--player-workspace-height[^\n]*\n\s*var\(--analysis-sidebar-height/);
+    expect(css).toMatch(/\.analysis-workspace \.position-column \{[^}]*--workspace-height: var\(--analysis-sidebar-height/);
     expect(css).toMatch(/@media \(max-width: 900px\)[\s\S]*?\.position-column \{ grid-column: 1; margin-top: 0/);
     expect(css).toMatch(/\.clock \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto[^}]*min-height: 54px/);
     expect(css).toMatch(/\.player-avatar \{ --avatar-size: 52px/);

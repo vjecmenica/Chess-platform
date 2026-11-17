@@ -17,11 +17,11 @@ it('opens site Analysis through one safe native link with a reloadable selected 
   const href = siteAnalysisUrl(id, 2);
   expect(analysisEntry(new URL(href, 'http://localhost'))).toEqual({ kind: 'site', id, ply: 2 });
   const render = (analysisOpen: boolean) => renderToStaticMarkup(createElement(FinishedResultArea, {
-    score: '1-0', explanation: 'White won.', analysisOpen, analysisHref: href, onToggleAnalysis: () => {},
+    score: '1-0', explanation: 'White won.', analysisHref: analysisOpen ? undefined : href,
   }));
   expect(render(false)).toContain('target="_blank" rel="noopener noreferrer"');
   expect(render(false)).toContain('new tab');
-  expect(render(true)).toContain('Close analysis');
+  expect(render(true)).not.toContain('Close analysis');
   expect(render(true)).not.toContain('target="_blank"');
   expect(analysisEntry(new URL('/challenge/' + id, 'http://localhost'))).toBeNull();
 });

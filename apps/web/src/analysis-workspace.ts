@@ -3,7 +3,7 @@ import { graphCentipawns } from './game-review';
 
 export const minimumAnalysisBoardSize = 240;
 export const maximumAnalysisBoardSize = 1080;
-// v1 size preferences and analysis links describe the playable edge plus this gap.
+// Keep the original size unit for v1 preferences and links, independent of vertical spacing.
 export const boardLayoutClearance = 14;
 const minimumDefaultDesktopBoardSize = 334;
 

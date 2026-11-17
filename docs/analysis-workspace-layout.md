@@ -9,12 +9,11 @@ WOFF2 subsets are self-hosted, use swap loading, and include their OFL notices
 in `apps/web/public/fonts`.
 
 The desktop grid centers the board and workspace together. The right panel can
-shrink with available space and stops growing at 550px. Board utilities sit at
-the right end of the material row directly below the lower player strip. The
-initial sizing budget retains its previous spacing allowance, so the shorter
-tool row does not change the automatic board size.
-The upper player row sits 5px above the board. The lower gap holds the outside
-file labels and resize grip and stays constant across coordinate modes.
+shrink with available space and stops growing at 550px. Settings, Flip and
+Resize use the existing desktop gap beside the board. On stacked layouts they
+share the material row. The automatic board sizing budget is independent of
+the tool row. Both player rows sit 5px from the board, with extra clearance
+below the board when outside file labels are displayed.
 
 `AnalysisWorkspaceTabs` owns presentation only:
 
@@ -41,11 +40,10 @@ owns the independent interactive and review workers. Switching views does not
 cancel workers, clear reports, rebuild the tree or request the explorer again.
 Pressed buttons reserve Left/Right keys for existing board navigation.
 
-Play aligns its sidebar with the measured upper and lower clock edges. Analysis
-uses the same measurements, with a 600px minimum when the viewport has room.
-This keeps the move list usable when several engine lines and game actions are
-visible. All primary views share their shell's dimensions, with internal
-scrolling for longer content. Mobile and very short viewports use natural page flow.
+Play aligns its sidebar with the measured upper and lower clock edges. Desktop
+Analysis measures from the upper edge to the viewport bottom and leaves a 20px
+margin. All primary views share the same shell dimensions. Overflow scrolls
+inside the panel, including on short desktops. Stacked Analysis uses natural page flow.
 
 Play's Game Room switches between Info, Chat, and Notes. Analysis lets Chat/Notes
 fill the space above the Game Info summary. Long conversations scroll inside the
@@ -63,9 +61,10 @@ its existing server rules and suppresses badges. The launcher and Game Room tab
 share the same count. The floating panel is viewport-bounded and never participates
 in the workspace grid.
 
-The workspace footer is a sibling of the tab panes. The existing results,
-game actions, rematch controls, and retry messages stay mounted at the bottom
-while the middle region switches views. Long footer states scroll internally.
+The workspace footer is a sibling of the tab panes. Results, game actions,
+rematch controls, and retry messages stay mounted at the bottom while the
+middle region switches views. Share & Export sits at the right of the action
+row when available. Long footer states scroll internally.
 
 No game contracts, backend services, review calculations, or database schemas
 are changed.

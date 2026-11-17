@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type { BoardAppearance, GameReadResponse, GameSide } from '@chess/contracts';
 import { canExportGame, exportGamePgn, pgnFile } from './pgn-export';
 import { positionAnalysisUrl } from './analysis-links';
@@ -20,6 +21,25 @@ export interface ShareExportOptions {
   readonly board: RefObject<HTMLDivElement | null>;
   readonly appearance: BoardAppearance;
   readonly orientation: GameSide;
+}
+
+export function ShareExportLauncher({ options }: { options: ShareExportOptions }) {
+  const [sharing, setSharing] = useState(false);
+  const launcher = useRef<HTMLButtonElement>(null);
+  return <>
+    <button ref={launcher} type="button" className="workspace-share" aria-label="Share & Export" aria-haspopup="dialog"
+      onClick={() => setSharing(true)}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <path d="m8.7 10.7 6.6-3.4m-6.6 6 6.6 3.4" />
+        <circle cx="6" cy="12" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" />
+      </svg>
+    </button>
+    {sharing && createPortal(<ShareExportDialog options={options} onClose={() => {
+      setSharing(false);
+      launcher.current?.focus({ preventScroll: true });
+    }} />, document.body)}
+  </>;
 }
 
 export function ShareExportDialog({ options, onClose }: { options: ShareExportOptions; onClose: () => void }) {

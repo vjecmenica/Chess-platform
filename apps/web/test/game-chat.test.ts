@@ -137,8 +137,8 @@ it('does not inherit the removed collapse preference and keeps game actions outs
     const game = { id: 'game', status: 'finished', yourSeat: 'white', timeControl: { initialMs: 300000, incrementMs: 3000 } } as GameReadResponse;
     const html = renderToStaticMarkup(createElement('section', null,
       createElement(GameChat, props),
-      createElement(FinishedResultArea, { score: '1-0', explanation: 'White won.', analysisOpen: false,
-        analysisHref: '/challenge/game?analysis=1', onToggleAnalysis: () => {},
+      createElement(FinishedResultArea, { score: '1-0', explanation: 'White won.',
+        analysisHref: '/challenge/game?analysis=1',
         beforeAnalysis: createElement(GameRematch, { game, csrfToken: 'token', revision: 0 }) })));
     const actions = html.slice(html.indexOf('</aside>'));
     expect(html).toContain('Private notes');
