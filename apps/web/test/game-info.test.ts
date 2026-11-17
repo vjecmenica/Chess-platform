@@ -64,4 +64,6 @@ it('removes passive turn copy while preserving actionable adjudication, readines
   expect(liveGameStatus({ ...game, status: 'waiting' }, false)).toContain('ready');
   expect(liveGameStatus({ ...game, status: 'pending_adjudication', pending: { kind: 'timeout', flaggedSide: 'black', deadlineMs: 100 } }, false))
     .toBe('A clock flagged. Checking the result.');
+  expect(liveGameStatus({ ...game, rated: true, status: 'pending_adjudication', pending: { kind: 'resignation', resigningSide: 'white' } }, false))
+    .toBe('Awaiting adjudication.');
 });

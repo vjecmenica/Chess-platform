@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { appendSystemChat } from './game-chat-events.js';
 import { avatarUrl } from './account-session.js';
 import { settleGameRatings } from './rating-settlement.js';
+import { adjudicationPolicy, type AdjudicationAuthority, type AdjudicationCase,
+  type AdjudicationPosition } from './rated-adjudication-store.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
 import { timeControlPresets, type TimeControlId } from '@chess/contracts';
-import type { ChessGame, GameResult, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
+import type { ChessGame, GameResult, MateLine, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
   GameReadResponse, GameState, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
 
@@ -40,6 +42,7 @@ interface GameRow {
   result: GameResult | null;
   pending: { kind: 'timeout'; flaggedSide: Side; deadlineMs: number }
     | { kind: 'resignation'; resigningSide: Side } | null;
+  ratedAdjudication: AdjudicationCase | null;
   draw_offer: Side | null;
   claim_draw_offer: Side | null;
   resignation_witness: readonly Omit<MoveRequest, 'side'>[] | null;
@@ -89,13 +92,27 @@ function seat(row: GameRow, guestId: string): Side | null {
   return null;
 }
 
-async function loadGame(client: pg.PoolClient, id: string): Promise<GameRow | null> {
+async function loadGame(client: pg.PoolClient, id: string, lockCase = false): Promise<GameRow | null> {
   const { rows } = await client.query<GameRow>(
     `SELECT g.*, c.creator_guest_id, c.acceptor_guest_id, c.time_control, c.accepted_at
       FROM chess.games g JOIN chess.challenges c ON c.id = g.id
       WHERE g.id = $1 FOR UPDATE OF g`, [id],
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  row.ratedAdjudication = null;
+  if (row.rated && (row.status === 'pending_adjudication' || row.status === 'finished')) {
+    // Read after the game lock so a transaction waiting for finalization sees its committed ruling.
+    const { rows: cases } = await client.query<AdjudicationCase>(`SELECT *, due_at > clock_timestamp() AS lease_valid
+      FROM chess.rated_adjudications WHERE game_id = $1${lockCase ? ' FOR UPDATE' : ''}`, [id]);
+    row.ratedAdjudication = cases[0] ?? null;
+  }
+  return row;
+}
+
+function applyMateRuling(game: ChessGame, kind: AdjudicationCase['kind'], mateLine: MateLine) {
+  const ruling = { verdict: 'mate_possible' as const, mateLine };
+  return kind === 'resignation' ? game.resolveResignation(ruling) : game.resolveTimeout(ruling);
 }
 
 async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGame> {
@@ -153,6 +170,22 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       deadlineMs: row.result.deadlineMs });
     if (!aborted.accepted) throw new Error('Saved first-move abort cannot be replayed.');
   }
+  const adjudication = row.ratedAdjudication;
+  if (adjudication) {
+    const before = game.getState();
+    const resolved = adjudication.status === 'resolved';
+    if (before.status !== 'pending_adjudication' || before.pending.kind !== adjudication.kind
+      || adjudication.pending_version !== row.version - Number(resolved)
+      || row.status !== (resolved ? 'finished' : 'pending_adjudication')) {
+      throw new Error('Saved rated adjudication does not match its original event.');
+    }
+    if (resolved && (adjudication.policy_version !== adjudicationPolicy || !adjudication.mate_line
+      || !applyMateRuling(game, adjudication.kind, adjudication.mate_line).accepted)) {
+      throw new Error('Saved rated adjudication witness cannot be replayed.');
+    }
+  } else if (row.rated && row.status === 'pending_adjudication') {
+    throw new Error('Pending rated game has no adjudication case.');
+  }
   const state = game.getState();
   const expectedVersion = rows.length + (row.clock_mode === 'five_plus_three'
     ? (row.clock_start_mode === 'readiness'
@@ -162,6 +195,7 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
     + Number(row.resignation_witness !== null)
     + Number(row.timeout_search_exhausted_at !== null)
     + Number(row.timeout_adjudicated_at !== null)
+    + Number(adjudication?.status === 'resolved')
     - actions.filter(action => action.kind === 'claim_draw' && !action.payload.claimCorrect
       && action.payload.intendedMove !== undefined).length;
   const expectedStatus = row.status === 'waiting' ? 'active' : row.status;
@@ -232,7 +266,8 @@ function gameState(row: GameRow, game: ChessGame, yourSeat: Side, atMs: number):
     result: row.result, drawOffer: state.drawOffer, claimDrawOffer: state.claimDrawOffer,
     availableDrawClaims: game.getAvailableDrawClaims(),
     timeoutAdjudication: row.status !== 'pending_adjudication' || row.pending?.kind !== 'timeout'
-      ? null : row.rated || row.timeout_search_exhausted_at !== null ? 'unresolved' : 'searching',
+      ? null : row.ratedAdjudication?.status === 'review' || row.timeout_search_exhausted_at !== null
+        ? 'unresolved' : 'searching',
     drawOfferNextEligiblePly: game.getDrawOfferNextEligiblePly(),
     ...(row.pending === null ? {} : { pending: row.pending }),
     clocks: clockResponse(row, atMs),
@@ -301,6 +336,10 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       row.timeout_search_retry_after, row.white_first_move_deadline_at,
       row.black_first_move_deadline_at],
   );
+  if (row.rated && row.status === 'pending_adjudication' && row.pending) {
+    await client.query(`INSERT INTO chess.rated_adjudications (game_id, pending_version, kind)
+      VALUES ($1, $2, $3) ON CONFLICT (game_id) DO NOTHING`, [row.id, row.version, row.pending.kind]);
+  }
   if (row.rated && row.status === 'finished') await settleGameRatings(client, row.id);
   // PostgreSQL delivers this notification only if the surrounding transaction commits.
   await client.query("SELECT pg_notify('chess_game_updates', $1)",
@@ -392,6 +431,8 @@ export interface GameService {
   claim(id: string, guestId: string, requestId: string,
     body: ClaimBody, arrival: Arrival): Promise<ServiceResult>;
   pollDueGames(): Promise<number>;
+  adjudicationPosition(id: string, leaseToken: string): Promise<AdjudicationPosition | null>;
+  finalizeAdjudication(id: string, mateLine: MateLine, authority: AdjudicationAuthority): Promise<boolean>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
@@ -947,6 +988,45 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       let flags = 0;
       for (const { id } of rows) flags += await advanceGame(id);
       return flags;
+    },
+    adjudicationPosition(id, leaseToken) {
+      return transaction(async client => {
+        const row = await loadGame(client, id);
+        if (row?.status !== 'pending_adjudication' || row.ratedAdjudication?.lease_token !== leaseToken
+          || !row.ratedAdjudication.lease_valid || !row.pending) return null;
+        const game = await reconstruct(client, row);
+        return { startingFen: row.starting_fen, moves: game.getHistory(), pending: row.pending };
+      });
+    },
+    finalizeAdjudication(id, mateLine, authority) {
+      return transaction(async client => {
+        const row = await loadGame(client, id, true);
+        const pending = row?.ratedAdjudication;
+        if (row?.status !== 'pending_adjudication' || !pending) return false;
+        const automated = 'leaseToken' in authority;
+        if (automated ? pending.lease_token !== authority.leaseToken || !pending.lease_valid
+          : pending.status !== 'review') return false;
+        const game = await reconstruct(client, row);
+        const decision = applyMateRuling(game, pending.kind, mateLine);
+        if (!decision.accepted || decision.game.status !== 'finished' || !decision.game.adjudication) {
+          throw new Error('Mating witness is invalid for the pending event.');
+        }
+        const decidedBy = automated ? 'automatic' : `operator:${authority.reviewer.trim()}`;
+        if (!automated && (!authority.reviewer.trim() || authority.reviewer.length > 128)) {
+          throw new Error('An identified operator is required.');
+        }
+        await client.query(`UPDATE chess.rated_adjudications SET status = 'resolved', due_at = NULL, lease_token = NULL,
+          mate_line = $2, decided_by = $3, decided_at = clock_timestamp(), policy_version = $4,
+          nodes_visited = COALESCE($5, nodes_visited), search_ms = COALESCE($6, search_ms)
+          WHERE game_id = $1`, [id, JSON.stringify(decision.game.adjudication.mateLine), decidedBy, adjudicationPolicy,
+          automated ? authority.metrics.nodesVisited : null, automated ? authority.metrics.searchMs : null]);
+        row.status = 'finished';
+        row.result = decision.game.result;
+        row.pending = null;
+        row.version += 1;
+        await saveGame(client, row);
+        return true;
+      });
     },
     async registerTimeoutWitness(id, line) {
       await start();

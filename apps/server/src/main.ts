@@ -6,6 +6,7 @@ import { checkChallengeSchema } from './challenge-routes.js';
 import { createGameService } from './game-service.js';
 import { avatarStorageFromEnvironment } from './avatar-storage.js';
 import { cleanAvatarObjects } from './account-avatars.js';
+import { createRatedAdjudicationProcessor } from './rated-adjudication.js';
 
 async function main() {
   loadEnvironment();
@@ -13,6 +14,7 @@ async function main() {
   const avatarStorage = avatarStorageFromEnvironment();
   const pool = createPool(config.connectionString);
   const gameService = createGameService(pool);
+  const adjudication = createRatedAdjudicationProcessor(pool, gameService);
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService,
@@ -24,6 +26,7 @@ async function main() {
     if (timer !== null) clearInterval(timer);
     if (avatarCleanupTimer !== null) clearInterval(avatarCleanupTimer);
     await avatarCleanup;
+    await adjudication.stop();
     await gameService.stop();
     await pool.end();
   });
@@ -52,8 +55,12 @@ async function main() {
     catch (error) { app.log.error({ err: error }, 'Could not check due game clocks; the next poll will retry.'); }
     finally { polling = false; }
   };
-  timer = setInterval(() => { void poll(); }, 500);
-  void poll();
+  const tick = () => {
+    void poll();
+    void adjudication.poll().catch(error => app.log.error({ err: error }, 'Could not process rated adjudication'));
+  };
+  timer = setInterval(tick, 500);
+  tick();
 
   const removeAvatars = () => {
     avatarCleanup ??= cleanAvatarObjects(pool, avatarStorage)

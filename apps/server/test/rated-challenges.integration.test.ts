@@ -1,4 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { userInfo } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
@@ -9,6 +13,8 @@ import { databaseUrl, loadEnvironment } from '../src/config.js';
 import { createPool } from '../src/database.js';
 import { createGameService } from '../src/game-service.js';
 import { migrate } from '../src/migrations.js';
+import { createRatedAdjudicationProcessor } from '../src/rated-adjudication.js';
+import { claimAdjudication } from '../src/rated-adjudication-store.js';
 
 interface Browser { cookies: Map<string, string>; csrf: string; ip: string }
 const password = 'a synthetic rated challenge password';
@@ -18,10 +24,12 @@ const apps: FastifyInstance[] = [];
 const terms = { timeControl: '10+2', rated: true };
 let browserCount = 0;
 let pool: pg.Pool;
+let testDatabase: string;
 
 beforeAll(async () => {
   loadEnvironment();
-  pool = createPool(databaseUrl(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL'));
+  testDatabase = databaseUrl(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL');
+  pool = createPool(testDatabase);
   await migrate(pool);
 });
 afterEach(async () => { for (const app of apps.splice(0)) await app.close(); });
@@ -79,6 +87,29 @@ const accept = (app: FastifyInstance, who: Browser, id: string) => post(app, who
 
 async function assertNoSettlement(id: string) {
   expect((await pool.query('SELECT 1 FROM chess.game_rating_settlements WHERE game_id = $1', [id])).rowCount).toBe(0);
+}
+
+async function readCase(id: string) {
+  return (await pool.query('SELECT * FROM chess.rated_adjudications WHERE game_id = $1', [id])).rows[0];
+}
+
+async function deletePendingProbe(id: string) {
+  if ((await pool.query("SELECT 1 FROM chess.games WHERE id = $1 AND status = 'pending_adjudication'", [id])).rowCount === 0) return;
+  // Legacy Casual migration tests replay historical SQL against pending fixtures in this test database.
+  await pool.query('DELETE FROM chess.game_move_receipts WHERE game_id = $1', [id]);
+  await pool.query('DELETE FROM chess.game_actions WHERE game_id = $1', [id]);
+  await pool.query('DELETE FROM chess.game_moves WHERE game_id = $1', [id]);
+  await pool.query('DELETE FROM chess.games WHERE id = $1', [id]);
+  await pool.query('DELETE FROM chess.challenges WHERE id = $1', [id]);
+}
+
+const foolsMate = [
+  { from: 'f2', to: 'f3' }, { from: 'e7', to: 'e5' }, { from: 'g2', to: 'g4' }, { from: 'd8', to: 'h4' },
+];
+
+async function play(app: FastifyInstance, id: string, who: Browser, version: number, from: string, to: string) {
+  const response = await post(app, who, `/games/${id}/moves`, { expectedVersion: version, from, to });
+  expect(response.statusCode).toBe(200);
 }
 
 it('keeps Rated creation off by default and blocks accepting an open Rated link when disabled', async () => {
@@ -224,22 +255,211 @@ it('preserves guest Casual play and aborts a Rated game at the first-move deadli
     .toEqual([]);
 });
 
-it('keeps an unproven Rated resignation pending rather than assigning a rating result or abort', async () => {
-  const { app } = server(true);
+it('recovers a ply-zero resignation after restart, publishes the final version and settles once', async () => {
+  const { app, time } = server(true);
   const white = await register(app), black = await register(app);
   const id = await create(app, white.who);
   expect((await accept(app, black.who, id)).statusCode).toBe(200);
   try {
-    expect((await post(app, black.who, `/games/${id}/resign`, { expectedVersion: 0 })).json())
+    const key = randomUUID();
+    const command = { expectedVersion: 0 };
+    const pending = await post(app, white.who, `/games/${id}/resign`, command, key);
+    expect(pending.json())
       .toMatchObject({ game: { rated: true, status: 'pending_adjudication', result: null,
-        pending: { kind: 'resignation', resigningSide: 'black' }, clocks: { phase: 'stopped' } } });
+        pending: { kind: 'resignation', resigningSide: 'white' }, clocks: { phase: 'stopped' } } });
     expect((await get(app, white.who, `/games/${id}`)).json()).toMatchObject({ status: 'pending_adjudication' });
+    expect(await readCase(id)).toMatchObject({ status: 'queued', pending_version: 1, attempts: 0 });
     await assertNoSettlement(id);
+    const forbidden = await post(app, black.who, `/games/${id}/adjudication`, { verdict: 'mate_impossible' });
+    expect(forbidden.statusCode).toBe(404);
+
+    await app.close();
+    const restarted = server(false, time);
+    expect((await get(restarted.app, black.who, `/games/${id}`)).json()).toMatchObject({ version: 1, status: 'pending_adjudication' });
+    const listener = await pool.connect();
+    try {
+      await listener.query('LISTEN chess_game_updates');
+      const updates: { id: string; version: number }[] = [];
+      listener.on('notification', message => { if (message.payload) updates.push(JSON.parse(message.payload)); });
+      await createRatedAdjudicationProcessor(pool, restarted.service).poll();
+      await listener.query('SELECT 1');
+      expect(updates).toContainEqual({ id, version: 2 });
+    } finally { listener.release(true); }
+    expect((await get(restarted.app, black.who, `/games/${id}`)).json()).toMatchObject({
+      status: 'finished', version: 2, result: { outcome: 'win', winner: 'black', reason: 'resignation' }, history: [],
+    });
+    expect(await readCase(id)).toMatchObject({ status: 'resolved', decided_by: 'automatic',
+      mate_line: foolsMate, policy_version: 'rated-mate-witness-v1', nodes_visited: 4 });
+    expect((await post(restarted.app, white.who, `/games/${id}/resign`, command, key)).json()).toEqual(pending.json());
+    expect(await restarted.service.finalizeAdjudication(id, foolsMate, { reviewer: 'second-attempt' })).toBe(false);
+    expect((await loadOrCreateAccountRating(pool, white.id, 'rapid')).ratedGames).toBe(1);
+    expect((await loadOrCreateAccountRating(pool, black.id, 'rapid')).ratedGames).toBe(1);
+    expect((await pool.query('SELECT final_result FROM chess.game_rating_settlements WHERE game_id = $1', [id])).rows)
+      .toEqual([{ final_result: { outcome: 'win', winner: 'black', reason: 'resignation' } }]);
+
+    await pool.query('UPDATE chess.rated_adjudications SET mate_line = $2 WHERE game_id = $1',
+      [id, JSON.stringify([{ from: 'e2', to: 'e4' }])]);
+    try { expect((await get(restarted.app, black.who, `/games/${id}`)).statusCode).toBe(500); }
+    finally {
+      await pool.query('UPDATE chess.rated_adjudications SET mate_line = $2 WHERE game_id = $1', [id, JSON.stringify(foolsMate)]);
+    }
   } finally {
-    // Keep this fixture away from tests that replay historical Casual adjudication migrations.
-    await pool.query('DELETE FROM chess.game_move_receipts WHERE game_id = $1', [id]);
-    await pool.query('DELETE FROM chess.game_actions WHERE game_id = $1', [id]);
-    await pool.query('DELETE FROM chess.games WHERE id = $1', [id]);
-    await pool.query('DELETE FROM chess.challenges WHERE id = $1', [id]);
+    await deletePendingProbe(id);
   }
+});
+
+it('resolves a resignation after opening moves and keeps an earlier receipt ahead of the flag', async () => {
+  const { app, service, time } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who);
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  try {
+    await play(app, id, white.who, 0, 'e2', 'e4');
+    await play(app, id, black.who, 1, 'e7', 'e5');
+    await play(app, id, white.who, 2, 'f1', 'c4');
+    const read = () => get(app, white.who, `/games/${id}`);
+    const deadline = (await read()).json().clocks.deadlineMs as number;
+    time.value = deadline - 1;
+    expect((await post(app, black.who, `/games/${id}/resign`, { expectedVersion: 3 })).json()).toMatchObject({
+      game: { status: 'pending_adjudication', pending: { kind: 'resignation' } },
+    });
+    time.value = deadline + 500;
+    await service.heartbeat();
+    const paused = (await read()).json();
+    expect(paused).toMatchObject({ status: 'pending_adjudication', clocks: { phase: 'stopped', flaggedSide: null } });
+    expect((await post(app, black.who, `/games/${id}/moves`, { expectedVersion: 4, from: 'b8', to: 'c6' })).json())
+      .toEqual({ error: 'adjudication_pending' });
+    await createRatedAdjudicationProcessor(pool, service).poll();
+    expect((await read()).json()).toMatchObject({ version: 5, history: paused.history,
+      result: { outcome: 'win', winner: 'white', reason: 'resignation' } });
+  } finally { await deletePendingProbe(id); }
+});
+
+it('recovers an expired timeout lease under concurrent pollers, preserving the flag and clock history', async () => {
+  const { app, time, service } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who);
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  try {
+    await play(app, id, white.who, 0, 'f2', 'f3');
+    await play(app, id, black.who, 1, 'e7', 'e5');
+    const before = (await get(app, white.who, `/games/${id}`)).json();
+    const deadline = before.clocks.deadlineMs as number;
+    time.value = deadline + 10;
+    await service.heartbeat();
+    const paused = (await get(app, black.who, `/games/${id}`)).json();
+    expect(paused).toMatchObject({ status: 'pending_adjudication', result: null, version: 3,
+      pending: { kind: 'timeout', flaggedSide: 'white', deadlineMs: deadline }, clocks: { phase: 'flagged' } });
+    await assertNoSettlement(id);
+    const abandoned = await claimAdjudication(pool);
+    expect(abandoned?.game_id).toBe(id);
+    await app.close();
+    await pool.query("UPDATE chess.rated_adjudications SET due_at = clock_timestamp() - interval '1 second' WHERE game_id = $1", [id]);
+    const first = server(false, time), second = server(false, time);
+    expect(await first.service.finalizeAdjudication(id, foolsMate.slice(2),
+      { leaseToken: abandoned!.token, metrics: { nodesVisited: 2, searchMs: 1 } })).toBe(false);
+    expect((await get(first.app, black.who, `/games/${id}`)).json()).toMatchObject({ pending: paused.pending });
+    await Promise.all([createRatedAdjudicationProcessor(pool, first.service).poll(),
+      createRatedAdjudicationProcessor(pool, second.service).poll()]);
+    expect((await get(second.app, white.who, `/games/${id}`)).json()).toMatchObject({
+      status: 'finished', version: 4, history: before.history,
+      clocks: { phase: 'flagged', remainingMs: paused.clocks.remainingMs, flaggedAtMs: deadline },
+      result: { outcome: 'win', winner: 'black', reason: 'timeout', flaggedSide: 'white', deadlineMs: deadline },
+    });
+    expect(await readCase(id)).toMatchObject({ attempts: 2, status: 'resolved', mate_line: foolsMate.slice(2) });
+    expect((await loadOrCreateAccountRating(pool, white.id, 'rapid')).ratedGames).toBe(1);
+    expect((await loadOrCreateAccountRating(pool, black.id, 'rapid')).ratedGames).toBe(1);
+  } finally { await deletePendingProbe(id); }
+});
+
+it('holds exhausted searches for authorized review, rejects invalid evidence and records one winning review', async () => {
+  const { app, service } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who);
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  try {
+    expect((await post(app, white.who, `/games/${id}/resign`, { expectedVersion: 0 })).statusCode).toBe(200);
+    const processor = createRatedAdjudicationProcessor(pool, service, async () => ({
+      result: { status: 'unresolved', reason: 'budget_exhausted', nodesVisited: 5000 }, searchMs: 120,
+    }));
+    await processor.poll();
+    await processor.poll();
+    expect(await readCase(id)).toMatchObject({ status: 'review', diagnostic: 'budget_exhausted',
+      nodes_visited: 5000, attempts: 1, due_at: null });
+    expect((await get(app, black.who, `/games/${id}`)).json()).toMatchObject({ status: 'pending_adjudication', result: null });
+    await assertNoSettlement(id);
+    await expect(service.finalizeAdjudication(id, [{ from: 'e2', to: 'e4' }], { reviewer: 'test-operator' }))
+      .rejects.toThrow('Mating witness is invalid');
+
+    const cli = fileURLToPath(new URL('../src/adjudication-cli.ts', import.meta.url));
+    const witness = fileURLToPath(new URL('fixtures/fools-mate.json', import.meta.url));
+    const run = promisify(execFile);
+    const env = { ...process.env, DATABASE_URL: testDatabase };
+    await expect(run(process.execPath, ['--import', 'tsx', cli, 'list'],
+      { env: { ...env, ADJUDICATION_REVIEWERS: '' } })).rejects.toMatchObject({ stderr: expect.stringContaining('not authorized') });
+    const review = { env: { ...env, ADJUDICATION_REVIEWERS: userInfo().username } };
+    expect(JSON.parse((await run(process.execPath, ['--import', 'tsx', cli, 'list'], review)).stdout))
+      .toEqual([expect.objectContaining({ game_id: id, status: 'review' })]);
+    const concurrent = await Promise.allSettled([1, 2].map(() =>
+      run(process.execPath, ['--import', 'tsx', cli, 'resolve', id, witness], review)));
+    expect(concurrent.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(await readCase(id)).toMatchObject({ status: 'resolved', decided_by: `operator:${userInfo().username}`,
+      mate_line: foolsMate, decided_at: expect.any(Date) });
+    expect((await get(app, black.who, `/games/${id}`)).json()).toMatchObject({ status: 'finished', version: 2 });
+    expect((await loadOrCreateAccountRating(pool, black.id, 'rapid')).ratedGames).toBe(1);
+  } finally { await deletePendingProbe(id); }
+});
+
+it('rolls back a final ruling when rating history fails and recovers after the retry delay', async () => {
+  const { app, service } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who);
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  try {
+    expect((await post(app, white.who, `/games/${id}/resign`, { expectedVersion: 0 })).statusCode).toBe(200);
+    const processor = createRatedAdjudicationProcessor(pool, service);
+    await pool.query(`ALTER TABLE chess.game_rating_settlements ADD CONSTRAINT adjudication_failure_probe
+      CHECK (game_id <> '${id}') NOT VALID`);
+    try {
+      await expect(processor.poll()).rejects.toThrow('Rated adjudication failed');
+      await processor.poll();
+      expect(await readCase(id)).toMatchObject({ status: 'retry', attempts: 1, mate_line: null,
+        diagnostic: 'processing_failed' });
+      expect((await get(app, black.who, `/games/${id}`)).json()).toMatchObject({ status: 'pending_adjudication', version: 1 });
+      await assertNoSettlement(id);
+      expect((await pool.query('SELECT 1 FROM chess.account_ratings WHERE account_id IN ($1, $2)', [white.id, black.id])).rowCount)
+        .toBe(0);
+    } finally {
+      await pool.query('ALTER TABLE chess.game_rating_settlements DROP CONSTRAINT adjudication_failure_probe');
+    }
+    await pool.query("UPDATE chess.rated_adjudications SET due_at = clock_timestamp() WHERE game_id = $1", [id]);
+    await processor.poll();
+    expect(await readCase(id)).toMatchObject({ status: 'resolved', attempts: 2 });
+    expect((await get(app, black.who, `/games/${id}`)).json()).toMatchObject({ status: 'finished', version: 2 });
+  } finally { await deletePendingProbe(id); }
+});
+
+it.each(['resignation', 'timeout'] as const)('settles a Rated %s draw immediately when the opponent cannot mate', async kind => {
+  const { app, time, service } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who);
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  const fen = '4k3/8/8/8/8/8/8/R3K3 w - - 0 1';
+  await pool.query('UPDATE chess.games SET starting_fen = $2, fen = $2 WHERE id = $1', [id, fen]);
+  if (kind === 'resignation') {
+    expect((await post(app, white.who, `/games/${id}/resign`, { expectedVersion: 0 })).statusCode).toBe(200);
+  } else {
+    await pool.query(`UPDATE chess.games SET ready_white = true, ready_black = true, version = 2,
+      clock_start_mode = 'readiness', clock_phase = 'running', white_first_move_deadline_at = NULL,
+      turn_started_at = $2, deadline_at = $3 WHERE id = $1`, [id, new Date(time.value), new Date(time.value + 600_000)]);
+    time.value += 600_000;
+    await service.heartbeat();
+  }
+  const final = (await get(app, white.who, `/games/${id}`)).json();
+  expect(final).toMatchObject({ status: 'finished', result: { outcome: 'draw', reason: `${kind}_no_mating_possibility` } });
+  expect(await readCase(id)).toBeUndefined();
+  expect((await pool.query('SELECT final_result FROM chess.game_rating_settlements WHERE game_id = $1', [id])).rows)
+    .toEqual([{ final_result: final.result }]);
+  expect(await loadOrCreateAccountRating(pool, white.id, 'rapid')).toMatchObject({ rating: 1500, ratedGames: 1 });
+  expect(await loadOrCreateAccountRating(pool, black.id, 'rapid')).toMatchObject({ rating: 1500, ratedGames: 1 });
 });

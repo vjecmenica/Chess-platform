@@ -82,12 +82,15 @@ function findMateWitness(game: ChessGame, kind: 'resignation' | 'timeout',
       return first < second ? -1 : first > second ? 1 : 0;
     });
     for (const move of moves) {
-      const child = new Chess(move.after);
+      // chess.js has already computed checkmate for SAN. This is only a prefilter.
+      // Any mate must still pass the full game replay, including automatic draws.
+      const mate = move.san.endsWith('#');
+      if (mate ? side !== winner : depth === 1) continue;
       const candidate = [...line, { from: move.from, to: move.to,
         ...(move.promotion === undefined ? {} : { promotion: move.promotion as Promotion }) }];
-      if (child.isCheckmate()) {
-        if (side === winner && verify(candidate)) return candidate;
-      } else if (!child.isStalemate() && depth > 1) {
+      if (mate) {
+        if (verify(candidate)) return candidate;
+      } else {
         const found = search(move.after, depth - 1, candidate);
         if (found) return found;
       }

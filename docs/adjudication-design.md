@@ -6,32 +6,56 @@ The [FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023) define mate 
 
 Use three answers for each side: `impossible` with a sound proof, `possible` with a verified legal move sequence ending in its checkmate, and `unresolved`. Replay a positive witness through the full game lifecycle; a sequence that crosses an earlier automatic result is not a valid witness. An engine score, material count alone, or failure to find a mate never proves the other answer. The synchronous game rules have material proofs, a complete search for some closed pawn positions, and a one-move mate witness. They return `unresolved` otherwise.
 
-Game creation must name a resignation policy. The guest server selects `casual_concession`: a resignation is finalized in the same ordered command transaction. A proven impossibility draws; otherwise the opponent wins and both clocks stop. An `unresolved` mating query also leads to an opponent win. This practical rule can award a win in a rare position where mate is actually impossible but the conservative detector cannot prove it. That is a documented departure from the exact exception in FIDE Article 5.1.2, not full FIDE compliance. A failed bounded search is never treated as proof of impossibility. The separate `fide_proof_required` domain mode freezes an unresolved resignation pending a verified ruling; no server workflow yet guarantees its resolution, so rated and tournament play must wait for that workflow or a complete impossibility test.
+Casual games use `casual_concession`. A proven impossibility draws. A possible or unresolved mating query awards the opponent a win under the Casual concession policy, and both clocks stop. Rated games use `fide_proof_required`. A proven impossibility draws, a verified mating possibility awards a win, and an unresolved resignation freezes the game for adjudication. [FIDE Article 5.1.2](https://handbook.fide.com/chapter/e012023)
 
-Game creation also names a timeout policy. The guest server selects `casual_flag_forfeit`: a sound impossibility proof draws, and every other flag awards the opponent a win in the ordered flag transaction. This finishes casual games even when the mating query is unresolved. It can award a win in a rare position where mate is impossible but the detector cannot prove it, so it is not exact FIDE Article 6.9. The domain default `fide_proof_required` retains unresolved pending flags for future competitive adjudication. A reviewer ID, evidence string, engine evaluation, or exhausted search is not a negative proof.
+Casual timeouts use `casual_flag_forfeit`. A proven impossibility draws and other flags award an opponent win in the flag transaction. Rated timeouts use `fide_proof_required` and keep unresolved flags pending. The recorded flag side and deadline carry through any later ruling. [FIDE Article 6.9](https://handbook.fide.com/chapter/e012023)
 
 | Approach | Correctness | Cost and fit |
 | --- | --- | --- |
 | Sound material rules and closed-position search | A negative answer is safe; coverage is incomplete. | Fast and maintainable in the domain; keep as the first pass. |
-| Bounded cooperative search | A replayed legal mate line proves `possible`; search exhaustion proves nothing. | Useful for future strict-mode adjudication; not needed in the casual live path. |
+| Bounded cooperative search | A replayed legal mate line proves `possible`. Exhaustion leaves the case unresolved. | Runs outside the live Rated command path. |
 | Exact reachable-state search or a cooperative endgame database | Exhausting every legal successor proves a negative, and a path proves a positive. | Useful for small, closed classes; building, storing, and verifying general coverage is too costly for the initial game server. |
 | Chess engine evaluation or Syzygy WDL/DTZ alone | A drawing evaluation or perfect-play result cannot rule out a cooperative mate. | Useful for finding candidate lines, never as a negative certificate. Every proposed line must be replayed legally. |
 
-`findTimeoutMateWitness(game, budget)` searches only a strict-mode pending timeout. It tries replay-verified candidate lines, then explores legal moves with deterministic depth and node limits. Its default budget is seven plies and 5,000 positions, with limits of eight plies and 20,000 positions. `depth_exhausted` and `budget_exhausted` mean **unresolved**, never `impossible`. The resignation-search API has no pending resignation to process under the guest policy; it can inspect strict-mode pending cases.
+`findResignationMateWitness` and `findTimeoutMateWitness` try known opening lines and then search legal continuations in deterministic order. The server keeps the default limits of seven plies and 5,000 visited nodes. Each candidate must survive full-history replay, including fivefold repetition, the 75-move rule, and other automatic endings. Engine evaluation, perfect-play tablebase values, and exhausted search do not establish impossibility.
 
 ## Resolving a resignation online
 
 The guest server authenticates and orders resignation against moves and flags, then saves its action, receipt, final result, and stopped clock atomically. Both seats see the finished game on their next read. Migration 008 converts older pending resignations to opponent wins; those rows existed only where the old detector returned `unresolved`. Positions it proved impossible were already final draws. Historical verified witnesses remain stored for audit, but new resignations need no worker or extra result version.
 
-To enforce the exact FIDE exception in a later competitive mode, the adjudicator needs a complete negative proof or a specified authorized review path. Until then, the casual concession policy is explicit and final.
+Rated resignation uses the same ordered receipt transaction to stop clocks and persist the original resignation. A ruling from the immediate detector commits there. An unresolved resignation creates a durable adjudication case. This includes a voluntary resignation at ply zero received before the first-move deadline. A missed first-move deadline still aborts the game without a rating change.
 
 ## Resolving a timeout online
 
 The guest server records the flagged side, effective UTC deadline, and final result in one row-locked transaction, then publishes an update after commit. Concurrent pollers can create only one flag. Migration 011 finalizes old pending timeout rows, including search-exhausted rows, under the casual policy and publishes the same update. Those rows were unresolved; proven no-mate positions had already finished as draws. The bounded background timeout worker is retired from the guest server. An engine score or exhausted search is never treated as a no-mate proof.
 
-The server stops both clocks at flag fall or accepted resignation. Saved history, FEN, turn, and final timeout state can be reconstructed after restart; historical resignation witnesses are retained for audit. For a timeout, the flagged side and effective deadline are saved. Measure how often review is needed before enabling competitive public play. The existing closed-pawn negative proof can still search up to 4,096 states synchronously during adjudication; profile it and move heavy cases off the live command loop before public timed play. A general negative ruling needs a complete proof for that position, such as an exhausted closed graph, not a search timeout.
+An unresolved Rated flag creates a durable adjudication case in the same transaction that freezes the clocks and records the original deadline. The background worker has no role in deciding which command arrived first.
 
 Standard Syzygy results concern best play and the 50-move rule; they do not answer whether *either* side could help the other reach mate. Cooperative mate reachability is a hard search problem even on generalized boards. See the [Syzygy documentation](https://python-chess.readthedocs.io/en/latest/syzygy.html) and [research on helpmate complexity](https://arxiv.org/abs/2010.09271).
+
+## Rated recovery and operator review
+
+Migration `031_rated_adjudications.sql` creates one case per pending Rated game and queues already-pending Rated games. Cases record the original event kind and game version, processing status, attempts, diagnostic, search measurements, and any verified witness and decision attribution. The saved game and its original actions retain the FEN, flag or resignation, and played moves. The migration leaves finalized and Casual games alone.
+
+Stop older API instances before applying migration `031` and start the upgraded API after it commits. The older binaries lack the new queue writes and cannot replay the new rulings.
+
+The server shares the existing 500 ms poll cadence with an independent adjudication task. Each process runs one search at a time. PostgreSQL claims a due case with `FOR UPDATE SKIP LOCKED` and a 60-second lease. The processor snapshots the game under its row lock and releases the connection before handing search to a Node worker with an eight-second wall deadline and heap limits. Node, depth, or wall-time exhaustion sends the case to review. Temporary failures retry after five then ten seconds. After three attempts, including expired leases from crashed processes, the case goes to review. The worker checks the lease again when finalizing.
+
+Local search samples found the starting-position resignation, an opening flag, and a resignation after three opening plies in 2–4 nodes and about 3–12 ms. A quiet eight-ply opening exhausted 5,000 nodes in about 3.9 seconds. These timings cover the search itself on one workstation.
+
+A verified ruling is replayed against the locked game using the same domain commands that recreate the pending event. The ruling, final result, version increment, ratings, and settlement record commit together. PostgreSQL publishes the updated version after commit. Witness moves live in the case record. They never enter played move or clock history.
+
+Use the internal CLI from a trusted operator host with database access. Set `ADJUDICATION_REVIEWERS` to an explicit comma-separated allowlist of OS usernames. The command verifies the OS username and uses the configured database credentials. There is no public adjudication API. Run `npm run build:packages` before using the CLI from a fresh source checkout.
+
+```text
+npm run adjudication -- list [AFTER_GAME_ID]
+npm run adjudication -- show GAME_ID
+npm run adjudication -- resolve GAME_ID WITNESS.json
+```
+
+`list` returns up to 100 review cases. `show` includes the position, prior moves, event and any saved ruling. For review, supply a JSON array of 1–256 moves with `from`, `to`, and optional `promotion` using `q`, `r`, `b`, or `n`. A verified mate settles a review case once and records the operator's OS username, evidence, timestamp, and policy version. Free-text judgments and negative overrides are unavailable. Cases that require a sound negative determination outside the domain's current proofs remain pending.
+
+Before public Rated play, validate review coverage, a controlled negative-ruling process, clock continuity through infrastructure failures, and service capacity. The bounded closed-pawn proof can still visit up to 4,096 positions synchronously and needs separate load testing. The development gate remains off by default and disabled in production.
 
 ## Incorrect claims online
 

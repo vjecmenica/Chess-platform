@@ -15,6 +15,7 @@ export function gameInfoTimestamp(info: SiteGameInfo | undefined, timeZone?: str
 }
 
 export function liveGameStatus(game: GameState, browsingHistory: boolean): string | null {
+  if (game.rated && game.status === 'pending_adjudication') return 'Awaiting adjudication.';
   if (game.status === 'pending_adjudication') return game.pending?.kind === 'resignation'
     ? `${game.pending.resigningSide === 'white' ? 'White' : 'Black'} resigned. Play and clocks are stopped while the result awaits a verified mating decision.`
     : game.timeoutAdjudication === 'unresolved' ? 'A clock flagged. Further adjudication is needed.'
@@ -30,7 +31,8 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
   const status = game.status === 'waiting' ? 'Waiting for players to be ready'
       : game.status === 'active' ? 'In progress'
         : game.status === 'aborted' ? 'Aborted · No win or loss recorded'
-          : game.status === 'pending_adjudication' ? 'Result is being adjudicated' : 'Result unavailable';
+          : game.status === 'pending_adjudication' ? game.rated ? 'Awaiting adjudication' : 'Result is being adjudicated'
+            : 'Result unavailable';
   return <section className="game-info" aria-label="Game information">
     <h3>Game Info</h3>
     <dl>

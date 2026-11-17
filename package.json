@@ -18,6 +18,7 @@
     "check": "npm run typecheck && npm test && npm run build",
     "db:check": "npm run db:check --workspace=@chess/server",
     "db:migrate": "npm run db:migrate --workspace=@chess/server",
+    "adjudication": "tsx apps/server/src/adjudication-cli.ts",
     "start:server": "npm run start --workspace=@chess/server",
     "preview:web": "npm run preview --workspace=@chess/web",
     "explorer:import": "npm run explorer:import --workspace=@chess/server --",

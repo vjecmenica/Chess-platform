@@ -102,7 +102,7 @@ const errors: Record<string, string> = {
   clock_not_started: 'Both guests must press Ready before White’s clock starts.',
   received_before_turn: 'This move arrived before your turn began. The position will be refreshed.',
   flag_fell: 'The server recorded a flag at the clock deadline. The position will be refreshed.',
-  adjudication_pending: 'The clock flagged and the result is awaiting adjudication.',
+  adjudication_pending: 'Awaiting adjudication.',
   legacy_untimed_game: 'This earlier challenge remains an untimed preview.',
   draw_too_early: 'Both players must make a move before agreeing to a draw.',
   draw_offer_too_early: 'Both players must make a move before either can offer a draw.',

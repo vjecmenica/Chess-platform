@@ -12,7 +12,7 @@ Rated rematches are unavailable during this phase. Casual rematches continue thr
 
 ## Adjudication and first moves
 
-Development Rated games use the domain's `fide_proof_required` resignation and timeout policies. Unresolved mating decisions persist as pending with clocks stopped and ratings untouched. The server still needs a durable path to finish those decisions and validation of the competitive rules before unrestricted Rated play in Phase 2C. Casual games retain their existing adjudication policies.
+Development Rated games use the domain's `fide_proof_required` resignation and timeout policies. Phase 2C adds durable processing for unresolved mating decisions. Both clocks stop while an isolated worker searches for a verified witness. An inconclusive case stays pending for authorized review, and ratings remain untouched. The operator CLI can submit a verified witness. Cases requiring a negative judgment beyond the domain's proven rules remain unresolved. [Adjudication and review procedure](adjudication-design.md#rated-recovery-and-operator-review)
 
 Both modes use the existing 30-second first-move grace period. A missed first-move deadline aborts the game and leaves ratings untouched. A voluntary resignation received before the deadline follows the applicable resignation policy even at ply zero. It can remain pending in a Rated game. Disconnect forfeits remain separate work.
 
@@ -56,7 +56,7 @@ Migration `028_account_ratings.sql` creates `chess.account_ratings`, keyed by ac
 
 Migration `029_rated_game_settlement.sql` adds the rated flag, both account IDs, and the rating pool to the game. Rated terms can only be set when inserting a timed game with two distinct registered accounts that match its accepted seats and a pool that matches the preset. The terms are immutable after insertion. Settlement uses those account IDs, even if a guest seat's account link later changes. Foreign keys prevent deletion of an account while a rated game references it.
 
-The game service saves the authoritative final result, updates both ratings, and writes the settlement in one Read Committed transaction. A White win scores 1 for White and 0 for Black, a Black win reverses those scores, and a draw scores 0.5 for each. The result's reason is preserved in history. Casual, aborted, unfinished, and pending adjudication games are skipped. The same persistence path handles moves, draw claims and agreements, resignation, and clock expiry. Current adjudication rules still apply. A future delayed adjudicator must save the final result and call settlement in the same transaction.
+The game service saves the authoritative final result, updates both ratings, and writes the settlement in one Read Committed transaction. A White win scores 1 for White and 0 for Black, a Black win reverses those scores, and a draw scores 0.5 for each. The result's reason is preserved in history. Casual, aborted, unfinished, and pending adjudication games are skipped. The same persistence path handles moves, draw claims and agreements, resignation, clock expiry, and final adjudication. A delayed ruling also commits its witness and audit record in that transaction.
 
 Settlement locks the game first, then checks for a committed settlement. It initializes and locks each involved rating row in ascending account UUID order before reading the next row. Rating locks are scoped to the pool. The database clock is sampled after both locks, with the settlement time floored at the newer activity anchor to handle clock regression. Replay can reproduce the resulting states from the recorded inputs and this timestamp.
 
@@ -64,4 +64,4 @@ Settlement locks the game first, then checks for a committed settlement. It init
 
 A failed transaction rolls back the final game transition, both rating changes, history, and any command completion. A previously admitted command remains pending and can be retried by the existing receipt processor after restart. Due clocks likewise remain eligible for processing after rollback. Repeated processing, including across instances, sees the committed settlement under the game lock. PostgreSQL publishes game notifications on commit, and notification delivery is independent of rating durability.
 
-Deployments require migration `030` before starting the updated API. Rating displays and administrative correction tools are separate work.
+Deployments require migration `031` before starting the updated API. Public Rated creation remains gated pending adjudication coverage, operational review procedures, infrastructure recovery, disconnect handling, fair-play protections, and Rated rematch policy. Rating displays and administrative correction tools are separate work.
