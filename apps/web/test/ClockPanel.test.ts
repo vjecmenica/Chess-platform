@@ -94,7 +94,7 @@ describe('display clocks', () => {
       { clock: running, side: 'black', isYou: false, historicalMs: 302_250 }));
     expect(shown).toContain('05:03');
     expect(shown).not.toContain('clock-hundredths');
-    expect(shown).not.toContain('low-time-marker');
+    expect(shown).not.toContain('data-low-time');
     expect(shown).not.toContain('At selected move');
     expect(shown).not.toContain('Stopped');
     expect(shown).not.toContain('clock-active');
@@ -128,18 +128,23 @@ describe('display clocks', () => {
     const history = renderToStaticMarkup(createElement(ClockPanel, {
       clock: running, side: 'black', isYou: false, historicalMs: 29_450,
     }));
-    expect(live).toContain('clock-active clock-warning');
+    expect(live).toContain('clock-active');
     expect(live).toContain('Low time');
     expect(live).toContain('clock-hundredths');
-    expect(history).toContain('clock-warning');
+    expect(history).not.toContain('clock-active');
     expect(history).toContain('<span>00:29</span><span class="clock-hundredths">.45</span>');
+    for (const html of [live, history]) {
+      expect(html).toContain('data-low-time="true"');
+      expect(html).toContain('<span class="visually-hidden">Low time </span>');
+      expect(html).not.toContain('>!</span>');
+    }
     const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
     expect(live).toContain('class="player-clock-value" data-side="white"');
     expect(history).toContain('class="player-clock-value" data-side="black"');
     for (const side of ['white', 'black']) {
-      expect(css).toContain(`.player-clock-value[data-side="${side}"] { --clock-background: var(--evaluation-${side}); color: var(--evaluation-${side}-text); }`);
+      expect(css).toContain(`.player-clock-value[data-side="${side}"] { background: var(--evaluation-${side}); color: var(--evaluation-${side}-text); }`);
     }
-    expect(css).toMatch(/\.clock-warning \.player-clock-value \{ border-color: var\(--color-error\)/);
+    expect(css).toContain('.player-clock-value[data-low-time] { background: var(--color-danger); color: var(--evaluation-white); opacity: 1; }');
     expect(css).toMatch(/\.clock-hundredths[^}]*font-size: \.58em/);
   });
 

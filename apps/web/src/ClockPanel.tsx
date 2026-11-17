@@ -57,7 +57,7 @@ export function ClockPanel({ clock, side, isYou, playerNames, historicalMs, show
   const valueMs = historicalMs !== undefined ? historicalMs
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   const running = historicalMs === undefined && clock?.phase === 'running' && clock.activeSide === side;
-  return <div className={`clock ${!showStatus ? 'clock-no-status' : ''} ${running ? 'clock-active' : ''} ${valueMs !== null && valueMs <= 30_000 ? 'clock-warning' : ''}`}
+  return <div className={`clock ${!showStatus ? 'clock-no-status' : ''} ${running ? 'clock-active' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
       <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} />
       <PlayerClockValue side={side} milliseconds={valueMs} fallback={historicalMs !== undefined ? '—' : 'Untimed'} />

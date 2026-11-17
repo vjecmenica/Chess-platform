@@ -30,7 +30,7 @@ export function ImportedPlayerRow({ imported, side, historicalMs }: {
 }) {
   const player = importedPlayer(imported, side);
   const timed = historicalMs !== undefined && historicalMs !== null;
-  return <div className={`clock clock-no-status imported-player${timed && historicalMs <= 30_000 ? ' clock-warning' : ''}`}
+  return <div className="clock clock-no-status imported-player"
     aria-label={timed ? `${side} clock at selected move` : undefined}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating} />
     {timed && <PlayerClockValue side={side} milliseconds={historicalMs} />}

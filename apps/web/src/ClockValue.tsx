@@ -18,13 +18,8 @@ export function PlayerClockValue({ milliseconds, fallback, side }: {
   milliseconds: number | null; fallback?: string; side: GameSide;
 }) {
   const lowTime = milliseconds !== null && milliseconds <= 30_000;
-  return <strong className="player-clock-value" data-side={side} aria-live="off">
-    {milliseconds === null ? fallback : <span className="clock-digits">
-      {lowTime && <>
-        <span className="low-time-marker" aria-hidden="true">!</span>
-        <span className="visually-hidden">Low time </span>
-      </>}
-      <ClockValue milliseconds={milliseconds} />
-    </span>}
+  return <strong className="player-clock-value" data-side={side} data-low-time={lowTime || undefined} aria-live="off">
+    {lowTime && <span className="visually-hidden">Low time </span>}
+    {milliseconds === null ? fallback : <span className="clock-digits"><ClockValue milliseconds={milliseconds} /></span>}
   </strong>;
 }

@@ -252,19 +252,17 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .clock-no-status { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; min-height: 72px; }
 .player-clock-value { grid-column: 2; grid-row: 1 / span 2; justify-self: end;
-  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; padding: 5px 8px;
-  border: 1px solid var(--color-border-strong); border-radius: var(--radius-compact);
-  background: color-mix(in srgb, var(--clock-background) 74%, var(--clock-muted-surface));
-  font: 700 clamp(24px, 2.5vw, 30px)/1 var(--font-ui); font-variant-numeric: tabular-nums; font-kerning: none;
-  --clock-muted-surface: color-mix(in srgb, var(--color-page-bg) 40%, var(--color-text-muted)); }
-.player-clock-value[data-side="white"] { --clock-background: var(--evaluation-white); color: var(--evaluation-white-text); }
-.player-clock-value[data-side="black"] { --clock-background: var(--evaluation-black); color: var(--evaluation-black-text); }
-.clock-active .player-clock-value { background: var(--clock-background); border-color: var(--color-accent); }
-.clock-warning .player-clock-value { border-color: var(--color-error); }
-.clock-digits { display: inline-flex; align-items: baseline; }
+  display: inline-grid; place-items: center; white-space: nowrap; padding: 6px 9px;
+  min-block-size: calc(1em + 12px); border-radius: var(--radius-compact); opacity: .65;
+  font: 700 clamp(24px, 2.5vw, 30px)/1 var(--font-ui); font-variant-numeric: lining-nums tabular-nums; font-kerning: none; }
+.player-clock-value[data-side="white"] { background: var(--evaluation-white); color: var(--evaluation-white-text); }
+.player-clock-value[data-side="black"] { background: var(--evaluation-black); color: var(--evaluation-black-text); }
+.clock-active .player-clock-value { opacity: 1; }
+.player-clock-value[data-low-time] { background: var(--color-danger); color: var(--evaluation-white); opacity: 1; }
+/* Center the numeral height instead of the font's full ascent and descent. */
+.clock-digits { text-box: trim-both cap alphabetic; }
 .clock-hundredths { font-size: .58em; font-weight: 600; }
-.clock-digits .clock-hundredths { inline-size: calc(2ch + .3em); text-align: center; }
-.low-time-marker { font-size: .55em; margin-inline-end: 5px; }
+.clock-digits .clock-hundredths { display: inline-block; inline-size: calc(2ch + .3em); text-align: center; }
 .clock small { color: var(--color-text-muted); font-size: var(--text-meta); }
 .first-move-countdown { grid-column: 1 / -1; display: flex; justify-content: space-between;
   gap: 8px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--color-border);
