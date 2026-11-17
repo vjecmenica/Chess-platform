@@ -8,19 +8,34 @@ const source = (width = 420, height = 180) => sharp({ create: { width, height, c
 it.each(['jpeg', 'png', 'webp'] as const)('decodes and normalizes a %s to square WebP without metadata', async format => {
   const input = await source().withMetadata({ orientation: 6 }).toFormat(format).toBuffer();
   const result = await normalizeAvatar(input);
-  expect(result).not.toBeNull();
-  const metadata = await sharp(result!).metadata();
+  expect(result).toHaveProperty('image');
+  const metadata = await sharp('image' in result ? result.image : Buffer.alloc(0)).metadata();
   expect(metadata).toMatchObject({ width: 256, height: 256, format: 'webp' });
   expect(metadata.exif).toBeUndefined();
   expect(metadata.icc).toBeUndefined();
 });
 
-it('rejects signatures alone, corrupt encodings, unsupported formats and excessive dimensions', async () => {
-  const jpeg = await source().jpeg().toBuffer();
-  for (const invalid of [Buffer.from('<svg/>'), Buffer.from('RIFF\0\0\0\0WEBP'), jpeg.subarray(0, jpeg.length - 32),
-    await source().gif().toBuffer(), await source(4097, 1).png().toBuffer()]) {
-    expect(await normalizeAvatar(invalid)).toBeNull();
+it('accepts progressive portrait JPEGs and transparent PNGs', async () => {
+  const progressive = await source(1200, 1600).jpeg({ progressive: true }).toBuffer();
+  const transparent = await sharp({ create: { width: 320, height: 180, channels: 4, background: '#4a9aaf40' } }).png().toBuffer();
+  expect(await sharp(progressive).metadata()).toMatchObject({ isProgressive: true, width: 1200, height: 1600 });
+  for (const input of [progressive, transparent]) {
+    const result = await normalizeAvatar(input);
+    expect(result).toHaveProperty('image');
+    const metadata = await sharp('image' in result ? result.image : Buffer.alloc(0)).metadata();
+    expect(metadata).toMatchObject({ width: 256, height: 256, format: 'webp', hasAlpha: input === transparent });
   }
+});
+
+it('distinguishes unreadable, unsupported, oversized and over-dimensioned images', async () => {
+  const jpeg = await source().jpeg().toBuffer();
+  for (const invalid of [Buffer.from('RIFF\0\0\0\0WEBP'), jpeg.subarray(0, jpeg.length - 32)])
+    expect(await normalizeAvatar(invalid)).toEqual({ error: 'invalid_avatar' });
+  for (const unsupported of [Buffer.from('<svg/>'), await source().gif().toBuffer()])
+    expect(await normalizeAvatar(unsupported)).toEqual({ error: 'unsupported_avatar' });
+  expect(await normalizeAvatar(await source(4097, 1).png().toBuffer())).toEqual({ error: 'avatar_dimensions' });
+  expect(await normalizeAvatar(await source(4200, 4200).png().toBuffer())).toEqual({ error: 'avatar_dimensions' });
+  expect(await normalizeAvatar(Buffer.alloc(2 * 1024 * 1024 + 1))).toEqual({ error: 'avatar_too_large' });
 });
 
 afterEach(() => vi.unstubAllGlobals());

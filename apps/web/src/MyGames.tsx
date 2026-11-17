@@ -108,8 +108,6 @@ export function AccountPage() {
   const sectionHeading = useRef<HTMLHeadingElement>(null);
   const [details, setDetails] = useState<AccountState | null>(null);
   const [busy, setBusy] = useState(false);
-  const [avatarPending, setAvatarPending] = useState<'upload' | 'remove' | null>(null);
-  const [avatarError, setAvatarError] = useState<{ owner: string; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [csrf, setCsrf] = useState<string>();
   const [page, setPage] = useState<AccountGames | null>(null);
@@ -117,22 +115,26 @@ export function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
+  const changingAvatar = useRef(false);
 
-  async function load(before?: string) {
+  async function load(before?: string, refreshSession = false) {
     if (before && request.current) return;
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     setLoading(true); setError(null);
-    if (!before) { setPage(null); setDetails(null); setSignedOut(false); }
+    if (!before) setPage(null);
     try {
-      const session = await loadGuestSession();
+      const session = await loadGuestSession(refreshSession);
       if (controller.signal.aborted) return;
       setCsrf(session.csrfToken);
       const accountResponse = await fetch('/api/account', { cache: 'no-store', signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (accountResponse.status === 401) { setPage(null); setDetails(null); setSignedOut(true); return; }
       if (!accountResponse.ok) throw new Error();
       const state = await accountResponse.json() as AccountState;
       if (controller.signal.aborted) return;
       setDetails(state);
+      setSignedOut(!state.account);
       if (!state.account) { setPage(null); setSignedOut(true); return; }
       const response = await fetch(`/api/account/games${before ? `?before=${encodeURIComponent(before)}` : ''}`,
         { cache: 'no-store', signal: controller.signal });
@@ -167,46 +169,56 @@ export function AccountPage() {
     finally { setBusy(false); }
   }
 
-  async function changeAvatar(file: File | null) {
+  async function changeAvatar(image: Blob | null, owner: string) {
     const account = details?.account;
-    if (busy || !account || !csrf) return;
-    setAvatarError(null); setNotice(null);
-    if (file && file.size > avatarUploadMaxBytes) {
-      setAvatarError({ owner: account.id, message: 'Choose a picture no larger than 2 MB.' }); return;
-    }
-    setBusy(true); setAvatarPending(file ? 'upload' : 'remove');
+    const sessionError = 'Your session changed. Sign in to the correct account and try again.';
+    if (!account || account.id !== owner || !csrf) throw new Error(sessionError);
+    if (busy || changingAvatar.current) throw new Error('Please wait for the current account update to finish.');
+    if (image && image.size > avatarUploadMaxBytes) throw new Error('The cropped picture exceeds the 2 MB upload limit.');
+    changingAvatar.current = true;
+    setBusy(true); setNotice(null);
+    let restartLoad = request.current !== null;
+    request.current?.abort(); request.current = null; setLoading(false);
     try {
-      const response = await fetch('/api/account/avatar', { method: file ? 'PUT' : 'DELETE', cache: 'no-store',
-        headers: { 'X-CSRF-Token': csrf, 'X-Avatar-Owner': account.id,
-          ...(file ? { 'Content-Type': 'application/octet-stream' } : {}) }, body: file });
+      const response = await fetch('/api/account/avatar', { method: image ? 'PUT' : 'DELETE', cache: 'no-store',
+        headers: { 'X-CSRF-Token': csrf, 'X-Avatar-Owner': owner,
+          ...(image ? { 'Content-Type': 'application/octet-stream' } : {}) }, body: image })
+        .catch(() => { throw new Error('Could not reach the server. Check your connection and try again.'); });
       if (!response.ok) {
         const data = await response.json().catch(() => ({})) as { error?: string };
-        if (response.status === 413) throw new Error('Choose a picture no larger than 2 MB.');
+        if (response.status === 413) throw new Error('The cropped picture exceeds the 2 MB upload limit.');
         if (response.status === 429) throw new Error('Too many picture changes. Try again in a few minutes.');
-        if (data.error === 'invalid_avatar') throw new Error('Choose a valid JPEG, PNG or WebP up to 4096 × 4096 pixels.');
+        if (data.error === 'invalid_avatar') throw new Error('The server could not read the picture. Try a different image.');
+        if (data.error === 'unsupported_avatar') throw new Error('Use a still JPEG, PNG or WebP image.');
+        if (data.error === 'avatar_dimensions') throw new Error('The uploaded image exceeds the server’s 4096 × 4096 pixel limit.');
+        if (data.error === 'avatar_storage_unavailable') throw new Error('Picture storage is temporarily unavailable. Try again.');
+        if (data.error === 'avatar_busy') throw new Error('Picture processing is busy. Try again shortly.');
         if (response.status === 401 || response.status === 403 || response.status === 409) {
-          await load();
-          throw new Error('Your session changed. Sign in to the correct account and try again.');
+          restartLoad = false;
+          await load(undefined, true);
+          throw new Error(sessionError);
         }
-        throw new Error('Could not change your profile picture. Try again.');
+        throw new Error('The server could not change your profile picture. Try again.');
       }
-      const updated = await response.json() as AccountAvatarResponse;
+      const updated = await response.json().catch(() => null) as AccountAvatarResponse | null;
+      if (!updated || updated.accountId !== owner) throw new Error('The server could not confirm the picture change. Try again.');
       setDetails(current => {
         if (current?.account?.id !== updated.accountId) return current;
         const { avatarUrl: _previous, ...identity } = current.account;
         return { ...current, account: updated.avatarUrl ? { ...identity, avatarUrl: updated.avatarUrl } : identity };
       });
-      setNotice(file ? 'Profile picture updated.' : 'Profile picture removed.');
-    } catch (cause) {
-      setAvatarError({ owner: account.id, message: cause instanceof Error && cause.name !== 'TypeError' ? cause.message
-        : 'Could not change your profile picture. Try again.' });
-    } finally { setAvatarPending(null); setBusy(false); }
+      setNotice(image ? 'Profile picture updated.' : 'Profile picture removed.');
+    } finally {
+      changingAvatar.current = false;
+      setBusy(false);
+      if (restartLoad) void load(undefined, true);
+    }
   }
 
   useEffect(() => {
     void load();
-    // Revalidate identity and discard the previous account's archive after returning to this tab.
-    const refresh = () => { if (!document.querySelector('.account-details:focus-within, .profile-picture-settings [role="status"]')) void load(); };
+    // Retain the mounted form during revalidation, including while the native file picker returns focus.
+    const refresh = () => { if (!changingAvatar.current) void load(undefined, true); };
     window.addEventListener('focus', refresh);
     return () => { request.current?.abort(); window.removeEventListener('focus', refresh); };
   }, []);
@@ -235,9 +247,8 @@ export function AccountPage() {
         {section === 'games' && page && <><GameArchive page={page} />
           {page.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
         {section === 'stats' && page && <AccountStats summary={page.summary} />}
-        {section === 'settings' && <AccountSettings state={details} busy={busy} avatarPending={avatarPending}
-          avatarError={avatarError?.owner === details.account.id ? avatarError.message : null}
-          onAvatarChange={file => void changeAvatar(file)} onAction={(path, body) => void action(path, body)} />}
+        {section === 'settings' && <AccountSettings key={details.account.id} state={details} busy={busy}
+          onAvatarChange={changeAvatar} onAction={(path, body) => void action(path, body)} />}
       </section>}
       {loading && <p role="status">{page ? 'Loading more games…' : 'Loading account and games…'}</p>}
     </main>

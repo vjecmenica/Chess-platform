@@ -3,8 +3,8 @@ import { ProfilePictureSettings } from './ProfilePictureSettings';
 import type { FormEvent } from 'react';
 import type { AccountState } from '@chess/contracts';
 
-export function AccountSettings({ state, busy, avatarPending, avatarError, onAvatarChange, onAction }: { state: AccountState; busy: boolean;
-  avatarPending: 'upload' | 'remove' | null; avatarError: string | null; onAvatarChange: (file: File | null) => void;
+export function AccountSettings({ state, busy, onAvatarChange, onAction }: { state: AccountState; busy: boolean;
+  onAvatarChange: (image: Blob | null, owner: string) => Promise<void>;
   onAction: (path: string, body?: Record<string, string>) => void }) {
   function submit(event: FormEvent<HTMLFormElement>, path: string) {
     event.preventDefault();
@@ -12,8 +12,7 @@ export function AccountSettings({ state, busy, avatarPending, avatarError, onAva
     onAction(path, body);
   }
   return <section className="account-details" aria-label="Account details and settings">
-    {state.account && <ProfilePictureSettings account={state.account} disabled={busy} pending={avatarPending}
-      error={avatarError} onChange={onAvatarChange} />}
+    {state.account && <ProfilePictureSettings account={state.account} disabled={busy} onChange={onAvatarChange} />}
     <AppearanceSettings />
     <div><h3>Account session</h3>
       <button className="secondary" disabled={busy} onClick={() => onAction('/logout')}>Log out</button>

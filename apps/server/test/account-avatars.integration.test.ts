@@ -66,11 +66,12 @@ it('publishes small, versioned public images and shares them only as player meta
   const owner = await signIn(white, 'register');
   expect((await change(guest, owner.id, await image('white'))).statusCode).toBe(401);
   expect((await change({ ...white, csrf: '0'.repeat(64) }, owner.id, await image('white'))).statusCode).toBe(403);
-  expect((await change(white, owner.id, Buffer.from('<svg/>'))).statusCode).toBe(400);
+  expect((await change(white, owner.id, Buffer.from('<svg/>'))).json()).toEqual({ error: 'unsupported_avatar' });
   expect((await change(white, owner.id, Buffer.alloc(avatarUploadMaxBytes + 1))).statusCode).toBe(413);
   expect((await app.inject('/avatars/not-an-object.webp')).statusCode).toBe(404);
 
-  const first = await change(white, owner.id, await image('brown'));
+  const first = await change(white, owner.id, await sharp({ create: { width: 1200, height: 1600, channels: 3,
+    background: '#985a38' } }).jpeg({ progressive: true }).toBuffer());
   expect(first.statusCode).toBe(200);
   const { avatarUrl } = first.json();
   expect(avatarUrl).toMatch(/^\/api\/avatars\/[a-f\d-]+\.webp$/);

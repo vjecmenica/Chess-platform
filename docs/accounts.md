@@ -256,7 +256,9 @@ and hashes are never returned. No schema migration is required.
 
 ## Profile avatars
 
-Apply migration `026_profile_avatars.sql` with `npm run db:migrate` before running the updated API. Account settings accept a JPEG, PNG, or WebP up to 2 MiB and 4096 × 4096 pixels. The server center-crops the oriented image to 256 × 256, strips metadata, and stores WebP. PostgreSQL stores the avatar's random object key and the deletion queue. Account profile pictures are public by URL. Accounts and saved games retain their existing access controls.
+Apply migration `026_profile_avatars.sql` with `npm run db:migrate` before running the avatar API. In Account Settings, choose a still JPEG, PNG, or WebP up to 10 MiB, 8192 pixels per side, and 24 megapixels. Position and zoom it in the square crop, then select **Save picture** to upload the processed 256 × 256 image. The original stays in the browser.
+
+The upload endpoint still limits requests to 2 MiB and images to 4096 × 4096 pixels. It independently validates and normalizes the upload to 256 × 256 WebP with metadata removed. PostgreSQL stores the avatar's random object key and the deletion queue. Account profile pictures are public by URL. Accounts and saved games retain their existing access controls.
 
 Local development stores objects in `.local/avatars` by default. Set `AVATAR_DIRECTORY` to a durable mounted directory for a filesystem deployment, or configure `AVATAR_S3_ENDPOINT`, `AVATAR_S3_BUCKET`, `AVATAR_S3_ACCESS_KEY_ID`, and `AVATAR_S3_SECRET_ACCESS_KEY` for a shared private S3-compatible bucket. Set `AVATAR_S3_REGION` when the provider requires a specific region. R2 uses `auto`. Grant read, write, and delete access to the avatar bucket. For multiple API instances, use the same bucket or a shared volume. Include the avatar storage in backups alongside PostgreSQL.
 

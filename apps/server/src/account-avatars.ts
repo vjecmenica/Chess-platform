@@ -24,7 +24,7 @@ export function registerAccountAvatars(app: FastifyInstance, pool: pg.Pool, stor
       if (request.headers['x-avatar-owner'] !== account.id)
         return reply.code(409).send({ error: 'avatar_owner_changed' });
       if (request.method === 'PUT' && request.headers['content-type'] !== 'application/octet-stream')
-        return reply.code(415).send({ error: 'invalid_avatar' });
+        return reply.code(415).send({ error: 'unsupported_avatar' });
       if (!await rateAllowed(pool, `avatar:${account.id}`, 10) || !await rateAllowed(pool, `avatar-ip:${request.ip}`, 40))
         return reply.header('Retry-After', '900').code(429).send({ error: 'avatar_rate_limited' });
       owners.set(request, { id: account.id, guest });
@@ -36,14 +36,14 @@ export function registerAccountAvatars(app: FastifyInstance, pool: pg.Pool, stor
         if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: 'invalid_avatar' });
         if (decoding >= 2) return reply.header('Retry-After', '5').code(503).send({ error: 'avatar_busy' });
         decoding++;
-        let image: Buffer | null;
-        try { image = await normalizeAvatar(request.body); }
+        let decoded: Awaited<ReturnType<typeof normalizeAvatar>>;
+        try { decoded = await normalizeAvatar(request.body); }
         finally { decoding--; }
-        if (!image) return reply.code(400).send({ error: 'invalid_avatar' });
+        if ('error' in decoded) return reply.code(decoded.error === 'avatar_too_large' ? 413 : 400).send(decoded);
         key = randomUUID();
         // Also recover abandoned objects if the process dies after writing the image.
         await pool.query("INSERT INTO chess.avatar_cleanup (object_key, staged, delete_after) VALUES ($1, true, now() + interval '1 hour')", [key]);
-        try { await storage.put(key, image); }
+        try { await storage.put(key, decoded.image); }
         catch {
           request.log.warn('Could not write an avatar object.');
           return reply.code(503).send({ error: 'avatar_storage_unavailable' });
