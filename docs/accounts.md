@@ -253,3 +253,11 @@ rechecks the verified hash under the account lock to prevent a concurrent old
 password login from surviving a password change. Both settings routes use CSRF
 and durable per-account/per-IP 15-minute limits (10/30 attempts). Credentials
 and hashes are never returned. No schema migration is required.
+
+## Profile avatars
+
+Apply migration `026_profile_avatars.sql` with `npm run db:migrate` before running the updated API. Account settings accept a JPEG, PNG, or WebP up to 2 MiB and 4096 × 4096 pixels. The server center-crops the oriented image to 256 × 256, strips metadata, and stores WebP. PostgreSQL stores the avatar's random object key and the deletion queue. Account profile pictures are public by URL. Accounts and saved games retain their existing access controls.
+
+Local development stores objects in `.local/avatars` by default. Set `AVATAR_DIRECTORY` to a durable mounted directory for a filesystem deployment, or configure `AVATAR_S3_ENDPOINT`, `AVATAR_S3_BUCKET`, `AVATAR_S3_ACCESS_KEY_ID`, and `AVATAR_S3_SECRET_ACCESS_KEY` for a shared private S3-compatible bucket. Set `AVATAR_S3_REGION` when the provider requires a specific region. R2 uses `auto`. Grant read, write, and delete access to the avatar bucket. For multiple API instances, use the same bucket or a shared volume. Include the avatar storage in backups alongside PostgreSQL.
+
+The same-origin API serves public WebP URLs with a one-hour immutable cache lifetime. Replacement creates a new URL. The API checks the database cleanup queue every minute and retries failed deletions. Previously cached images may remain available until their cache expires. Keep `/api/avatars/` publicly readable through the reverse proxy and allow at least 2 MiB for `PUT /api/account/avatar`.

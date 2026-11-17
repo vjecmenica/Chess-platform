@@ -13,9 +13,12 @@ import { registerGameNotes } from './game-notes.js';
 import type { AccountEmail } from './account-email.js';
 import { registerRecoveryRoutes } from './account-recovery.js';
 import { registerAccountRoutes } from './account-routes.js';
+import { registerAccountAvatars } from './account-avatars.js';
+import type { AvatarStorage } from './avatar-storage.js';
 
 export function buildApp(checkDatabase: () => Promise<void>, logger = false,
-  challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService; accountEmail?: AccountEmail | undefined }) {
+  challenges?: { pool: pg.Pool; secureCookies: boolean; gameService?: GameService; accountEmail?: AccountEmail | undefined;
+    avatarStorage?: AvatarStorage }) {
   const app = Fastify({ logger: logger ? { redact: ['req.headers.cookie', 'req.headers.authorization',
     'req.headers["x-csrf-token"]', 'req.body', 'req.url', 'res.headers["set-cookie"]'] } : false,
     ajv: { customOptions: { removeAdditional: false } } });
@@ -35,6 +38,10 @@ export function buildApp(checkDatabase: () => Promise<void>, logger = false,
   if (challenges) {
     registerAppearance(app, challenges.pool);
     registerAccountRoutes(app, challenges.pool, challenges.secureCookies, !!challenges.accountEmail);
+    if (challenges.avatarStorage) {
+      const { pool, avatarStorage } = challenges;
+      app.register(async scope => registerAccountAvatars(scope, pool, avatarStorage));
+    }
     registerRecoveryRoutes(app, challenges.pool, challenges.accountEmail);
     registerExplorerRoutes(app, challenges.pool);
     const gameService = challenges.gameService ?? createGameService(challenges.pool);

@@ -1,10 +1,20 @@
 import type { FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { AccountIdentity } from '@chess/contracts';
 import { cookieToken, tokenHash, type GuestSession } from './guest-session.js';
 
 export const accountCookie = 'chess_account';
-export interface Account { id: string; username: string }
+export type Account = AccountIdentity;
+
+export function avatarUrl(key: string | null): string | null {
+  return key === null ? null : `/api/avatars/${key}.webp`;
+}
+
+export function accountIdentity(row: { id: string; username: string; avatar_key: string | null }): Account {
+  const url = avatarUrl(row.avatar_key);
+  return { id: row.id, username: row.username, ...(url ? { avatarUrl: url } : {}) };
+}
 
 /** Called inside the challenge transaction; lock order matches login. */
 export async function newChallengeSeat(client: pg.PoolClient, request: FastifyRequest,
@@ -35,10 +45,10 @@ export async function currentAccount(pool: Pick<pg.Pool, 'query'>, request: Fast
   guest: GuestSession): Promise<Account | null> {
   const token = cookieToken(request.headers.cookie, accountCookie);
   if (!token) return null;
-  const { rows } = await pool.query<Account>(`SELECT a.id, a.username FROM chess.account_sessions s
+  const { rows } = await pool.query<{ id: string; username: string; avatar_key: string | null }>(`SELECT a.id, a.username, a.avatar_key FROM chess.account_sessions s
     JOIN chess.accounts a ON a.id = s.account_id
     WHERE s.token_hash = $1 AND s.guest_id = $2 AND s.expires_at > now()`, [tokenHash(token), guest.id]);
-  return rows[0] ?? null;
+  return rows[0] ? accountIdentity(rows[0]) : null;
 }
 
 /** Resolve to the original guest seat so durable receipt identities never change. */

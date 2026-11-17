@@ -4,18 +4,26 @@ import { loadEnvironment, readConfig } from './config.js';
 import { checkDatabase, createPool } from './database.js';
 import { checkChallengeSchema } from './challenge-routes.js';
 import { createGameService } from './game-service.js';
+import { avatarStorageFromEnvironment } from './avatar-storage.js';
+import { cleanAvatarObjects } from './account-avatars.js';
 
 async function main() {
   loadEnvironment();
   const config = readConfig();
+  const avatarStorage = avatarStorageFromEnvironment();
   const pool = createPool(config.connectionString);
   const gameService = createGameService(pool);
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);
-  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService, accountEmail: accountEmailFromEnvironment() });
+  const app = buildApp(() => checkDatabase(pool), true, { pool, secureCookies, gameService,
+    accountEmail: accountEmailFromEnvironment(), avatarStorage });
   let timer: ReturnType<typeof setInterval> | null = null;
+  let avatarCleanupTimer: ReturnType<typeof setInterval> | null = null;
+  let avatarCleanup: Promise<void> | null = null;
   app.addHook('onClose', async () => {
     if (timer !== null) clearInterval(timer);
+    if (avatarCleanupTimer !== null) clearInterval(avatarCleanupTimer);
+    await avatarCleanup;
     await gameService.stop();
     await pool.end();
   });
@@ -23,6 +31,7 @@ async function main() {
   try {
     await checkDatabase(pool);
     await checkChallengeSchema(pool);
+    await pool.query('SELECT a.avatar_key FROM chess.accounts a CROSS JOIN chess.avatar_cleanup LIMIT 0');
     await gameService.start();
   } catch (error) {
     await app.close();
@@ -45,6 +54,14 @@ async function main() {
   };
   timer = setInterval(() => { void poll(); }, 500);
   void poll();
+
+  const removeAvatars = () => {
+    avatarCleanup ??= cleanAvatarObjects(pool, avatarStorage)
+      .catch(error => app.log.error({ err: error }, 'Could not process the avatar cleanup queue.'))
+      .finally(() => { avatarCleanup = null; });
+  };
+  avatarCleanupTimer = setInterval(removeAvatars, 60_000);
+  removeAvatars();
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

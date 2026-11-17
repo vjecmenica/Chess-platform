@@ -1313,6 +1313,7 @@ export function App() {
                   historicalMs={importedHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />
                   : <ClockPanel clock={game.clocks} side={topSide}
                   playerNames={game.playerNames}
+                  avatar={game.playerAvatars?.[topSide]}
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />}
@@ -1456,6 +1457,7 @@ export function App() {
                   historicalMs={importedHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                   playerNames={game.playerNames}
+                  avatar={game.playerAvatars?.[bottomSide]}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />}
               </PlayerMaterialPanel>

@@ -1,10 +1,11 @@
 import { loadGuestSession } from './guest-session-client';
 import { useEffect, useRef, useState } from 'react';
-import type { AccountGame, AccountGames, AccountState } from '@chess/contracts';
+import { avatarUploadMaxBytes, type AccountAvatarResponse, type AccountGame, type AccountGames, type AccountState } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
 import { resultDisplay } from './result-display';
 import { AnalysisNavigation } from './AnalysisNavigation';
+import { ProfileAvatar } from './ProfileAvatar';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -71,7 +72,7 @@ export function GameArchive({ page }: { page: AccountGames }) {
 export function AccountProfileHeader({ state, section }: { state: AccountState; section: AccountSection }) {
   return <div className="account-profile-header">
     <div className="account-profile-identity">
-      <span className="account-avatar" aria-hidden="true">{state.account!.username.slice(0, 2).toUpperCase()}</span>
+      <ProfileAvatar className="account-avatar" name={state.account!.username} url={state.account!.avatarUrl} />
       <div className="account-profile-name"><p>Private account</p><h1 className="player-name">{state.account!.username}</h1>
         <p>Joined {state.createdAt ? <time dateTime={state.createdAt}>{new Date(state.createdAt).toLocaleDateString(undefined,
           { dateStyle: 'long' })}</time> : 'Unavailable'}</p></div>
@@ -107,6 +108,8 @@ export function AccountPage() {
   const sectionHeading = useRef<HTMLHeadingElement>(null);
   const [details, setDetails] = useState<AccountState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [avatarPending, setAvatarPending] = useState<'upload' | 'remove' | null>(null);
+  const [avatarError, setAvatarError] = useState<{ owner: string; message: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [csrf, setCsrf] = useState<string>();
   const [page, setPage] = useState<AccountGames | null>(null);
@@ -164,10 +167,46 @@ export function AccountPage() {
     finally { setBusy(false); }
   }
 
+  async function changeAvatar(file: File | null) {
+    const account = details?.account;
+    if (busy || !account || !csrf) return;
+    setAvatarError(null); setNotice(null);
+    if (file && file.size > avatarUploadMaxBytes) {
+      setAvatarError({ owner: account.id, message: 'Choose a picture no larger than 2 MB.' }); return;
+    }
+    setBusy(true); setAvatarPending(file ? 'upload' : 'remove');
+    try {
+      const response = await fetch('/api/account/avatar', { method: file ? 'PUT' : 'DELETE', cache: 'no-store',
+        headers: { 'X-CSRF-Token': csrf, 'X-Avatar-Owner': account.id,
+          ...(file ? { 'Content-Type': 'application/octet-stream' } : {}) }, body: file });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        if (response.status === 413) throw new Error('Choose a picture no larger than 2 MB.');
+        if (response.status === 429) throw new Error('Too many picture changes. Try again in a few minutes.');
+        if (data.error === 'invalid_avatar') throw new Error('Choose a valid JPEG, PNG or WebP up to 4096 × 4096 pixels.');
+        if (response.status === 401 || response.status === 403 || response.status === 409) {
+          await load();
+          throw new Error('Your session changed. Sign in to the correct account and try again.');
+        }
+        throw new Error('Could not change your profile picture. Try again.');
+      }
+      const updated = await response.json() as AccountAvatarResponse;
+      setDetails(current => {
+        if (current?.account?.id !== updated.accountId) return current;
+        const { avatarUrl: _previous, ...identity } = current.account;
+        return { ...current, account: updated.avatarUrl ? { ...identity, avatarUrl: updated.avatarUrl } : identity };
+      });
+      setNotice(file ? 'Profile picture updated.' : 'Profile picture removed.');
+    } catch (cause) {
+      setAvatarError({ owner: account.id, message: cause instanceof Error && cause.name !== 'TypeError' ? cause.message
+        : 'Could not change your profile picture. Try again.' });
+    } finally { setAvatarPending(null); setBusy(false); }
+  }
+
   useEffect(() => {
     void load();
     // Revalidate identity and discard the previous account's archive after returning to this tab.
-    const refresh = () => { if (!document.querySelector('.account-details:focus-within')) void load(); };
+    const refresh = () => { if (!document.querySelector('.account-details:focus-within, .profile-picture-settings [role="status"]')) void load(); };
     window.addEventListener('focus', refresh);
     return () => { request.current?.abort(); window.removeEventListener('focus', refresh); };
   }, []);
@@ -196,7 +235,9 @@ export function AccountPage() {
         {section === 'games' && page && <><GameArchive page={page} />
           {page.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
         {section === 'stats' && page && <AccountStats summary={page.summary} />}
-        {section === 'settings' && <AccountSettings state={details} busy={busy} onAction={(path, body) => void action(path, body)} />}
+        {section === 'settings' && <AccountSettings state={details} busy={busy} avatarPending={avatarPending}
+          avatarError={avatarError?.owner === details.account.id ? avatarError.message : null}
+          onAvatarChange={file => void changeAvatar(file)} onAction={(path, body) => void action(path, body)} />}
       </section>}
       {loading && <p role="status">{page ? 'Loading more games…' : 'Loading account and games…'}</p>}
     </main>

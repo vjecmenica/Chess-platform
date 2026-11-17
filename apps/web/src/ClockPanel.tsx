@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { ClockState, GamePlayerNames, GameSide, SavedMove } from '@chess/contracts';
+import type { ClockState, GamePlayerNames, GameSide, PlayerAvatar, SavedMove } from '@chess/contracts';
 import { PlayerIdentity, sitePlayerName } from './PlayerIdentity';
 import { ClockValue, formatClock, PlayerClockValue } from './ClockValue';
+import { ProfileAvatar } from './ProfileAvatar';
 export { formatClock } from './ClockValue';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
@@ -25,11 +26,12 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
     : Math.max(0, deadlineMs - clock.serverNowMs - Math.max(0, elapsedMs));
 }
 
-export function ClockPanel({ clock, side, isYou, playerNames, historicalMs, isReplayTurn = false, showStatus = true }: {
+export function ClockPanel({ clock, side, isYou, playerNames, avatar, historicalMs, isReplayTurn = false, showStatus = true }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
   playerNames?: GamePlayerNames | undefined;
+  avatar?: PlayerAvatar | null | undefined;
   historicalMs?: number | null | undefined;
   isReplayTurn?: boolean;
   showStatus?: boolean;
@@ -58,8 +60,9 @@ export function ClockPanel({ clock, side, isYou, playerNames, historicalMs, isRe
   const valueMs = historicalMs !== undefined ? historicalMs
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   const running = historicalMs === undefined && clock?.phase === 'running' && clock.activeSide === side;
-  return <div className={`clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
+  return <div className={`clock site-player-clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
+      <ProfileAvatar className="player-avatar" name={playerNames?.[side] ?? null} url={avatar?.url} />
       <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} />
       <PlayerClockValue side={side} milliseconds={valueMs} fallback={historicalMs !== undefined ? '—' : 'Untimed'} />
       {showStatus && historicalMs === undefined && <small>{clock === null ? 'Earlier untimed game' : clock.startMode !== 'readiness'

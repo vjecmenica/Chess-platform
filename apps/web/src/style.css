@@ -251,6 +251,18 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .player-label b { flex: none; color: var(--color-text-muted); font-size: var(--text-meta); font-weight: 600; letter-spacing: .02em; }
 .clock-no-status { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; min-height: 72px; }
+.profile-avatar { --avatar-size: 34px; display: grid; place-items: center; flex: 0 0 var(--avatar-size);
+  inline-size: var(--avatar-size); block-size: var(--avatar-size); overflow: hidden;
+  border-radius: var(--radius-control); background: var(--color-surface-selected); color: var(--color-accent-text);
+  font-size: var(--text-caption); font-weight: 650; }
+.profile-avatar img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.profile-avatar svg { inline-size: 60%; block-size: 60%; }
+.site-player-clock:not(.clock-no-status) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.site-player-clock > .player-avatar { grid-area: 1 / 1 / span 2; }
+.site-player-clock > .player-label { grid-area: 1 / 2; }
+.site-player-clock > small { grid-area: 2 / 2; }
+.site-player-clock > .player-clock-value { grid-column: 3; }
+.site-player-clock.clock-no-status > .player-label { flex: 1; }
 .player-clock-value { grid-column: 2; grid-row: 1 / span 2; justify-self: end;
   display: inline-grid; place-items: center; white-space: nowrap; padding: 6px 9px;
   min-block-size: calc(1em + 12px); border-radius: var(--radius-compact); opacity: .65;
@@ -991,8 +1003,7 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .my-games-page h1 { font-family: var(--font-display); font-size: 32px; line-height: 1.2; margin: 0 0 12px; }
 .account-profile-header { border: 1px solid var(--color-border); border-radius: var(--radius-dialog); background: var(--color-surface); overflow: hidden; }
 .account-profile-identity { display: flex; align-items: center; gap: 24px; padding: 28px; }
-.account-avatar { display: grid; place-items: center; flex: 0 0 88px; height: 88px; border-radius: var(--radius-card);
-  background: var(--color-surface-selected); color: var(--color-accent-text); font-size: 30px; font-weight: 650; border: 1px solid var(--color-border); }
+.account-avatar { --avatar-size: 88px; border-radius: var(--radius-card); font-size: 30px; }
 .account-profile-name { min-width: 0; }
 .my-games-page .account-profile-name h1 { overflow-wrap: anywhere;
   margin: 4px 0 8px; font-weight: 650; letter-spacing: -.02em; }
@@ -1022,6 +1033,11 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .account-details label, .account-details input { margin: 0; }
 .account-details small { font-size: var(--text-compact); color: var(--color-text-muted); }
 .account-details button { align-self: start; margin-top: 6px; }
+.profile-picture-settings { grid-column: 1 / -1; }
+.profile-picture-settings input[hidden] { display: none; }
+.profile-picture-row { display: flex; align-items: center; gap: 12px; }
+.profile-picture-preview { --avatar-size: 64px; font-size: var(--text-heading); }
+.profile-picture-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .account-trigger[href] { text-decoration: none; padding: 8px 12px; border: 1px solid var(--color-nav-border); border-radius: var(--radius-compact); }
 @media (max-width: 850px) {
   .account-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1055,7 +1071,7 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 @media (max-width: 640px) {
   .account-details { grid-template-columns: minmax(0, 1fr); }
   .account-profile-identity { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 16px; padding: 20px; }
-  .account-avatar { flex-basis: 56px; height: 56px; font-size: 22px; }
+  .account-avatar { --avatar-size: 56px; font-size: 22px; }
   .account-profile-name { flex: 1; }
   .account-profile-name h1 { font-size: 26px; }
   .account-edit { grid-column: 2; justify-self: start; margin-left: 0; }

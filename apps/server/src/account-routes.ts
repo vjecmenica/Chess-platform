@@ -3,7 +3,7 @@ import { hash, verify } from '@node-rs/argon2';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { accountGames, parseGameCursor } from './account-games.js';
-import { accountCookie, currentAccount, type Account } from './account-session.js';
+import { accountCookie, accountIdentity, currentAccount, type Account } from './account-session.js';
 import { cookieToken, createGuest, requireGuest, rotateGuest, setSessionCookie, tokenHash } from './guest-session.js';
 import { passwordOptions, passwordSchema, rateAllowed } from './account-security.js';
 import { revokeAccountSessions } from './account-recovery.js';
@@ -58,10 +58,11 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
         try {
           await client.query('BEGIN');
           if (mode === 'login') {
-            const latest = (await client.query<{ password_hash: string; username: string }>(
-              'SELECT password_hash, username FROM chess.accounts WHERE id = $1 FOR UPDATE', [account!.id])).rows[0]!;
+            const latest = (await client.query<{ id: string; password_hash: string; username: string; avatar_key: string | null }>(
+              'SELECT id, password_hash, username, avatar_key FROM chess.accounts WHERE id = $1 FOR UPDATE', [account!.id])).rows[0]!;
             if (latest.password_hash !== passwordHash || latest.username !== username)
               return reply.code(401).send({ error: 'invalid_credentials' });
+            account = accountIdentity(latest);
           }
           // Serialize logins on this bearer session and reject an already rotated request.
           const locked = (await client.query<{ account_id: string | null; csrf_token: string }>(

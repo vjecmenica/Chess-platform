@@ -70,6 +70,7 @@ export interface GameState {
 }
 
 export type GamePlayerNames = Readonly<Record<GameSide, string | null>>;
+export interface PlayerAvatar { readonly accountId: string; readonly url: string }
 export interface SiteGameInfo {
   readonly variant: 'standard';
   /** Acceptance starts current games; older readiness games have no durable actual start time. */
@@ -79,6 +80,8 @@ export interface SiteGameInfo {
 export interface GameReadResponse extends GameState {
   /** Authorized site-game reads only; null means the seat has not been explicitly linked. */
   readonly playerNames?: GamePlayerNames;
+  /** Only for avatars of account-owned seats in authorized site-game reads. */
+  readonly playerAvatars?: Readonly<Record<GameSide, PlayerAvatar | null>>;
   readonly siteInfo?: SiteGameInfo;
   readonly history: readonly SavedMove[];
 }
@@ -164,7 +167,9 @@ export interface ExplorerGamePage {
   readonly games: readonly ExplorerListedGame[];
   readonly page: number; readonly hasMore: boolean; readonly totalPages: number;
 }
-export interface AccountIdentity { readonly id: string; readonly username: string }
+export const avatarUploadMaxBytes = 2 * 1024 * 1024;
+export interface AccountIdentity { readonly id: string; readonly username: string; readonly avatarUrl?: string }
+export interface AccountAvatarResponse { readonly accountId: string; readonly avatarUrl: string | null }
 export interface AccountEmailState { readonly verified: string | null; readonly pending: string | null; readonly deliveryEnabled: boolean }
 export interface AccountState { readonly email?: AccountEmailState | null; readonly account: AccountIdentity | null; readonly guestLinked: boolean;
   readonly createdAt: string | null }

@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { appendSystemChat } from './game-chat-events.js';
+import { avatarUrl } from './account-session.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
 import { timeControlPresets, type TimeControlId } from '@chess/contracts';
@@ -241,8 +242,10 @@ function savedMove(record: MoveRecord, remainingMsAfterMove: number | null): Sav
 
 async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
   yourSeat: Side, atMs: number): Promise<GameReadResponse> {
-  const players = (await client.query<{ white: string | null; black: string | null }>(
-    `SELECT wa.username AS white, ba.username AS black FROM chess.guest_sessions w
+  const players = (await client.query<{ white: string | null; black: string | null;
+    white_id: string | null; black_id: string | null; white_avatar: string | null; black_avatar: string | null }>(
+    `SELECT wa.username AS white, ba.username AS black, wa.id AS white_id, ba.id AS black_id,
+      wa.avatar_key AS white_avatar, ba.avatar_key AS black_avatar FROM chess.guest_sessions w
       JOIN chess.guest_sessions b ON b.id = $2
       LEFT JOIN chess.accounts wa ON wa.id = w.account_id
       LEFT JOIN chess.accounts ba ON ba.id = b.account_id WHERE w.id = $1`,
@@ -257,6 +260,10 @@ async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
   return { ...gameState(row, game, yourSeat, atMs),
     siteInfo: siteGameInfo(row.accepted_at, row.clock_mode, row.clock_start_mode),
     playerNames: { white: players.white, black: players.black },
+    playerAvatars: {
+      white: players.white_id && players.white_avatar ? { accountId: players.white_id, url: avatarUrl(players.white_avatar)! } : null,
+      black: players.black_id && players.black_avatar ? { accountId: players.black_id, url: avatarUrl(players.black_avatar)! } : null,
+    },
     history: history.map((move, index) => savedMove(move, rows[index]!.remaining_ms_after_move)) };
 }
 
