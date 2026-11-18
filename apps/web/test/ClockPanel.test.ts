@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { ClockState, SavedMove } from '@chess/contracts';
+import type { ClockState, GameReadResponse, SavedMove } from '@chess/contracts';
 import { ClockPanel, displayedMs, firstMoveRemainingMs, formatClock,
-  historicalClockMs } from '../src/ClockPanel';
+  historicalClockMs, siteReplayClockMs } from '../src/ClockPanel';
 
 const running: ClockState = {
   startMode: 'readiness', phase: 'running', ready: { white: true, black: true },
@@ -15,6 +15,31 @@ const running: ClockState = {
 };
 
 describe('display clocks', () => {
+  it.each(['timeout', 'resignation', 'agreement', 'checkmate', 'stalemate', 'disconnect_forfeit'])(
+    'uses saved final clocks for %s and move snapshots on earlier positions', reason => {
+      const flags = reason === 'timeout';
+      const history = [60_000, 56_000, 55_000, 53_000, 52_000].map((remainingMsAfterMove, index) => ({
+        ply: index + 1, side: index % 2 === 0 ? 'white' : 'black', remainingMsAfterMove,
+      })) as SavedMove[];
+      const clocks = { ...running, phase: flags ? 'flagged' : 'stopped', activeSide: null,
+        flaggedSide: flags ? 'black' : null, remainingMs: { white: 52_000, black: flags ? 0 : 17_450 } } as const;
+      const game = { status: 'finished', history, clocks, result: { reason },
+        timeControl: { initialMs: 60_000, incrementMs: 0 } } as GameReadResponse;
+      const black = siteReplayClockMs(game, 5, 'black', false);
+      expect(black).toBe(flags ? 0 : 17_450);
+      expect(siteReplayClockMs(game, 5, 'white', false)).toBe(52_000);
+      expect(siteReplayClockMs(game, 4, 'black', false)).toBe(53_000);
+      expect(siteReplayClockMs(game, 0, 'white', false)).toBe(60_000);
+      expect(siteReplayClockMs(game, 5, 'black', true)).toBeNull();
+      expect(siteReplayClockMs({ ...game, status: 'pending_adjudication' }, 5, 'black', false)).toBeUndefined();
+      expect(siteReplayClockMs({ ...game, status: 'active' }, 5, 'black', false)).toBeUndefined();
+      const html = renderToStaticMarkup(createElement(ClockPanel, {
+        clock: clocks, side: 'black', isYou: false, historicalMs: black,
+      }));
+      expect(html).toContain(flags ? '<span>00:00</span><span class="clock-hundredths">.00</span>' : '00:17');
+      expect(html).toContain('data-low-time="true"');
+      expect(html).not.toContain('clock-active');
+    });
   it('interpolates only the active side and never invents negative time', () => {
     expect(displayedMs(running, 'white', 1_250)).toBe(298_750);
     expect(displayedMs(running, 'black', 1_250)).toBe(303_000);

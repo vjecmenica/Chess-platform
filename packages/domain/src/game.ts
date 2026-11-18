@@ -15,6 +15,8 @@ export type GameResult =
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'checkmate' | 'resignation' }
   | { readonly outcome: 'win'; readonly winner: Side; readonly reason: 'timeout';
       readonly flaggedSide: Side; readonly deadlineMs: number }
+  | ({ readonly outcome: 'win'; readonly winner: Side; readonly reason: 'disconnect_forfeit' } & DisconnectDetails)
+  | ({ readonly outcome: 'draw'; readonly reason: 'disconnect_no_mating_possibility' } & DisconnectDetails)
   | { readonly outcome: 'draw'; readonly reason: 'stalemate' | 'agreement' | 'dead_position' | 'fivefold_repetition'
       | 'seventy_five_move' | 'threefold_repetition' | 'fifty_move' | 'resignation_no_mating_possibility' }
   | { readonly outcome: 'draw'; readonly reason: 'timeout_no_mating_possibility';
@@ -22,6 +24,11 @@ export type GameResult =
 
 export interface TimeoutDetails {
   readonly flaggedSide: Side;
+  readonly deadlineMs: number;
+}
+
+export interface DisconnectDetails {
+  readonly disconnectedSide: Side;
   readonly deadlineMs: number;
 }
 
@@ -44,7 +51,7 @@ export type GameRejection =
   | 'draw_offer_too_early' | 'draw_offer_cooldown' | 'draw_offer_pending'
   | 'no_draw_offer' | 'own_draw_offer' | 'invalid_claim' | 'claim_not_available'
   | 'adjudication_pending' | 'no_pending_resignation' | 'no_pending_timeout'
-  | 'invalid_ruling' | 'invalid_timeout';
+  | 'invalid_ruling' | 'invalid_timeout' | 'invalid_disconnect';
 
 export interface MateRuling {
   readonly verdict: 'mate_possible';
@@ -89,6 +96,7 @@ export interface ChessGame {
   submitMove(request: MoveRequest): GameMoveResult;
   resign(command: SideCommand): CommandResult;
   flagTimeout(command: TimeoutCommand): CommandResult;
+  forfeitDisconnect(command: DisconnectDetails): CommandResult;
   abortFirstMove(command: { readonly missedSide: Side; readonly deadlineMs: number }): CommandResult;
   verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
@@ -116,6 +124,7 @@ const messages: Record<GameRejection, string> = {
   no_pending_timeout: 'There is no timeout awaiting adjudication.',
   invalid_ruling: 'Provide a legal mate line ending in checkmate by the opponent.',
   invalid_timeout: 'The timeout must name the side to move and a nonnegative integer deadline.',
+  invalid_disconnect: 'A disconnect forfeit requires two played moves, a valid side and a nonnegative integer deadline.',
   draw_offer_pending: 'Respond to the pending draw offer before making another.',
   no_draw_offer: 'There is no pending draw offer.',
   own_draw_offer: 'Only the opponent can respond to your draw offer.',
@@ -369,6 +378,19 @@ export function createGameFromPosition(startingFen: string,
         drawOffer = null;
         claimDrawOffer = null;
       }
+      return { accepted: true, game: getState() };
+    },
+    forfeitDisconnect(command) {
+      const rejection = validate({ side: command?.disconnectedSide });
+      if (rejection) return rejection;
+      if (ply < 2 || !Number.isSafeInteger(command.deadlineMs) || command.deadlineMs < 0) {
+        return reject('invalid_disconnect');
+      }
+      const { disconnectedSide, deadlineMs } = command;
+      const winner = disconnectedSide === 'white' ? 'black' : 'white';
+      finish(board.matingPossibility(winner) === 'impossible'
+        ? { outcome: 'draw', reason: 'disconnect_no_mating_possibility', disconnectedSide, deadlineMs }
+        : { outcome: 'win', winner, reason: 'disconnect_forfeit', disconnectedSide, deadlineMs });
       return { accepted: true, game: getState() };
     },
     abortFirstMove(command) {

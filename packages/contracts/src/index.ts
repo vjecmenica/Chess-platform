@@ -56,6 +56,7 @@ export interface GameState {
   readonly position: { readonly fen: string; readonly sideToMove: GameSide };
   readonly result: { readonly outcome: 'win' | 'draw' | 'aborted'; readonly reason: string;
     readonly winner?: GameSide; readonly flaggedSide?: GameSide; readonly missedSide?: GameSide;
+    readonly disconnectedSide?: GameSide;
     readonly deadlineMs?: number } | null;
   readonly drawOffer: GameSide | null;
   readonly claimDrawOffer: GameSide | null;
@@ -87,6 +88,7 @@ export interface GameReadResponse extends GameState {
   readonly playerAvatars?: Readonly<Record<GameSide, PlayerAvatar | null>>;
   readonly playerRatings?: GamePlayerRatings;
   readonly siteInfo?: SiteGameInfo;
+  readonly disconnect?: { readonly opponentDeadlineMs: number | null };
   readonly history: readonly SavedMove[];
 }
 

@@ -4,6 +4,7 @@ import { appendSystemChat } from './game-chat-events.js';
 import { avatarUrl } from './account-session.js';
 import { settleGameRatings } from './rating-settlement.js';
 import { currentPlayerRatings, settledGameRatings, type SettlementRatingsRow } from './account-ratings.js';
+import { disconnectTiming, observedGrace, observePresence, readPresence } from './rated-presence.js';
 import { adjudicationPolicy, resignationRecoveryPolicy, type AdjudicationAuthority, type AdjudicationCase,
   type AdjudicationPosition } from './rated-adjudication-store.js';
 import type pg from 'pg';
@@ -173,6 +174,12 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       deadlineMs: row.result.deadlineMs });
     if (!aborted.accepted) throw new Error('Saved first-move abort cannot be replayed.');
   }
+  const disconnect = row.result;
+  if (disconnect?.reason === 'disconnect_forfeit' || disconnect?.reason === 'disconnect_no_mating_possibility') {
+    if (!row.rated || !game.forfeitDisconnect(disconnect).accepted) {
+      throw new Error('Saved disconnect forfeit cannot be replayed.');
+    }
+  }
   const adjudication = row.ratedAdjudication;
   if (adjudication) {
     const before = game.getState();
@@ -199,6 +206,7 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       ? Number(row.ready_white) + Number(row.ready_black) : 0)
       + Number(row.flagged_side !== null) : 0) + actions.length
     + Number(row.result?.outcome === 'aborted')
+    + Number(disconnect?.reason === 'disconnect_forfeit' || disconnect?.reason === 'disconnect_no_mating_possibility')
     + Number(row.resignation_witness !== null)
     + Number(row.timeout_search_exhausted_at !== null)
     + Number(row.timeout_adjudicated_at !== null)
@@ -288,7 +296,7 @@ function savedMove(record: MoveRecord, remainingMsAfterMove: number | null): Sav
 }
 
 async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
-  yourSeat: Side, atMs: number): Promise<GameReadResponse> {
+  yourSeat: Side, atMs: number, disconnectEnabled = false): Promise<GameReadResponse> {
   const players = (await client.query<{ white: string | null; black: string | null;
     white_id: string | null; black_id: string | null; white_avatar: string | null; black_avatar: string | null }>(
     `SELECT wa.username AS white, ba.username AS black, wa.id AS white_id, ba.id AS black_id,
@@ -313,7 +321,10 @@ async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
     && players.white_id && players.black_id) {
     playerRatings = await currentPlayerRatings(client, ratingPoolByTimeControl[row.time_control], players.white_id, players.black_id);
   }
+  const observesPresence = disconnectEnabled && row.rated && row.status === 'active';
+  const grace = observesPresence && history.length >= 2 ? observedGrace(await readPresence(client, row.id), atMs) : null;
   return { ...gameState(row, game, yourSeat, atMs),
+    ...(observesPresence ? { disconnect: { opponentDeadlineMs: grace && grace.side !== yourSeat ? grace.graceDeadlineMs : null } } : {}),
     siteInfo: siteGameInfo(row.accepted_at, row.clock_mode, row.clock_start_mode),
     playerNames: { white: players.white, black: players.black },
     ...(playerRatings ? { playerRatings } : {}),
@@ -358,6 +369,9 @@ async function saveGame(client: pg.PoolClient, row: GameRow): Promise<void> {
       VALUES ($1, $2, $3) ON CONFLICT (game_id) DO NOTHING`, [row.id, row.version, row.pending.kind]);
   }
   if (row.rated && row.status === 'finished') await settleGameRatings(client, row.id);
+  if (row.rated && (row.status === 'finished' || row.status === 'aborted' || row.status === 'pending_adjudication')) {
+    await client.query('DELETE FROM chess.rated_game_presence WHERE game_id = $1', [row.id]);
+  }
   // PostgreSQL delivers this notification only if the surrounding transaction commits.
   await client.query("SELECT pg_notify('chess_game_updates', $1)",
     [JSON.stringify({ id: row.id, version: row.version })]);
@@ -441,6 +455,7 @@ export interface GameService {
   heartbeat(): Promise<void>;
   beginReceipt(): Arrival;
   read(id: string, guestId: string): Promise<ServiceResult>;
+  recordPresence(id: string, accountId: string, source: 'heartbeat' | 'activity', receivedAtMs: number): Promise<ServiceResult>;
   ready(id: string, guestId: string): Promise<ServiceResult>;
   move(id: string, guestId: string, requestId: string, body: MoveBody, arrival: Arrival): Promise<ServiceResult>;
   action(id: string, guestId: string, requestId: string, kind: SimpleGameAction,
@@ -456,7 +471,7 @@ export interface GameService {
 }
 
 export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
-  hooks: { afterMoveCommit?: () => Promise<void> } = {}): GameService {
+  hooks: { afterMoveCommit?: () => Promise<void>; disconnectEnabled?: boolean } = {}): GameService {
   const instanceId = randomUUID();
   const arrivals = new Map<symbol, number>();
   const queues = new Map<string, Promise<unknown>>();
@@ -467,6 +482,29 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
   let ingressClient: pg.PoolClient | null = null;
   let ingressHealthy = false;
   let heartbeatWork: Promise<void> = Promise.resolve();
+
+  async function processDeadline(client: pg.PoolClient, row: GameRow, game: ChessGame,
+    deadline: { kind: 'grace' | 'clock' | 'disconnect'; atMs: number }, disconnectedSide: Side | undefined): Promise<boolean> {
+    if (deadline.kind === 'grace') return abortIfDue(client, row, game, deadline.atMs);
+    if (deadline.kind === 'clock') return expireIfDue(client, row, game, deadline.atMs);
+    if (disconnectedSide === undefined) throw new Error('Disconnect deadline has no disconnected player.');
+    const decision = game.forfeitDisconnect({ disconnectedSide, deadlineMs: deadline.atMs });
+    if (!decision.accepted) throw new Error('The saved game could not be forfeited.');
+    const remaining = clockResponse(row, deadline.atMs)!.remainingMs;
+    row.white_remaining_ms = remaining.white;
+    row.black_remaining_ms = remaining.black;
+    row.status = 'finished';
+    row.result = decision.game.result;
+    row.draw_offer = null;
+    row.claim_draw_offer = null;
+    row.clock_phase = 'stopped';
+    row.turn_started_at = null;
+    row.deadline_at = null;
+    row.timeout_witness = null;
+    row.version += 1;
+    await saveGame(client, row);
+    return true;
+  }
 
   function safeThrough(): number {
     let safe = now(clock);
@@ -841,25 +879,32 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
             WHERE game_id = $1 AND response IS NULL
             ORDER BY received_at, admission_id LIMIT 1`, [id]);
           const receipt = rows[0];
-          const deadline = nextDeadline(row);
+          const atMs = now(clock);
+          const grace = hooks.disconnectEnabled && row.rated && row.status === 'active'
+            && row.clock_phase === 'running' && game.getHistory().length >= 2
+            ? observedGrace(await readPresence(client, id), atMs) : null;
+          const chessDeadline = nextDeadline(row);
+          const deadline = grace && grace.confirmedAtMs !== null && (chessDeadline === null || grace.confirmedAtMs < chessDeadline.atMs)
+            ? { kind: 'disconnect' as const, atMs: grace.confirmedAtMs } : chessDeadline;
           if (receipt) {
             const receiptMs = receipt.received_at.getTime();
             if (!await safeToDecide(client, receiptMs)) return 'blocked';
             if (deadline !== null && receiptMs >= deadline.atMs) {
               if (!await safeToDecide(client, deadline.atMs - 1)) return 'blocked';
-              const due = deadline.kind === 'grace'
-                ? await abortIfDue(client, row, game, Math.max(now(clock), receiptMs))
-                : await expireIfDue(client, row, game, Math.max(now(clock), receiptMs));
-              if (due) return 'flag';
+              if (await processDeadline(client, row, game, deadline, grace?.side)) return 'flag';
+            }
+            const receiptSide = seat(row, receipt.guest_id);
+            if (hooks.disconnectEnabled && row.rated && row.status === 'active' && receiptSide
+              && receiptMs > atMs - disconnectTiming.heartbeatContinuityMs) {
+              // An authenticated game command is also evidence that its sender is present.
+              await observePresence(client, id, ratingPoolByTimeControl[row.time_control], receiptSide,
+                'activity', receiptMs, false, row.version);
             }
             return await applyReceipt(client, row, game, receipt) ? 'handoff' : 'progress';
           }
-          if (deadline !== null && now(clock) >= deadline.atMs
+          if (deadline !== null && atMs >= deadline.atMs
             && await safeToDecide(client, deadline.atMs - 1)) {
-            const due = deadline.kind === 'grace'
-              ? await abortIfDue(client, row, game, now(clock))
-              : await expireIfDue(client, row, game, now(clock));
-            if (due) return 'flag';
+            if (await processDeadline(client, row, game, deadline, grace?.side)) return 'flag';
           }
           return 'idle';
         });
@@ -986,7 +1031,26 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
         if (yourSeat === null) return notParticipant;
         const game = await reconstruct(client, row);
         const atMs = now(clock);
-        return { status: 200, body: await gameRead(client, row, game, yourSeat, atMs) };
+        return { status: 200, body: await gameRead(client, row, game, yourSeat, atMs, hooks.disconnectEnabled) };
+      });
+    },
+    async recordPresence(id, accountId, source, receivedAtMs) {
+      return transaction(async client => {
+        const { rows } = await client.query<Pick<GameRow, 'rated' | 'rated_white_account_id' | 'rated_black_account_id' | 'status' | 'version' | 'clock_phase' | 'time_control'> & { eligible: boolean }>(
+          `SELECT g.rated, g.rated_white_account_id, g.rated_black_account_id, g.status, g.version, g.clock_phase,
+            c.time_control, EXISTS (SELECT 1 FROM chess.game_moves m WHERE m.game_id = g.id AND m.ply = 2) AS eligible
+            FROM chess.games g JOIN chess.challenges c ON c.id = g.id WHERE g.id = $1 FOR UPDATE OF g`, [id]);
+        const row = rows[0];
+        if (!row) return notFound;
+        const side = row.rated_white_account_id === accountId ? 'white' : row.rated_black_account_id === accountId ? 'black' : null;
+        if (!row.rated || side === null) return notParticipant;
+        if (hooks.disconnectEnabled && row.status === 'active') {
+          // A delayed request still proves a return at ingress, but cannot advance a forfeiture.
+          const signal = receivedAtMs > now(clock) - disconnectTiming.heartbeatContinuityMs ? source : 'activity';
+          await observePresence(client, id, ratingPoolByTimeControl[row.time_control], side, signal, receivedAtMs,
+            row.eligible && row.clock_phase === 'running', row.version);
+        }
+        return { status: 204, body: null };
       });
     },
     async ready(id, guestId) {
@@ -1045,7 +1109,12 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
             AND status = 'active'
             AND (white_first_move_deadline_at <= $1 OR black_first_move_deadline_at <= $1))
           OR EXISTS (SELECT 1 FROM chess.game_move_receipts r
-            WHERE r.game_id = games.id AND r.response IS NULL)`, [new Date(now(clock))]);
+            WHERE r.game_id = games.id AND r.response IS NULL)
+          OR ($2::boolean AND status = 'active' AND EXISTS (SELECT 1 FROM chess.rated_game_presence p
+            WHERE p.game_id = games.id AND p.confirmed_at IS NOT NULL
+              AND CASE p.disconnected_side WHEN 'white' THEN p.black_heartbeat_at ELSE p.white_heartbeat_at END
+                > $1::timestamptz - $3::integer * interval '1 millisecond'))`,
+      [new Date(now(clock)), hooks.disconnectEnabled ?? false, disconnectTiming.heartbeatContinuityMs]);
       let flags = 0;
       for (const { id } of rows) flags += await advanceGame(id);
       return flags;

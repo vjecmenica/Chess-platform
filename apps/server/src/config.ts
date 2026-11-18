@@ -33,5 +33,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
   const host = env.HOST ?? '127.0.0.1';
   if (!host.trim()) throw new Error('HOST must not be empty. Use 127.0.0.1 for local development.');
   const ratedChallengesEnabled = env.NODE_ENV !== 'production' && env.ENABLE_DEV_RATED_CHALLENGES === 'true';
-  return { connectionString, host, port, ratedChallengesEnabled };
+  const disconnectEnabled = env.NODE_ENV !== 'production' && env.ENABLE_DEV_DISCONNECT_FORFEITS === 'true';
+  return { connectionString, host, port, ratedChallengesEnabled, disconnectEnabled };
 }

@@ -9,7 +9,9 @@ export function resultDisplay(result: GameState['result']): { score: string; exp
       ? 'Draw: the opponent cannot possibly checkmate.'
       : result.reason === 'timeout_no_mating_possibility'
         ? 'Draw: the opponent cannot possibly checkmate after the flag.'
-        : `Draw by ${result.reason.replaceAll('_', ' ')}.` };
+        : result.reason === 'disconnect_no_mating_possibility'
+          ? 'Draw: the connected player cannot possibly checkmate.'
+          : `Draw by ${result.reason.replaceAll('_', ' ')}.` };
   return { score: result.winner === 'white' ? '1-0' : '0-1',
     explanation: `${result.winner === 'white' ? 'White' : 'Black'} won by ${result.reason.replaceAll('_', ' ')}.` };
 }

@@ -79,6 +79,7 @@ function retainedPlayerDetails(current: GameReadResponse, status: GameReadRespon
     ...(status !== 'finished' && status !== 'aborted' && current.playerRatings?.source === 'current'
       ? { playerRatings: current.playerRatings } : {}),
     ...(current.siteInfo === undefined ? {} : { siteInfo: current.siteInfo }),
+    ...(status === 'active' && current.disconnect ? { disconnect: current.disconnect } : {}),
   };
 }
 

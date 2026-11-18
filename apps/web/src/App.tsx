@@ -45,7 +45,8 @@ import { clearStoredAnalysisTrees, createAnalysisTree, cursorFen, cursorSide, de
   lastMainPosition, mainAncestorPly, nextPosition, playAnalysisMove, previousPosition, promoteVariation,
   selectBranch, selectMain, setMoveNote,
   type AnalysisCursor, type AnalysisTree, type MoveNote } from './analysis-model';
-import { ClockPanel, historicalClockMs } from './ClockPanel';
+import { ClockPanel, historicalClockMs, siteReplayClockMs } from './ClockPanel';
+import { DisconnectStatus } from './DisconnectStatus';
 import { simplePgnTimeControl } from './move-times';
 import { MoveTree } from './MoveTree';
 import { PromotionPicker, promotionIsCurrent, type PromotionRequest } from './PromotionPicker';
@@ -460,6 +461,33 @@ export function App() {
     return () => { stopUpdates(); window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible); };
   }, [challenge?.status, challenge?.yourSeat, refreshGame, imported]);
+
+  const presenceGameId = game?.status === 'active' && game.disconnect ? game.id : null;
+  const presenceCsrf = session?.csrfToken;
+  useEffect(() => {
+    if (presenceGameId === null || !presenceCsrf) return;
+    let pendingHeartbeat: AbortController | null = null;
+    const send = () => {
+      if (pendingHeartbeat) return;
+      const request = new AbortController();
+      pendingHeartbeat = request;
+      const timeout = window.setTimeout(() => request.abort(), 8_000);
+      void fetch(`/api/games/${presenceGameId}/presence`, {
+        method: 'POST', headers: { 'x-csrf-token': presenceCsrf }, signal: request.signal,
+      }).catch(() => undefined).finally(() => { window.clearTimeout(timeout); pendingHeartbeat = null; });
+    };
+    const onVisible = () => { if (!document.hidden) send(); };
+    send();
+    const timer = window.setInterval(send, 10_000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', send);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', send);
+      pendingHeartbeat?.abort();
+    };
+  }, [presenceGameId, presenceCsrf]);
 
   const showImportedGame = useCallback((next: ImportedGame, ply = next.game.history.length) => {
     try { setBoardSize(readBoardSizePreference(window.localStorage)); } catch { setBoardSize(null); }
@@ -1075,10 +1103,6 @@ export function App() {
   const replayTurn = replaying ? displayedFen?.split(' ', 2)[1] : undefined;
   const replaySide = replayTurn === 'w' ? 'white' : replayTurn === 'b' ? 'black' : null;
   const onVariation = analysisOpen && analysis?.cursor.kind === 'branch';
-  const siteTimeControl = game?.timeControl;
-  const siteInitialMs = siteTimeControl && 'initialMs' in siteTimeControl ? siteTimeControl.initialMs : null;
-  const siteHistoricalMs = (side: GameSide): number | null | undefined => !replaying || game === null ? undefined
-    : onVariation ? null : historicalClockMs(game.history, displayedPly, side, siteInitialMs, true);
   const importedHasClocks = imported?.game.history.some(move => move.remainingMsAfterMove !== null) ?? false;
   const importedInitialMs = simplePgnTimeControl(imported?.headers.TimeControl)?.initialMs ?? null;
   const importedHistoricalMs = (side: GameSide): number | null | undefined => !importedHasClocks ? undefined
@@ -1353,7 +1377,7 @@ export function App() {
                   avatar={game.playerAvatars?.[topSide]}
                   rating={gamePlayerRating(game, topSide) ?? (game.status === 'finished' ? null : undefined)}
                   isYou={topSide === game.yourSeat}
-                  historicalMs={siteHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />}
+                  historicalMs={siteReplayClockMs(game, displayedPly, topSide, onVariation)} isReplayTurn={topSide === replaySide} />}
               </PlayerMaterialPanel>
               <div className="board-stage">
                 {analysisOpen && displayedFen !== null &&
@@ -1510,7 +1534,7 @@ export function App() {
                   playerNames={game.playerNames}
                   avatar={game.playerAvatars?.[bottomSide]}
                   rating={gamePlayerRating(game, bottomSide) ?? (game.status === 'finished' ? null : undefined)}
-                  historicalMs={siteHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />}
+                  historicalMs={siteReplayClockMs(game, displayedPly, bottomSide, onVariation)} isReplayTurn={bottomSide === replaySide} />}
               </PlayerMaterialPanel>
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""
                 style={{ left: drag.x, top: drag.y, width: (boardRef.current?.clientWidth ?? 512) / 8,
@@ -1529,6 +1553,8 @@ export function App() {
                   analysisHref={!analysisOpen && imported === null
                     ? siteAnalysisUrl(game.id, selectedReplayPly ?? game.history.length, boardRowHeight) : undefined}
                   /> : !blankBoard && liveStatus !== null ? <p className="turn" role="status">{liveStatus}</p> : null}
+                {game.status === 'active' && game.clocks && game.disconnect?.opponentDeadlineMs != null
+                  && <DisconnectStatus deadlineMs={game.disconnect.opponentDeadlineMs} serverNowMs={game.clocks.serverNowMs} />}
                 {game.status === 'waiting' && game.clocks !== null && <div className="readiness">
                   <p>{game.clocks.ready[game.yourSeat]
                     ? 'You are ready. Waiting for the other guest.'

@@ -13,7 +13,7 @@ async function main() {
   const config = readConfig();
   const avatarStorage = avatarStorageFromEnvironment();
   const pool = createPool(config.connectionString);
-  const gameService = createGameService(pool);
+  const gameService = createGameService(pool, undefined, { disconnectEnabled: config.disconnectEnabled });
   const adjudication = createRatedAdjudicationProcessor(pool, gameService);
   const secureCookies = process.env.NODE_ENV === 'production'
     || !['127.0.0.1', 'localhost', '::1'].includes(config.host);

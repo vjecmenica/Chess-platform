@@ -53,6 +53,12 @@ In newly accepted casual games, each side has a separate 30-second deadline for 
 
 At flag fall, the clock calls `flagTimeout` once with the side to move and the saved deadline. A sound no-mate proof produces `timeout_no_mating_possibility`. With the practical policy, every other valid flag produces a timeout win in that transaction. A saved unresolved strict-policy flag keeps the original deadline and flagged side, and remains pending if search exhausts its limits. Rulings add evidence separately from played moves. A repeated flag or ruling cannot create a second result.
 
+Play and Analysis display the server's saved balances at the final site-game position. This includes zero for the flagged side and the opponent's saved time. Earlier main-line positions display the recorded move balances. Imported PGNs still use their recorded annotations. Site analysis variations have no independent recorded clock.
+
+## Rated disconnects
+
+Disconnect forfeits are opt-in for development. Eligibility begins after both players have made their first move. A disconnect is a separate result from resignation or flag fall. Both chess clocks follow the regular game rules through the reconnect period. A valid earlier clock deadline takes priority, and a missed first move still aborts the game. See the [Rated presence and reconnect policy](ratings.md#rated-presence-and-reconnect-policy).
+
 ## Client premove admission
 
 Premoves are private client-side plans until the player can move. Clicks, drags

@@ -15,6 +15,7 @@ import { createGameService } from '../src/game-service.js';
 import { migrate } from '../src/migrations.js';
 import { createRatedAdjudicationProcessor } from '../src/rated-adjudication.js';
 import { claimAdjudication } from '../src/rated-adjudication-store.js';
+import { disconnectTiming } from '../src/rated-presence.js';
 
 interface Browser { cookies: Map<string, string>; csrf: string; ip: string }
 const password = 'a synthetic rated challenge password';
@@ -35,8 +36,8 @@ beforeAll(async () => {
 afterEach(async () => { for (const app of apps.splice(0)) await app.close(); });
 afterAll(async () => { await pool?.end(); });
 
-function server(ratedChallengesEnabled?: boolean, time = clock()) {
-  const service = createGameService(pool, time);
+function server(ratedChallengesEnabled?: boolean, time = clock(), disconnectEnabled = false) {
+  const service = createGameService(pool, time, { disconnectEnabled });
   const app = buildApp(async () => {}, false, { pool, secureCookies: false, gameService: service,
     ...(ratedChallengesEnabled === undefined ? {} : { ratedChallengesEnabled }) });
   apps.push(app);
@@ -648,3 +649,277 @@ it.each(['resignation', 'timeout'] as const)('settles a Rated %s draw immediatel
   expect(await loadOrCreateAccountRating(pool, white.id, 'rapid')).toMatchObject({ rating: 1500, ratedGames: 1 });
   expect(await loadOrCreateAccountRating(pool, black.id, 'rapid')).toMatchObject({ rating: 1500, ratedGames: 1 });
 });
+
+it('retains both authoritative clock balances after 1. d4 d5 2. c4 c6 3. Nc3 flags Black in Bullet', async () => {
+  const { app, service, time } = server(true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who, { timeControl: '1+0', rated: true });
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  const start = time.value;
+  const moves = [['d2', 'd4', 0], ['d7', 'd5', 4_000], ['c2', 'c4', 7_000],
+    ['c7', 'c6', 10_000], ['b1', 'c3', 16_000]] as const;
+  for (const [index, [from, to, offset]] of moves.entries()) {
+    time.value = start + offset;
+    await play(app, id, index % 2 ? black.who : white.who, index, from, to);
+  }
+  const before = (await get(app, white.who, `/games/${id}`)).json();
+  expect(before.clocks.remainingMs).toEqual({ white: 51_000, black: 53_000 });
+  time.value = before.clocks.deadlineMs;
+  await service.pollDueGames();
+  const finalized = (await get(app, white.who, `/games/${id}`)).json();
+  expect(finalized).toMatchObject({ status: 'finished', history: before.history,
+    result: { winner: 'white', reason: 'timeout' }, playerRatings: { source: 'settlement', pool: 'bullet' },
+    clocks: { phase: 'flagged', activeSide: null, flaggedSide: 'black', remainingMs: { white: 51_000, black: 0 } } });
+  await app.close();
+  const restarted = server(false, time);
+  expect((await get(restarted.app, black.who, `/games/${id}`)).json()).toMatchObject({
+    status: 'finished', result: finalized.result, clocks: finalized.clocks,
+  });
+});
+
+async function presenceGame(control = '10+2', rated = true, played = true) {
+  const { app, service, time } = server(true, clock(), true);
+  const white = await register(app), black = await register(app);
+  const id = await create(app, white.who, { timeControl: control, rated });
+  expect((await accept(app, black.who, id)).statusCode).toBe(200);
+  const path = `/games/${id}`;
+  const start = time.value;
+  const ping = (who: Browser, instance = app) => post(instance, who, path + '/presence');
+  const read = async (who: Browser = white.who, instance = app) => (await get(instance, who, path)).json();
+  if (rated) {
+    expect((await ping(white.who)).statusCode).toBe(204);
+    expect((await ping(black.who)).statusCode).toBe(204);
+  }
+  if (played) {
+    await play(app, id, white.who, 0, 'e2', 'e4');
+    await play(app, id, black.who, 1, 'e7', 'e5');
+  }
+  const at = async (offset: number, who = white.who, instance = app) => {
+    time.value = start + offset;
+    expect((await ping(who, instance)).statusCode).toBe(204);
+  };
+  const through = async (offset: number, who = white.who, instance = app) => {
+    // Send samples at most 10 seconds apart without waiting in real time.
+    for (let next = time.value - start + 10_000; next < offset; next += 10_000) await at(next, who, instance);
+    await at(offset, who, instance);
+  };
+  return { app, service, time, white, black, id, path, start, ping, read, at, through };
+}
+
+it('authenticates heartbeat requests against the frozen seat and leaves Casual games untouched', async () => {
+  const game = await presenceGame();
+  const outsider = await register(game.app);
+  const guest = await browser(game.app);
+  expect((await game.ping(outsider.who)).statusCode).toBe(403);
+  expect((await game.ping(guest)).statusCode).toBe(401);
+  const noCsrf = await game.app.inject({ method: 'POST', url: game.path + '/presence',
+    headers: { cookie: cookie(game.white.who) } });
+  expect(noCsrf.json()).toEqual({ error: 'invalid_csrf_token' });
+  expect((await post(game.app, game.white.who, game.path + '/presence', {
+    accountId: game.black.id, receivedAtMs: 123,
+  })).statusCode).toBe(400);
+  await pool.query("UPDATE chess.account_sessions SET expires_at = now() - interval '1 second' WHERE account_id = $1", [game.black.id]);
+  expect((await game.ping(game.black.who)).statusCode).toBe(401);
+  const casual = await presenceGame('10+2', false);
+  expect((await casual.ping(casual.white.who)).statusCode).toBe(403);
+  expect(await casual.read()).not.toHaveProperty('disconnect');
+  expect((await pool.query('SELECT 1 FROM chess.rated_game_presence WHERE game_id = $1', [casual.id])).rowCount).toBe(0);
+});
+
+it('observes continued streams despite quiet client timers and cancels grace across two sessions without changing the game', async () => {
+  const game = await presenceGame();
+  await game.at(20_000);
+  await game.at(27_000, game.black.who);
+  await game.through(90_000);
+  expect((await game.read()).disconnect.opponentDeadlineMs).toBeNull();
+  await game.service.recordPresence(game.id, game.black.id, 'activity', game.time.value);
+  await game.through(160_000);
+  expect((await game.read()).disconnect.opponentDeadlineMs).toBeNull();
+  await game.through(165_000);
+  const before = await game.read();
+  const deadline = game.start + 165_000 + disconnectTiming.graceMs.rapid;
+  expect(before.disconnect.opponentDeadlineMs).toBe(deadline);
+  expect(before.clocks).toMatchObject({ activeSide: 'white', remainingMs: { white: 435_000, black: 602_000 } });
+  const reconnected = await browser(game.app);
+  await auth(game.app, reconnected, 'login', game.black.username);
+  await game.through(deadline - game.start - 1);
+  await game.at(deadline - game.start - 1, reconnected);
+  const restored = await game.read();
+  expect(restored).toMatchObject({ status: 'active', version: before.version, position: before.position,
+    history: before.history, drawOffer: before.drawOffer, disconnect: { opponentDeadlineMs: null },
+    clocks: { deadlineMs: before.clocks.deadlineMs, activeSide: 'white' } });
+  await game.at(deadline - game.start + 1);
+  await game.service.pollDueGames();
+  await assertNoSettlement(game.id);
+});
+
+it.each([
+  { control: '1+0', poolName: 'bullet', graceMs: 30_000, moveAt: 55_000, whiteMs: 5_000, blackMs: 10_000 },
+  { control: '3+0', poolName: 'blitz', graceMs: 45_000, moveAt: 75_000, whiteMs: 105_000, blackMs: 135_000 },
+  { control: '10+2', poolName: 'rapid', graceMs: 60_000, moveAt: 75_000, whiteMs: 527_000, blackMs: 542_000 },
+  { control: '20+0', poolName: 'classical', graceMs: 90_000, moveAt: 75_000, whiteMs: 1_125_000, blackMs: 1_110_000 },
+] as const)('settles a $poolName disconnect once and lets the opponent move while the game remains active', async test => {
+  const game = await presenceGame(test.control);
+  await game.through(test.moveAt);
+  await play(game.app, game.id, game.white.who, 2, 'g1', 'f3');
+  await game.through(75_000);
+  const deadline = game.start + 75_000 + test.graceMs;
+  expect((await game.read()).disconnect.opponentDeadlineMs).toBe(deadline);
+  const before = await game.read();
+  expect(before.clocks.activeSide).toBe('black');
+  await game.through(deadline - game.start - 1);
+  expect((await game.read()).status).toBe('active');
+  await assertNoSettlement(game.id);
+  await game.at(deadline - game.start);
+  const other = server(false, game.time, true);
+  await other.app.ready();
+  await Promise.all([game.service.pollDueGames(), other.service.pollDueGames()]);
+  const final = await game.read(game.black.who, other.app);
+  const result = { outcome: 'win', winner: 'white', reason: 'disconnect_forfeit', disconnectedSide: 'black', deadlineMs: deadline };
+  expect(final).toMatchObject({ status: 'finished', result, history: before.history, version: before.version + 1,
+    clocks: { phase: 'stopped', activeSide: null, flaggedSide: null, remainingMs: { white: test.whiteMs, black: test.blackMs } } });
+  expect(final).not.toHaveProperty('disconnect');
+  await game.at(deadline - game.start + 1, game.black.who, other.app);
+  await other.service.pollDueGames();
+  expect((await game.read()).result).toEqual(result);
+  expect((await pool.query('SELECT pool, final_result FROM chess.game_rating_settlements WHERE game_id = $1', [game.id])).rows)
+    .toEqual([{ pool: test.poolName, final_result: result }]);
+  for (const player of [game.white, game.black]) {
+    expect((await loadOrCreateAccountRating(pool, player.id, test.poolName)).ratedGames).toBe(1);
+  }
+});
+
+it('requires fresh activity after both players go offline during grace and after an API restart', async () => {
+  const game = await presenceGame();
+  await game.through(75_000);
+  expect((await game.read()).disconnect.opponentDeadlineMs).toBe(game.start + 135_000);
+  await game.app.close();
+  game.time.value = game.start + 140_000;
+  const restarted = server(false, game.time, true);
+  await restarted.app.ready();
+  await restarted.service.pollDueGames();
+  expect(await game.read(game.white.who, restarted.app)).toMatchObject({ status: 'active', version: 2,
+    disconnect: { opponentDeadlineMs: null }, clocks: { activeSide: 'white', deadlineMs: game.start + 600_000 } });
+  await game.at(140_000, game.white.who, restarted.app);
+  expect((await game.read(game.white.who, restarted.app)).disconnect.opponentDeadlineMs).toBeNull();
+  await game.at(150_000, game.white.who, restarted.app);
+  expect((await game.read(game.white.who, restarted.app)).disconnect.opponentDeadlineMs).toBe(game.start + 210_000);
+  await game.at(150_001, game.black.who, restarted.app);
+  expect((await game.read(game.white.who, restarted.app)).disconnect.opponentDeadlineMs).toBeNull();
+  await assertNoSettlement(game.id);
+});
+
+it('preserves the first-move abort and gives an earlier chess timeout priority over forfeiture', async () => {
+  const unstarted = await presenceGame('1+0', true, false);
+  unstarted.time.value += 90_000;
+  await unstarted.service.pollDueGames();
+  expect(await unstarted.read()).toMatchObject({ status: 'aborted', result: { reason: 'first_move_deadline' } });
+  await assertNoSettlement(unstarted.id);
+  await unstarted.app.close();
+
+  const game = await presenceGame('3+0');
+  await game.through(75_000);
+  // Leave White just 1 ms short of the disconnect confirmation when its clock flags.
+  await pool.query(`UPDATE chess.games SET white_remaining_ms = 119999,
+    deadline_at = turn_started_at + interval '119.999 seconds' WHERE id = $1`, [game.id]);
+  await game.through(120_000);
+  await game.service.pollDueGames();
+  expect(await game.read()).toMatchObject({ status: 'finished',
+    result: { reason: 'timeout', winner: 'black', flaggedSide: 'white', deadlineMs: game.start + 119_999 } });
+});
+
+
+it('rolls back a disconnect result with its rating changes and safely retries the confirmed deadline', async () => {
+  const game = await presenceGame();
+  await game.through(75_000);
+  await game.through(135_000);
+  await pool.query(`ALTER TABLE chess.game_rating_settlements ADD CONSTRAINT disconnect_failure_probe
+    CHECK (game_id <> '${game.id}') NOT VALID`);
+  try {
+    await expect(game.service.pollDueGames()).rejects.toMatchObject({ code: '23514', constraint: 'disconnect_failure_probe' });
+    expect((await pool.query('SELECT status, version, result FROM chess.games WHERE id = $1', [game.id])).rows)
+      .toEqual([{ status: 'active', version: 2, result: null }]);
+    await assertNoSettlement(game.id);
+    expect((await pool.query('SELECT 1 FROM chess.account_ratings WHERE account_id IN ($1, $2)',
+      [game.white.id, game.black.id])).rowCount).toBe(0);
+    expect((await pool.query('SELECT confirmed_at FROM chess.rated_game_presence WHERE game_id = $1', [game.id])).rows)
+      .toEqual([{ confirmed_at: new Date(game.start + 135_000) }]);
+  } finally {
+    await pool.query('ALTER TABLE chess.game_rating_settlements DROP CONSTRAINT disconnect_failure_probe');
+  }
+  await game.service.pollDueGames();
+  expect(await game.read()).toMatchObject({ status: 'finished', version: 3,
+    result: { reason: 'disconnect_forfeit' }, playerRatings: { source: 'settlement', pool: 'rapid' } });
+  expect((await pool.query('SELECT 1 FROM chess.rated_game_presence WHERE game_id = $1', [game.id])).rowCount).toBe(0);
+});
+
+it('requires a fresh grace period after database failures interrupt presence writes', async () => {
+  const game = await presenceGame();
+  await game.through(75_000);
+  await pool.query(`ALTER TABLE chess.rated_game_presence ADD CONSTRAINT presence_failure_probe
+    CHECK (game_id <> '${game.id}') NOT VALID`);
+  try {
+    for (const offset of [90_000, 110_000, 135_000]) {
+      game.time.value = game.start + offset;
+      expect((await game.ping(game.white.who)).statusCode).toBe(500);
+    }
+  } finally {
+    await pool.query('ALTER TABLE chess.rated_game_presence DROP CONSTRAINT presence_failure_probe');
+  }
+  await game.service.pollDueGames();
+  expect(await game.read()).toMatchObject({ status: 'active', disconnect: { opponentDeadlineMs: null } });
+  await game.at(136_000, game.black.who);
+  await game.at(136_000);
+  expect(await game.read()).toMatchObject({ status: 'active', disconnect: { opponentDeadlineMs: null } });
+  await assertNoSettlement(game.id);
+});
+
+it('never creates presence or settles a disconnect while a strict legacy result is pending', async () => {
+  const game = await presenceGame();
+  await useLegacyAdjudication(game.id);
+  try {
+    const reply = await post(game.app, game.white.who, game.path + '/resign', { expectedVersion: 2 });
+    expect(reply.json()).toMatchObject({ game: { status: 'pending_adjudication' } });
+    await game.through(150_000);
+    await game.service.pollDueGames();
+    expect(await game.read()).toMatchObject({ status: 'pending_adjudication', result: null, clocks: { phase: 'stopped' } });
+    expect((await pool.query('SELECT 1 FROM chess.rated_game_presence WHERE game_id = $1', [game.id])).rowCount).toBe(0);
+    await assertNoSettlement(game.id);
+  } finally {
+    await deletePendingProbe(game.id);
+  }
+});
+
+
+it.each(['reconnection', 'resignation'] as const)(
+  'honors a %s received before confirmation even when it is admitted afterward', async command => {
+    const game = await presenceGame();
+    await game.through(75_000);
+    await game.through(134_999);
+    const arrival = game.service.beginReceipt();
+    try {
+      await game.at(135_000);
+      expect(await game.service.pollDueGames()).toBe(0);
+      await assertNoSettlement(game.id);
+      if (command === 'reconnection') {
+        expect((await game.service.recordPresence(game.id, game.black.id, 'heartbeat', arrival.receivedAtMs)).status).toBe(204);
+      } else {
+        const { rows: [seat] } = await pool.query('SELECT acceptor_guest_id FROM chess.challenges WHERE id = $1', [game.id]);
+        const result = await game.service.action(game.id, seat.acceptor_guest_id, randomUUID(), 'resign',
+          { expectedVersion: 2 }, arrival);
+        expect(result).toMatchObject({ status: 200, body: { game: { status: 'finished',
+          result: { reason: 'resignation', winner: 'white' } } } });
+      }
+    } finally {
+      await arrival.release();
+    }
+    await game.service.pollDueGames();
+    const final = await game.read();
+    if (command === 'reconnection') {
+      expect(final).toMatchObject({ status: 'active', version: 2, result: null,
+        disconnect: { opponentDeadlineMs: null }, clocks: { deadlineMs: game.start + 600_000 } });
+      await assertNoSettlement(game.id);
+    } else {
+      expect(final).toMatchObject({ status: 'finished', version: 3, result: { reason: 'resignation' } });
+    }
+  });

@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { currentGuest, requireGuest } from './guest-session.js';
-import { participantGuestId } from './account-session.js';
+import { currentAccount, participantGuestId } from './account-session.js';
+import type { GameReadResponse } from '@chess/contracts';
 import { createGameService, type ActionBody, type Arrival, type ClaimBody, type GameAction,
   type GameService, type MoveBody, type WallClock } from './game-service.js';
 import { createGameUpdateHub } from './game-updates.js';
@@ -44,6 +45,29 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       return reply.code(result.status).send(result.body);
     });
 
+  app.post<{ Params: { id: string } }>('/games/:id/presence', { schema: { params: idParams },
+    preValidation: (request, _reply, done) => {
+      arrivals.set(request, service.beginReceipt());
+      done();
+    },
+    onResponse: async request => {
+      await arrivals.get(request)?.release();
+      arrivals.delete(request);
+    },
+  }, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const guest = await requireGuest(pool, request, reply, true);
+    if (!guest) return;
+    if (request.body !== undefined) return reply.code(400).send({ error: 'unexpected_body' });
+    const account = await currentAccount(pool, request, guest);
+    if (!account) return reply.code(401).send({ error: 'rated_account_required' });
+    const arrival = arrivals.get(request);
+    if (!arrival) throw new Error('Presence arrival was not recorded.');
+    const result = await service.recordPresence(request.params.id, account.id, 'heartbeat', arrival.receivedAtMs);
+    await arrival.release();
+    return reply.code(result.status).send(result.body);
+  });
+
   app.get<{ Params: { id: string } }>('/games/:id/events', { schema: { params: idParams } },
     async (request, reply) => {
       const guest = await requireGuest(pool, request, reply);
@@ -51,6 +75,8 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       const seatId = await participantGuestId(pool, request, guest, request.params.id);
       const access = await service.read(request.params.id, seatId);
       if (access.status !== 200) return reply.code(access.status).send(access.body);
+      const observeStream = (access.body as GameReadResponse).disconnect !== undefined
+        && (request.headers['sec-fetch-site'] === undefined || request.headers['sec-fetch-site'] === 'same-origin');
       await updates.start();
       reply.hijack();
       reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8',
@@ -73,14 +99,23 @@ export function registerGameRoutes(app: FastifyInstance, pool: pg.Pool,
       });
       reply.raw.on('close', close);
       reply.raw.write(': connected\n\n');
+      const recordStream = async (current: typeof guest) => {
+        if (!observeStream || closed) return;
+        const account = await currentAccount(pool, request, current);
+        if (account && !closed) await service.recordPresence(request.params.id, account.id, 'activity', service.trustedNowMs());
+      };
+      void recordStream(guest).catch(close);
+      let checking = false;
       heartbeat = setInterval(() => {
+        if (checking || closed) return;
+        checking = true;
         void (async () => {
           const refreshed = await currentGuest(pool, request);
           if (!refreshed || await participantGuestId(pool, request, refreshed, request.params.id) !== seatId) {
             close(); return;
           }
-          if (!closed) reply.raw.write('event: ping\ndata: {}\n\n');
-        })().catch(close);
+          if (!closed && reply.raw.write('event: ping\ndata: {}\n\n')) await recordStream(refreshed);
+        })().catch(close).finally(() => { checking = false; });
       }, 15_000);
     });
 

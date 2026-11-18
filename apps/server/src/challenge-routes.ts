@@ -206,6 +206,7 @@ export async function checkChallengeSchema(pool: pg.Pool): Promise<void> {
       FROM chess.games LIMIT 0`);
     await pool.query('SELECT game_id FROM chess.game_rating_settlements LIMIT 0');
     await pool.query('SELECT game_id, due_at FROM chess.rated_adjudications LIMIT 0');
+    await pool.query('SELECT game_id, confirmed_at FROM chess.rated_game_presence LIMIT 0');
     await pool.query('SELECT admission_id, applied FROM chess.game_move_receipts LIMIT 0');
     await pool.query('SELECT instance_id FROM chess.clock_ingress_watermarks LIMIT 0');
     await pool.query('SELECT kind, event_key FROM chess.game_chat_messages LIMIT 0');

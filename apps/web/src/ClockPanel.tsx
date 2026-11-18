@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ClockState, GamePlayerNames, GameSide, PlayerAvatar, SavedMove } from '@chess/contracts';
+import type { ClockState, GamePlayerNames, GameReadResponse, GameSide, PlayerAvatar, SavedMove } from '@chess/contracts';
 import { PlayerIdentity, sitePlayerName } from './PlayerIdentity';
 import { ClockValue, formatClock, PlayerClockValue } from './ClockValue';
 import type { SitePlayerRating } from './rating-display';
@@ -12,6 +12,15 @@ export function historicalClockMs(history: readonly SavedMove[], ply: number,
     if (history[index]!.side === side) return history[index]!.remainingMsAfterMove;
   }
   return initialMs;
+}
+
+export function siteReplayClockMs(game: GameReadResponse, displayedPly: number,
+  side: GameSide, onVariation: boolean): number | null | undefined {
+  if (game.status !== 'finished') return undefined;
+  if (onVariation) return null;
+  if (displayedPly === game.history.length && game.clocks) return game.clocks.remainingMs[side];
+  const initialMs = game.timeControl && 'initialMs' in game.timeControl ? game.timeControl.initialMs : null;
+  return historicalClockMs(game.history, displayedPly, side, initialMs, true);
 }
 
 export function displayedMs(clock: ClockState, side: GameSide, elapsedMs: number): number {
