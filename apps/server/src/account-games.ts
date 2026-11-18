@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { AccountGame, AccountGames, AccountGamesFilter, AccountIdentity } from '@chess/contracts';
+import { settledGameRatings, type SettlementRatingsRow } from './account-ratings.js';
 
 interface Cursor { createdAt: string; id: string }
 export function parseGameCursor(value: string | undefined): Cursor | null {
@@ -14,35 +15,47 @@ export function parseGameCursor(value: string | undefined): Cursor | null {
   } catch { throw new Error('invalid_game_cursor'); }
 }
 
-// The account archive and Favorites both require a linked participant seat and a saved game.
-const linkedSeats = `
-  SELECT c.id, c.created_at, c.time_control, 'white'::text AS side, c.acceptor_guest_id AS opponent_id
-  FROM chess.guest_sessions s JOIN chess.challenges c ON c.creator_guest_id = s.id WHERE s.account_id = $1
+// Rated ownership comes from the saved accounts. Casual games retain historical guest linking.
+const accountSeats = `
+  SELECT g.id, 'white'::text AS side FROM chess.guest_sessions s
+  JOIN chess.challenges c ON c.creator_guest_id = s.id JOIN chess.games g ON g.id = c.id
+  WHERE s.account_id = $1 AND NOT g.rated
   UNION ALL
-  SELECT c.id, c.created_at, c.time_control, 'black'::text AS side, c.creator_guest_id AS opponent_id
-  FROM chess.guest_sessions s JOIN chess.challenges c ON c.acceptor_guest_id = s.id WHERE s.account_id = $1`;
+  SELECT g.id, 'black'::text AS side FROM chess.guest_sessions s
+  JOIN chess.challenges c ON c.acceptor_guest_id = s.id JOIN chess.games g ON g.id = c.id
+  WHERE s.account_id = $1 AND NOT g.rated
+  UNION ALL
+  SELECT id, 'white'::text FROM chess.games WHERE rated AND rated_white_account_id = $1
+  UNION ALL
+  SELECT id, 'black'::text FROM chess.games WHERE rated AND rated_black_account_id = $1`;
 
 export async function accountGames(pool: pg.Pool, account: AccountIdentity, cursor: Cursor | null,
   filter: AccountGamesFilter): Promise<AccountGames> {
   // Both the page and summary use one statement/snapshot.
-  const { rows } = await pool.query<{ games: AccountGame[]; summary: AccountGames['summary'] }>(`
-    WITH seats AS (${linkedSeats}), owned AS (
-      SELECT s.id, s.created_at, s.side, s.opponent_id, g.status, g.result,
-        CASE WHEN g.clock_mode = 'legacy_untimed' THEN NULL ELSE s.time_control END AS time_control
-      FROM seats s JOIN chess.games g ON g.id = s.id
+  type ArchiveRow = Omit<AccountGame, 'playerRatings'> & { settlement: SettlementRatingsRow | null };
+  const { rows } = await pool.query<{ games: ArchiveRow[]; summary: AccountGames['summary'] }>(`
+    WITH seats AS (${accountSeats}), owned AS (
+      SELECT DISTINCT ON (s.id) s.id, c.created_at, s.side, g.status, g.result, g.rated,
+        CASE WHEN s.side = 'white' THEN c.acceptor_guest_id ELSE c.creator_guest_id END AS opponent_seat,
+        CASE WHEN s.side = 'white' THEN g.rated_black_account_id ELSE g.rated_white_account_id END AS rated_opponent,
+        CASE WHEN g.clock_mode = 'legacy_untimed' THEN NULL ELSE c.time_control END AS time_control
+      FROM seats s JOIN chess.games g ON g.id = s.id JOIN chess.challenges c ON c.id = s.id
+      ORDER BY s.id, s.side DESC
     ), page AS (
-      SELECT o.*, a.username AS opponent, f.game_id IS NOT NULL AS favorite FROM owned o
-      JOIN chess.guest_sessions opponent_guest ON opponent_guest.id = o.opponent_id
-      LEFT JOIN chess.accounts a ON a.id = opponent_guest.account_id
+      SELECT o.*, f.game_id IS NOT NULL AS favorite FROM owned o
       LEFT JOIN chess.account_game_favorites f ON f.account_id = $1 AND f.game_id = o.id
       WHERE ($2::timestamptz IS NULL OR (o.created_at, o.id) < ($2::timestamptz, $3::uuid))
         AND (NOT $4::boolean OR f.game_id IS NOT NULL)
       ORDER BY o.created_at DESC, o.id DESC LIMIT 21
     )
     SELECT (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-      'id', id, 'side', side, 'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-      'status', status, 'result', result, 'opponent', opponent, 'timeControl', time_control, 'favorite', favorite)
-      ORDER BY created_at DESC, id DESC), '[]') FROM page) AS games,
+      'id', p.id, 'side', p.side, 'createdAt', to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+      'status', p.status, 'result', p.result, 'opponent', a.username, 'timeControl', p.time_control,
+      'favorite', p.favorite, 'rated', p.rated, 'settlement', to_jsonb(s))
+      ORDER BY p.created_at DESC, p.id DESC), '[]') FROM page p
+      JOIN chess.guest_sessions opponent_guest ON opponent_guest.id = p.opponent_seat
+      LEFT JOIN chess.accounts a ON a.id = COALESCE(p.rated_opponent, opponent_guest.account_id)
+      LEFT JOIN chess.game_rating_settlements s ON s.game_id = p.id AND p.rated AND p.status = 'finished') AS games,
       jsonb_build_object(
         'wins', count(*) FILTER (WHERE status = 'finished' AND result->>'outcome' = 'win' AND result->>'winner' = side),
         'draws', count(*) FILTER (WHERE status = 'finished' AND result->>'outcome' = 'draw'),
@@ -53,14 +66,16 @@ export async function accountGames(pool: pg.Pool, account: AccountIdentity, curs
   // Keep all six PostgreSQL fractional digits; Date.toISOString() would lose cursor precision.
   const next = games.length > 20 && last
     ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id })).toString('base64url') : null;
-  return { account, games: games.slice(0, 20), summary, next };
+  return { account, games: games.slice(0, 20).map(({ settlement, ...game }) => ({
+    ...game, playerRatings: settlement ? settledGameRatings(settlement) : null,
+  })), summary, next };
 }
 
 /** A missing row means the account has no linked seat in this game. */
 export async function accountGameFavorite(pool: pg.Pool, accountId: string, gameId: string,
   method: 'GET' | 'PUT' | 'DELETE'): Promise<boolean | null> {
-  const owned = `WITH seats AS (${linkedSeats}), owned AS (
-    SELECT g.id FROM seats s JOIN chess.games g ON g.id = s.id WHERE g.id = $2 LIMIT 1
+  const owned = `WITH seats AS (${accountSeats}), owned AS (
+    SELECT id FROM seats WHERE id = $2 LIMIT 1
   )`;
   const query = method === 'GET' ? `${owned}
     SELECT EXISTS (SELECT 1 FROM chess.account_game_favorites WHERE account_id = $1 AND game_id = owned.id) AS favorite

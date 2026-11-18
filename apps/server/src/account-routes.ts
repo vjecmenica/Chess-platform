@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { AccountGamesFilter } from '@chess/contracts';
 import { accountGameFavorite, accountGames, parseGameCursor } from './account-games.js';
+import { accountRatings } from './account-ratings.js';
 import { accountCookie, accountIdentity, currentAccount, type Account } from './account-session.js';
 import { cookieToken, createGuest, requireGuest, rotateGuest, setSessionCookie, tokenHash } from './guest-session.js';
 import { passwordOptions, passwordSchema, rateAllowed } from './account-security.js';
@@ -185,6 +186,16 @@ export function registerAccountRoutes(app: FastifyInstance, pool: pg.Pool, secur
       try { await client.query('ROLLBACK'); } finally { client.release(); }
     }
   });
+
+  app.get('/account/ratings', { schema: { querystring: { type: 'object', additionalProperties: false, properties: {} } } },
+    async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const guest = await requireGuest(pool, request, reply);
+      if (!guest) return;
+      const account = await currentAccount(pool, request, guest);
+      if (!account) return reply.code(401).send({ error: 'account_required' });
+      return accountRatings(pool, account.id);
+    });
 
   app.get<{ Querystring: { before?: string; filter?: AccountGamesFilter } }>('/account/games', { schema: { querystring: {
     type: 'object', additionalProperties: false, properties: {

@@ -2,6 +2,7 @@ import type { GameReadResponse, GameState, SiteGameInfo } from '@chess/contracts
 import { sitePlayerName } from './PlayerIdentity';
 import { resultDisplay } from './result-display';
 import { InfoTimeControl } from './TimeControlIcon';
+import { gamePlayerRating, SiteRating } from './rating-display';
 
 const variantLabels: Record<SiteGameInfo['variant'], string> = { standard: 'Standard' };
 
@@ -36,11 +37,14 @@ export function GameInfo({ game }: { game: GameReadResponse }) {
   return <section className="game-info" aria-label="Game information">
     <h3>Game Info</h3>
     <dl>
-      {(['white', 'black'] as const).map(side => <div className="game-info-player" key={side}>
-        <dt>{side === 'white' ? 'White' : 'Black'}</dt>
-        <dd><strong className="player-name">{sitePlayerName(game.playerNames, side)}</strong>{' '}<small><span aria-hidden="true">—</span>
-          <span className="visually-hidden">Rating unavailable</span></small></dd>
-      </div>)}
+      {(['white', 'black'] as const).map(side => {
+        const name = sitePlayerName(game.playerNames, side);
+        return <div className="game-info-player" key={side}>
+          <dt>{side === 'white' ? 'White' : 'Black'}</dt>
+          <dd><strong className="player-name" title={name}>{name}</strong>
+            <small><SiteRating value={gamePlayerRating(game, side)} /></small></dd>
+        </div>;
+      })}
       <div className="game-info-outcome"><dt>{result || game.status === 'finished' || game.status === 'aborted' ? 'Result' : 'Status'}</dt>
         <dd>{result ? <><strong>{result.score}</strong>{' · '}{result.explanation}</> : status}</dd></div>
       <div><dt>Time control</dt><dd><InfoTimeControl game={game} /></dd></div>

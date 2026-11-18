@@ -1,3 +1,5 @@
+import type { RatingPool } from './rating-pools.js';
+
 export type ReadinessResponse =
   | { status: 'ok'; database: 'connected' }
   | { status: 'error'; database: 'unavailable' };
@@ -83,9 +85,36 @@ export interface GameReadResponse extends GameState {
   readonly playerNames?: GamePlayerNames;
   /** Only for avatars of account-owned seats in authorized site-game reads. */
   readonly playerAvatars?: Readonly<Record<GameSide, PlayerAvatar | null>>;
+  readonly playerRatings?: GamePlayerRatings;
   readonly siteInfo?: SiteGameInfo;
   readonly history: readonly SavedMove[];
 }
+
+export interface RatingDisplay { readonly rating: number; readonly provisional: boolean }
+export interface AccountPoolRating extends RatingDisplay {
+  readonly rd: number;
+  readonly ratedGames: number;
+  readonly lastRatedAt: string | null;
+}
+export interface AccountRatingsResponse {
+  readonly accountId: string;
+  readonly ratings: Readonly<Record<RatingPool, AccountPoolRating>>;
+}
+export interface SettledPlayerRating {
+  readonly before: RatingDisplay;
+  readonly after: RatingDisplay;
+  readonly change: number;
+}
+export interface SettledGameRatings {
+  readonly source: 'settlement';
+  readonly pool: RatingPool;
+  readonly players: Readonly<Record<GameSide, SettledPlayerRating>>;
+}
+export type GamePlayerRatings = SettledGameRatings | {
+  readonly source: 'current';
+  readonly pool: RatingPool;
+  readonly players: Readonly<Record<GameSide, RatingDisplay>>;
+};
 
 export interface GameChatMessage {
   readonly kind?: 'system';
@@ -179,7 +208,7 @@ export interface AccountState { readonly email?: AccountEmailState | null; reado
 export interface AccountGame { readonly id: string; readonly side: 'white' | 'black';
   readonly status: GameState['status']; readonly createdAt: string;
   readonly opponent: string | null; readonly result: GameState['result']; readonly timeControl: string | null;
-  readonly favorite: boolean }
+  readonly favorite: boolean; readonly rated: boolean; readonly playerRatings: SettledGameRatings | null }
 export type AccountGamesFilter = 'all' | 'favorites';
 export interface AccountGameFavorite { readonly gameId: string; readonly favorite: boolean }
 export interface AccountGames { readonly account: AccountIdentity; readonly games: readonly AccountGame[];

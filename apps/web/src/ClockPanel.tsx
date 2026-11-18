@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ClockState, GamePlayerNames, GameSide, PlayerAvatar, SavedMove } from '@chess/contracts';
 import { PlayerIdentity, sitePlayerName } from './PlayerIdentity';
 import { ClockValue, formatClock, PlayerClockValue } from './ClockValue';
+import type { SitePlayerRating } from './rating-display';
 export { formatClock } from './ClockValue';
 
 export function historicalClockMs(history: readonly SavedMove[], ply: number,
@@ -25,12 +26,13 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
     : Math.max(0, deadlineMs - clock.serverNowMs - Math.max(0, elapsedMs));
 }
 
-export function ClockPanel({ clock, side, isYou, playerNames, avatar, historicalMs, isReplayTurn = false, showStatus = true }: {
+export function ClockPanel({ clock, side, isYou, playerNames, avatar, rating, historicalMs, isReplayTurn = false, showStatus = true }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
   playerNames?: GamePlayerNames | undefined;
   avatar?: PlayerAvatar | null | undefined;
+  rating?: SitePlayerRating | null | undefined;
   historicalMs?: number | null | undefined;
   isReplayTurn?: boolean;
   showStatus?: boolean;
@@ -64,7 +66,7 @@ export function ClockPanel({ clock, side, isYou, playerNames, avatar, historical
       : clock.phase === 'awaiting_first_move' ? 'Clock paused' : clock.activeSide === side ? 'Running' : 'Stopped';
   return <div className={`clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} status={status}
+      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} status={status} rating={rating}
         accountName={playerNames?.[side]} avatarUrl={avatar?.url} />
       <PlayerClockValue side={side} milliseconds={valueMs} fallback={historicalMs !== undefined ? '—' : 'Untimed'} />
       {graceMs !== null && <span className="first-move-countdown"

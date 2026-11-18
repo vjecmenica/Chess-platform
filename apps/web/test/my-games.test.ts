@@ -1,14 +1,18 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
-import type { AccountGame, AccountGames } from '@chess/contracts';
+import type { AccountGame, AccountGames, AccountRatingsResponse } from '@chess/contracts';
 import { appendGamePage, archiveResult, GameArchive, AccountPage, accountSection,
   AccountProfileHeader, AccountOverview, AccountStats } from '../src/MyGames';
 
 const game: AccountGame = { id: 'game-1', side: 'white', status: 'active', result: null,
-  createdAt: '2026-10-26T10:00:00.000001Z', opponent: null, timeControl: '5+3', favorite: false };
+  createdAt: '2026-10-26T10:00:00.000001Z', opponent: null, timeControl: '5+3', favorite: false,
+  rated: false, playerRatings: null };
 const page: AccountGames = { account: { id: 'account-1', username: 'player' }, games: [game], next: 'cursor',
   summary: { wins: 3, draws: 2, losses: 1 } };
+const initial = { rating: 1500, rd: 350, provisional: true, ratedGames: 0, lastRatedAt: null };
+const ratings: AccountRatingsResponse['ratings'] = { bullet: initial, rapid: initial, classical: initial,
+  blitz: { ...initial, rating: 1624.7, rd: 100, provisional: false, ratedGames: 19 } };
 
 it('formats final results from White’s perspective and never assigns a score to unfinished or aborted games', () => {
   expect(archiveResult(game)).toBe('In progress');
@@ -37,8 +41,8 @@ it('renders private results, linked names, guest and unknown-time fallbacks, and
   const html = renderToStaticMarkup(createElement(GameArchive, { page: { ...page,
     games: [game, { ...game, id: 'game-2', side: 'black', opponent: 'linked_player', timeControl: null }] } }));
   expect(html).toContain('href="/challenge/game-1"');
-  expect(html).toContain('<strong class="player-name">Guest</strong>');
-  expect(html).toContain('<strong class="player-name">linked_player</strong>');
+  expect(html).toContain('<strong class="player-name" title="Guest">Guest</strong>');
+  expect(html).toContain('<strong class="player-name" title="linked_player">linked_player</strong>');
   expect(html).toContain('Unavailable');
   expect(html).toContain('5+3');
   expect(html).toContain('aria-label="Your linked games, newest first"');
@@ -50,8 +54,8 @@ it('puts White above Black and makes each entire row a native new-tab link with 
       games: [{ ...game, side, opponent: 'opponent' }] } }));
     const white = side === 'white' ? 'player' : 'opponent';
     const black = side === 'black' ? 'player' : 'opponent';
-    expect(html.indexOf(`<strong class="player-name">${white}</strong>`)).toBeLessThan(html.indexOf(`<strong class="player-name">${black}</strong>`));
-    expect(html).toContain(`aria-label="White: ${white}. Black: ${black}. In progress. Opens in a new tab."`);
+    expect(html.indexOf(`title="${white}">${white}</strong>`)).toBeLessThan(html.indexOf(`title="${black}">${black}</strong>`));
+    expect(html).toContain(`aria-label="White: ${white}. Black: ${black}. Casual. In progress. Opens in a new tab."`);
     expect(html).toContain('<li><a class="archive-game" href="/challenge/game-1" target="_blank" rel="noopener"');
     expect(html).toContain('</time></a></li>');
     expect(html.match(/aria-label="Site rating unavailable">—/g)).toHaveLength(2);
@@ -77,12 +81,14 @@ it('uses refreshable section links with one accessible current section and an Ed
 
 it('previews only five recent games without changing archive order, totals, or pagination', () => {
   const many = { ...page, games: Array.from({ length: 8 }, (_, i) => ({ ...game, id: `game-${i}` })) };
-  const html = renderToStaticMarkup(createElement(AccountOverview, { page: many }));
+  const html = renderToStaticMarkup(createElement(AccountOverview, { page: many, ratings }));
   expect(html.match(/href="\/challenge\//g)).toHaveLength(5);
   expect(html.indexOf('/challenge/game-0')).toBeLessThan(html.indexOf('/challenge/game-4'));
   expect(html).not.toContain('/challenge/game-5');
   expect(html).toContain('href="#games">View all games');
-  expect(html).toContain('Ratings are not available yet');
+  for (const pool of ['Bullet', 'Blitz', 'Rapid', 'Classical']) expect(html).toContain(`<dt>${pool}</dt>`);
+  expect(html.match(/>1500\?<\//g)).toHaveLength(3);
+  expect(html).toContain('>1625</span>');
   expect(html).toContain('<dt>Wins</dt><dd>3</dd>');
   expect(renderToStaticMarkup(createElement(GameArchive, { page: many })).match(/href="\/challenge\//g)).toHaveLength(8);
   expect(many.games).toHaveLength(8);
@@ -90,14 +96,29 @@ it('previews only five recent games without changing archive order, totals, or p
 });
 
 it('derives Stats from all completed result counts rather than the loaded page and handles zero games', () => {
-  const html = renderToStaticMarkup(createElement(AccountStats, { summary: page.summary }));
+  const html = renderToStaticMarkup(createElement(AccountStats, { summary: page.summary, ratings }));
   expect(html).toContain('<strong>6</strong> completed linked games');
   expect(html).toContain('not a rating or performance estimate');
   expect(html).toContain('Aborted games are excluded');
+  expect(html).toContain('19 rated games');
+  expect(html.match(/>0 rated games</g)).toHaveLength(3);
   const empty = renderToStaticMarkup(createElement(AccountStats, { summary: { wins: 0, draws: 0, losses: 0 } }));
   expect(empty).toContain('<strong>0</strong>');
   expect(empty).toContain('after a linked game finishes');
   expect(empty).not.toMatch(/NaN|Infinity/);
+});
+
+it('puts settled ratings on the proper sides alongside the mode and unchanged game link', () => {
+  const html = renderToStaticMarkup(createElement(GameArchive, { page: { ...page, games: [{
+    ...game, rated: true, side: 'black', status: 'finished', opponent: 'opponent',
+    playerRatings: { source: 'settlement', pool: 'blitz', players: {
+      white: { before: { rating: 1532.9, provisional: true }, after: { rating: 1540, provisional: true }, change: 7.1 },
+      black: { before: { rating: 1651.1, provisional: false }, after: { rating: 1644, provisional: false }, change: -7.1 },
+    } },
+  }] } }));
+  expect(html).toContain('White: opponent, rating before settlement 1533?. Black: player, rating before settlement 1651. Rated.');
+  expect(html).toContain('<small>Rated</small>');
+  expect(html).toContain('href="/challenge/game-1"');
 });
 
 it('offers a clear empty archive and exposes loading without any private rows', () => {

@@ -1,7 +1,7 @@
 import { loadGuestSession } from './guest-session-client';
 import { useEffect, useRef, useState } from 'react';
-import { avatarUploadMaxBytes, type AccountAvatarResponse, type AccountGame, type AccountGames,
-  type AccountGamesFilter, type AccountState } from '@chess/contracts';
+import { avatarUploadMaxBytes, ratingPools, type AccountAvatarResponse, type AccountGame, type AccountGames,
+  type AccountGamesFilter, type AccountRatingsResponse, type AccountState } from '@chess/contracts';
 import { AccountSettings } from './AccountSettings';
 import { accountMessages, AccountMenu } from './AccountMenu';
 import { resultDisplay } from './result-display';
@@ -9,6 +9,7 @@ import { AnalysisNavigation } from './AnalysisNavigation';
 import { ProfileAvatar } from './ProfileAvatar';
 import { FavoriteButton } from './FavoriteButton';
 import { saveGameFavorite } from './game-favorites';
+import { formatRating, SiteRating } from './rating-display';
 
 export function appendGamePage(previous: AccountGames | null, page: AccountGames): AccountGames {
   if (!previous || previous.account.id !== page.account.id) return page;
@@ -58,20 +59,24 @@ export function GameArchive({ page, filter = 'all', favorites }: {
     {page.games.length === 0 ? page.next ? null : <p>{filter === 'favorites' ? 'No favorites yet.'
       : 'No account games yet. Create or accept a game while signed in.'}</p>
       : <div className="archive-games" data-favorite-controls={favorites ? '' : undefined}>
-        <div className="archive-columns" aria-hidden="true"><span>Players · rating unavailable</span><span>Time control</span>
+        <div className="archive-columns" aria-hidden="true"><span>Players</span><span>Time control</span>
           <span>Result / status</span><span>Date</span></div>
         <ul aria-label="Your linked games, newest first">{page.games.map(game => {
           const white = game.side === 'white' ? page.account.username : game.opponent ?? 'Guest';
           const black = game.side === 'black' ? page.account.username : game.opponent ?? 'Guest';
           const result = archiveResult(game);
+          const rating = game.playerRatings?.players;
+          const mode = game.rated ? 'Rated' : 'Casual';
+          const nameWithRating = (name: string, side: 'white' | 'black') => rating
+            ? `${name}, rating before settlement ${formatRating(rating[side].before)}` : name;
           const pending = favorites?.pending.get(`${page.account.id}:${game.id}`);
           return <li key={game.id}><a className="archive-game" href={`/challenge/${game.id}`} target="_blank" rel="noopener"
-            aria-label={`White: ${white}. Black: ${black}. ${result}. Opens in a new tab.`}>
-            <span className="archive-players">{[['White', white], ['Black', black]].map(([side, name]) =>
-              <span className="archive-player" key={side}><span className={`archive-side archive-side-${side!.toLowerCase()}`} aria-hidden="true" />
-                <span className="visually-hidden">{side}: </span><strong className="player-name">{name}</strong>
-                <span className="archive-rating" title="Site rating unavailable" aria-label="Site rating unavailable">—</span></span>)}</span>
-            <span className="archive-control"><span className="visually-hidden">Time control: </span>{game.timeControl ?? 'Unavailable'}</span>
+            aria-label={`White: ${nameWithRating(white, 'white')}. Black: ${nameWithRating(black, 'black')}. ${mode}. ${result}. Opens in a new tab.`}>
+            <span className="archive-players">{([['white', white], ['black', black]] as const).map(([side, name]) =>
+              <span className="archive-player" key={side}><span className={`archive-side archive-side-${side}`} aria-hidden="true" />
+                <strong className="player-name" title={name}>{name}</strong>
+                <span className="archive-rating"><SiteRating value={rating?.[side] ?? null} showChange={false} /></span></span>)}</span>
+            <span className="archive-control">{game.timeControl ?? 'Unavailable'}<small>{mode}</small></span>
             <span className="archive-result" title={game.result?.reason.replaceAll('_', ' ')}>{result}</span>
             <time dateTime={game.createdAt}>{new Date(game.createdAt).toLocaleString(undefined,
               { dateStyle: 'medium', timeStyle: 'short' })}</time>
@@ -98,20 +103,37 @@ export function AccountProfileHeader({ state, section }: { state: AccountState; 
   </div>;
 }
 
-export function AccountOverview({ page, favorites }: { page: AccountGames; favorites?: ArchiveFavoriteControls | undefined }) {
+function AccountRatingSummary({ ratings, games = false }: { ratings?: AccountRatingsResponse['ratings'] | undefined; games?: boolean }) {
+  return <section className={`account-ratings${games ? ' account-rating-stats' : ''}`} aria-label="Ratings">
+    <h3>Ratings</h3>
+    <dl>{ratingPools.map(pool => {
+      const value = ratings?.[pool];
+      return <div key={pool}><dt>{pool[0]!.toUpperCase() + pool.slice(1)}</dt>
+        <dd><SiteRating value={value ?? null} />
+          {games && value && <small>{value.ratedGames} rated {value.ratedGames === 1 ? 'game' : 'games'}</small>}</dd></div>;
+    })}</dl>
+  </section>;
+}
+
+export function AccountOverview({ page, ratings, favorites }: {
+  page: AccountGames; ratings?: AccountRatingsResponse['ratings'] | undefined; favorites?: ArchiveFavoriteControls | undefined;
+}) {
   return <>
     <div className="account-overview-summary"><CompletedGamesSummary summary={page.summary} />
-      <aside className="account-ratings"><h3>Ratings</h3><p>Ratings are not available yet.</p></aside></div>
+      <AccountRatingSummary ratings={ratings} /></div>
     <div className="section-heading"><h3>Recent linked games</h3><a href="#games">View all games</a></div>
     <GameArchive page={{ ...page, games: page.games.slice(0, 5) }} favorites={favorites} />
   </>;
 }
 
-export function AccountStats({ summary }: { summary: AccountGames['summary'] }) {
+export function AccountStats({ summary, ratings }: {
+  summary: AccountGames['summary']; ratings?: AccountRatingsResponse['ratings'] | undefined;
+}) {
   const total = summary.wins + summary.draws + summary.losses;
   return <>
     <p><strong>{total}</strong> completed linked {total === 1 ? 'game' : 'games'}.</p>
     <CompletedGamesSummary summary={summary} />
+    <AccountRatingSummary ratings={ratings} games />
     {total === 0 && <p>Your results will appear here after a linked game finishes.</p>}
   </>;
 }
@@ -128,6 +150,8 @@ export function AccountPage() {
   const currentFilter = useRef(filter);
   currentFilter.current = filter;
   const [archive, setArchive] = useState<{ filter: AccountGamesFilter; page: AccountGames } | null>(null);
+  const [ratingRead, setRatingRead] = useState<AccountRatingsResponse | null>(null);
+  const ratings = ratingRead?.accountId === details?.account?.id ? ratingRead?.ratings : undefined;
   const page = archive?.filter === filter && archive.page.account.id === details?.account?.id ? archive.page : null;
   const [archiveRevision, setArchiveRevision] = useState(0);
   const favoriteRequests = useRef(new Map<string, boolean>());
@@ -151,24 +175,30 @@ export function AccountPage() {
       setCsrf(session.csrfToken);
       const accountResponse = await fetch('/api/account', { cache: 'no-store', signal: controller.signal });
       if (controller.signal.aborted) return;
-      if (accountResponse.status === 401) { setArchive(null); setDetails(null); setSignedOut(true); return; }
+      if (accountResponse.status === 401) { setArchive(null); setRatingRead(null); setDetails(null); setSignedOut(true); return; }
       if (!accountResponse.ok) throw new Error();
       const state = await accountResponse.json() as AccountState;
       if (controller.signal.aborted) return;
       setDetails(state);
       setSignedOut(!state.account);
-      if (!state.account) { setArchive(null); return; }
+      if (!state.account) { setArchive(null); setRatingRead(null); return; }
       const query = new URLSearchParams();
       if (before) query.set('before', before);
       if (filter === 'favorites') query.set('filter', filter);
-      const response = await fetch(`/api/account/games${query.size ? '?' + query : ''}`,
-        { cache: 'no-store', signal: controller.signal });
+      const options = { cache: 'no-store' as const, signal: controller.signal };
+      const [response, ratingResponse] = await Promise.all([
+        fetch(`/api/account/games${query.size ? '?' + query : ''}`, options),
+        before ? null : fetch('/api/account/ratings', options)
+          .then(async response => response.ok ? await response.json() as AccountRatingsResponse : null)
+          .catch(() => null),
+      ]);
       if (controller.signal.aborted) return;
-      if (response.status === 401) { setArchive(null); setDetails(null); setSignedOut(true); return; }
+      if (response.status === 401) { setArchive(null); setRatingRead(null); setDetails(null); setSignedOut(true); return; }
       if (!response.ok) throw new Error();
       const next = await response.json() as AccountGames;
       if (controller.signal.aborted) return;
       if (next.account.id !== state.account.id) throw new Error();
+      if (!before) setRatingRead(ratingResponse?.accountId === state.account.id ? ratingResponse : null);
       setArchive(previous => ({ filter, page: before && previous?.filter === filter
         ? appendGamePage(previous.page, next) : next }));
     } catch {
@@ -311,7 +341,7 @@ export function AccountPage() {
       {favoriteError && favoriteError.owner === details?.account?.id && <p role="status" className="error">{favoriteError.message}</p>}
       {details?.account && !signedOut && <section className="account-section" aria-labelledby="account-section-heading">
         <h2 id="account-section-heading" tabIndex={-1} ref={sectionHeading}>{section[0]!.toUpperCase() + section.slice(1)}</h2>
-        {section === 'overview' && page && <AccountOverview page={page} favorites={favoriteControls} />}
+        {section === 'overview' && page && <AccountOverview page={page} ratings={ratings} favorites={favoriteControls} />}
         {section === 'games' && <>
           <div className="analysis-view-tabs archive-filters" role="group" aria-label="Filter games">
             <button type="button" aria-pressed={filter === 'all'} onClick={() => selectFilter('all')}>All games</button>
@@ -319,7 +349,7 @@ export function AccountPage() {
           </div>
           {page && <GameArchive page={page} filter={filter} favorites={favoriteControls} />}
           {page?.next && <button disabled={loading} onClick={() => void load(page.next!)}>Load more</button>}</>}
-        {section === 'stats' && page && <AccountStats summary={page.summary} />}
+        {section === 'stats' && page && <AccountStats summary={page.summary} ratings={ratings} />}
         {section === 'settings' && <AccountSettings key={details.account.id} state={details} busy={busy}
           onAvatarChange={changeAvatar} onAction={(path, body) => void action(path, body)} />}
       </section>}

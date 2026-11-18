@@ -2,6 +2,7 @@ import type { GamePlayerNames, GameSide } from '@chess/contracts';
 import type { ImportedGame } from './pgn-import';
 import { PlayerClockValue } from './ClockValue';
 import { ProfileAvatar } from './ProfileAvatar';
+import { SiteRating, type SitePlayerRating } from './rating-display';
 
 export function sitePlayerName(names: GamePlayerNames | undefined, side: GameSide): string {
   return names?.[side] ?? 'Guest';
@@ -16,7 +17,7 @@ export function importedPlayer(imported: ImportedGame, side: GameSide): {
 }
 
 export function PlayerIdentity({ side, name, rating, accountName, avatarUrl, status }: {
-  side: GameSide; name: string; rating?: string | null;
+  side: GameSide; name: string; rating?: string | SitePlayerRating | null | undefined;
   accountName?: string | null | undefined; avatarUrl?: string | undefined; status?: string | null;
 }) {
   return <span className="player-label">
@@ -25,7 +26,8 @@ export function PlayerIdentity({ side, name, rating, accountName, avatarUrl, sta
       <span className="visually-hidden">{side === 'white' ? 'White player: ' : 'Black player: '}</span>
       <span className="player-name" title={name}>{name}</span>
       <span className="player-meta">
-        {rating && <span className="player-rating" aria-label={`Rating ${rating}`}>{rating}</span>}
+        {typeof rating === 'string' ? <span className="player-rating" aria-label={`Rating ${rating}`}>{rating}</span>
+          : rating !== undefined && <span className="player-rating"><SiteRating value={rating} /></span>}
         {status && <small>{status}</small>}
       </span>
     </span>
@@ -40,7 +42,7 @@ export function ImportedPlayerRow({ imported, side, historicalMs, isReplayTurn =
   const timed = historicalMs !== undefined && historicalMs !== null;
   return <div className={`clock clock-no-status imported-player${timed && isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={timed ? `${side} clock at selected move` : undefined}>
-    <PlayerIdentity side={side} name={player.name} rating={player.rating} />
+    <PlayerIdentity side={side} name={player.name} rating={player.rating ?? undefined} />
     {timed && <PlayerClockValue side={side} milliseconds={historicalMs} />}
   </div>;
 }

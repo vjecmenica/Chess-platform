@@ -64,4 +64,14 @@ Settlement locks the game first, then checks for a committed settlement. It init
 
 A failed transaction rolls back the final game transition, both rating changes, history, and any command completion. A previously admitted command remains pending and can be retried by the existing receipt processor after restart. Due clocks likewise remain eligible for processing after rollback. Repeated processing, including across instances, sees the committed settlement under the game lock. PostgreSQL publishes game notifications on commit, and notification delivery is independent of rating durability.
 
-Deployments require migration `031` before starting the updated API. Public Rated creation remains gated pending adjudication coverage, operational review procedures, infrastructure recovery, disconnect handling, fair-play protections, and Rated rematch policy. Rating displays and administrative correction tools are separate work.
+## Ratings in Play, Analysis, and Account
+
+`GET /account/ratings` returns the signed-in account's current Bullet, Blitz, Rapid, and Classical ratings, effective RD, provisional status, rated game counts, and last rated activity. Unplayed pools use the initial state without creating rows. Overview shows all four pool values. Stats shows the rated count for each pool alongside the existing completed-game results summary.
+
+Ongoing timed games with two registered players display current ratings in the preset's pool. Rated games use the frozen account IDs. Guests have no site rating. Completed Casual games and aborted games have no historical rating snapshot. Imported PGN and Opening Explorer games retain their source Elo.
+
+Completed Rated games expose the saved settlement snapshots through the normal game read. Play, Analysis, and Game Info show the rating before settlement, plus its change. The after value is available with the change. The archive shows each side's rating before settlement and uses the frozen accounts for Rated ownership and Favorites. Migration `032` indexes those account lookups. There are no acceptance-time snapshots in this phase. A player's rating may have changed between acceptance and settlement.
+
+Current provisional status uses effective RD at read time. Historical provisional status uses the saved states evaluated at settlement time. An effective RD above 110 displays a question mark. Ratings round to whole numbers for display. The displayed delta is the difference between the two displayed ratings, including `+0` when they round to the same value. The API retains full-precision values and differences. Pending or aborted games never show a final rating change.
+
+Public Rated creation remains gated pending adjudication coverage, operational review procedures, infrastructure recovery, disconnect handling, fair-play protections, and Rated rematch policy. Rating charts and administrative correction tools are separate work.

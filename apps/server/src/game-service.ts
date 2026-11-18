@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { appendSystemChat } from './game-chat-events.js';
 import { avatarUrl } from './account-session.js';
 import { settleGameRatings } from './rating-settlement.js';
+import { currentPlayerRatings, settledGameRatings, type SettlementRatingsRow } from './account-ratings.js';
 import { adjudicationPolicy, type AdjudicationAuthority, type AdjudicationCase,
   type AdjudicationPosition } from './rated-adjudication-store.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
-import { timeControlPresets, type TimeControlId } from '@chess/contracts';
+import { ratingPoolByTimeControl, timeControlPresets, type TimeControlId } from '@chess/contracts';
 import type { ChessGame, GameResult, MateLine, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
   GameReadResponse, GameState, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
@@ -297,9 +298,19 @@ async function gameRead(client: pg.PoolClient, row: GameRow, game: ChessGame,
   if (rows.length !== history.length || rows.some((move, index) => move.ply !== index + 1)) {
     throw new Error('Saved clock history does not match game history.');
   }
+  let playerRatings: GameReadResponse['playerRatings'];
+  if (row.status === 'finished' && row.rated) {
+    const settlement = (await client.query<SettlementRatingsRow>(`SELECT pool, settled_at, white_before, white_after,
+      black_before, black_after FROM chess.game_rating_settlements WHERE game_id = $1`, [row.id])).rows[0];
+    if (settlement) playerRatings = settledGameRatings(settlement);
+  } else if (row.status !== 'finished' && row.status !== 'aborted' && row.clock_mode !== 'legacy_untimed'
+    && players.white_id && players.black_id) {
+    playerRatings = await currentPlayerRatings(client, ratingPoolByTimeControl[row.time_control], players.white_id, players.black_id);
+  }
   return { ...gameState(row, game, yourSeat, atMs),
     siteInfo: siteGameInfo(row.accepted_at, row.clock_mode, row.clock_start_mode),
     playerNames: { white: players.white, black: players.black },
+    ...(playerRatings ? { playerRatings } : {}),
     playerAvatars: {
       white: players.white_id && players.white_avatar ? { accountId: players.white_id, url: avatarUrl(players.white_avatar)! } : null,
       black: players.black_id && players.black_avatar ? { accountId: players.black_id, url: avatarUrl(players.black_avatar)! } : null,

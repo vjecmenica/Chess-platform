@@ -61,6 +61,19 @@ describe('confirmed game state', () => {
     expect(mergeConfirmedGame(game(), confirmed)).toBe(confirmed);
   });
 
+  it('keeps current ratings through active acknowledgements and clears them as soon as a result is confirmed', () => {
+    const initial: GameReadResponse = { ...game(), rated: true, playerRatings: {
+      source: 'current', pool: 'blitz', players: {
+        white: { rating: 1500, provisional: true }, black: { rating: 1620, provisional: false },
+      },
+    } };
+    const moved = applyAcceptedMove(initial, accepted)!;
+    expect(moved.playerRatings).toEqual(initial.playerRatings);
+    const finished = applyAcceptedAction(moved, { accepted: true, game: { ...accepted.game,
+      version: 2, status: 'finished', result: { outcome: 'draw', reason: 'agreement' } } });
+    expect(finished?.playerRatings).toBeUndefined();
+  });
+
   it('preserves seat names through acknowledgements and accepts refreshed names at the same move version', () => {
     const playerNames = { white: 'linked_white', black: null };
     const siteInfo = { variant: 'standard' as const, startedAt: '2026-11-02T13:18:36.000Z', acceptedAt: '2026-11-02T13:18:36.000Z' };

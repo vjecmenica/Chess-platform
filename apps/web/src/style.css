@@ -260,6 +260,9 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .player-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; min-height: 1lh;
   color: var(--color-text-muted); font: 500 var(--text-meta)/1.5 var(--font-ui); }
 .player-rating { flex: none; font-variant-numeric: tabular-nums; }
+.site-rating { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rating-change[data-direction="positive"] { color: var(--color-success); }
+.rating-change[data-direction="negative"] { color: var(--color-error); }
 .player-meta small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
 .profile-avatar { --avatar-size: 34px; display: grid; place-items: center; flex: 0 0 var(--avatar-size);
   inline-size: var(--avatar-size); block-size: var(--avatar-size); overflow: hidden;
@@ -390,8 +393,10 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .pgn-game-info dt { overflow-wrap: anywhere; }
 .game-info dd small { font-size: var(--text-meta); color: var(--color-text-muted); }
 .game-info .game-info-player { grid-column: auto; grid-template-columns: 40px minmax(0, 1fr); }
-.game-info-player strong { font-size: var(--text-body); line-height: 1.4; font-weight: 650; }
-.game-info-player small { margin-left: 4px; white-space: nowrap; }
+.game-info-player dd { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.game-info-player strong { font-size: var(--text-body); line-height: 1.4; font-weight: 650;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-info-player small { flex: none; }
 .game-info .game-info-outcome { grid-template-columns: 38px minmax(0, 1fr); padding: 7px 8px; margin: 4px 0;
   border: 0; border-radius: var(--radius-compact); background: var(--color-surface-raised); }
 .game-info-outcome strong { font-size: var(--text-body); font-weight: 700; }
@@ -979,7 +984,12 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .account-section > h2:focus-visible { outline: 2px var(--focus-ring-style, solid) var(--color-focus); outline-offset: 4px; }
 .account-overview-summary { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; margin-bottom: 24px; align-items: start; }
 .account-ratings { padding: 20px; border-left: 1px solid var(--color-border); }
-.account-ratings p { margin: 0; color: var(--color-text-muted); font-size: var(--text-compact); }
+.account-ratings dl { display: grid; gap: 6px; max-width: 22rem; margin: 0; font-size: var(--text-compact); }
+.account-ratings dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.account-ratings dd { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 4px 12px; margin: 0; }
+.account-ratings small, .archive-control small { color: var(--color-text-muted); }
+.account-rating-stats { border: 0; padding-inline: 0; }
+.account-rating-stats dd { display: grid; grid-template-columns: max-content 12ch; }
 .account-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: var(--radius-panel); padding: 20px; }
 .account-details h3 { overflow-wrap: anywhere; }
@@ -1042,8 +1052,10 @@ body:has(.analysis-navigation) { padding-left: 64px; }
 .archive-game:focus-visible { outline: 3px var(--focus-ring-style, solid) var(--color-focus); outline-offset: -3px; }
 .archive-players { display: grid; gap: 4px; min-width: 0; }
 .archive-player { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.archive-player strong { font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
-.archive-rating { color: var(--color-text-muted); }
+.archive-player strong { font-size: var(--text-body); font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archive-rating { flex: none; color: var(--color-text-muted); }
+.archive-control small { display: block; }
 .archive-side { flex: 0 0 11px; height: 11px; border: 1px solid var(--color-border-strong); border-radius: 2px; }
 .archive-side-white { background: var(--evaluation-white); }
 .archive-side-black { background: var(--evaluation-black); }

@@ -238,6 +238,7 @@ it('preserves guest Casual play and aborts a Rated game at the first-move deadli
   const g1 = await browser(app), g2 = await browser(app);
   const casual = await create(app, g1, { timeControl: '5+3' });
   expect((await accept(app, g2, casual)).json()).toMatchObject({ game: { rated: false } });
+  expect((await get(app, g1, `/games/${casual}`)).json()).not.toHaveProperty('playerRatings');
   expect((await post(app, g1, `/games/${casual}/resign`, { expectedVersion: 0 })).json())
     .toMatchObject({ game: { rated: false, status: 'finished' } });
   await assertNoSettlement(casual);
@@ -250,9 +251,86 @@ it('preserves guest Casual play and aborts a Rated game at the first-move deadli
   await service.heartbeat();
   expect((await read()).json()).toMatchObject({ rated: true, status: 'aborted',
     result: { outcome: 'aborted', missedSide: 'white', reason: 'first_move_deadline' } });
+  expect((await read()).json()).not.toHaveProperty('playerRatings');
   await assertNoSettlement(id);
   expect((await pool.query('SELECT 1 FROM chess.account_ratings WHERE account_id IN ($1, $2)', [white.id, black.id])).rows)
     .toEqual([]);
+});
+
+it('reads private effective ratings without initializing rows or mixing accounts', async () => {
+  const { app } = server();
+  const white = await register(app), black = await register(app);
+  const guest = await browser(app);
+  expect((await get(app, guest, '/account/ratings')).statusCode).toBe(401);
+  expect((await get(app, white.who, `/account/ratings?accountId=${black.id}`)).statusCode).toBe(400);
+  const read = () => get(app, white.who, '/account/ratings');
+  const first = await read();
+  expect(first.headers['cache-control']).toBe('no-store');
+  const initial = { rating: 1500, rd: 350, provisional: true, ratedGames: 0, lastRatedAt: null };
+  expect(first.json()).toEqual({ accountId: white.id, ratings: {
+    bullet: initial, blitz: initial, rapid: initial, classical: initial,
+  } });
+  expect((await pool.query('SELECT 1 FROM chess.account_ratings WHERE account_id = $1', [white.id])).rowCount).toBe(0);
+  const last = new Date(Date.now() - 30 * 86_400_000);
+  await pool.query(`INSERT INTO chess.account_ratings (account_id, pool, rating, rd, volatility, rated_games, last_rated_at)
+    VALUES ($1, 'blitz', 1678.12, 109, 0.06, 30, $2)`, [white.id, last]);
+  const blitz = (await read()).json().ratings.blitz;
+  expect(blitz).toMatchObject({ rating: 1678.12, provisional: true, ratedGames: 30, lastRatedAt: last.toISOString() });
+  expect(blitz.rd).toBeGreaterThan(110);
+  expect((await get(app, black.who, '/account/ratings')).json().ratings.blitz).toEqual(initial);
+  expect((await pool.query('SELECT rd FROM chess.account_ratings WHERE account_id = $1', [white.id])).rows)
+    .toEqual([{ rd: 109 }]);
+});
+
+it('keeps replay and favorites tied to saved Rated accounts and their historical settlement', async () => {
+  const { app } = server(true);
+  const white = await register(app), black = await register(app), unrelated = await register(app);
+  async function start() {
+    const id = await create(app, white.who);
+    expect((await accept(app, black.who, id)).statusCode).toBe(200);
+    return id;
+  }
+  async function finish(id: string) {
+    for (const [index, move] of foolsMate.entries())
+      await play(app, id, index % 2 ? black.who : white.who, index, move.from, move.to);
+  }
+  const first = await start();
+  const read = async (id: string) => (await get(app, white.who, `/games/${id}`)).json();
+  const initial = { rating: 1500, provisional: true };
+  expect((await read(first)).playerRatings).toEqual({ source: 'current', pool: 'rapid', players: { white: initial, black: initial } });
+  await finish(first);
+  const saved = (await read(first)).playerRatings;
+  expect(saved).toMatchObject({ source: 'settlement', pool: 'rapid', players: {
+    white: { before: initial, after: { rating: expect.any(Number), provisional: true }, change: expect.any(Number) },
+    black: { before: initial, after: { rating: expect.any(Number), provisional: true }, change: expect.any(Number) },
+  } });
+  expect(saved.players.white.change).toBe(saved.players.white.after.rating - 1500);
+  expect(saved.players.black.change).toBe(saved.players.black.after.rating - 1500);
+  const second = await start();
+  expect((await read(second)).playerRatings.players.white).toEqual(saved.players.white.after);
+  await finish(second);
+  const { ratings } = (await get(app, white.who, '/account/ratings')).json();
+  expect(ratings.rapid.ratedGames).toBe(2);
+  expect(ratings.rapid.rating).not.toBe(saved.players.white.after.rating);
+  expect(ratings.blitz).toMatchObject({ rating: 1500, ratedGames: 0 });
+
+  const { rows: [seat] } = await pool.query('SELECT creator_guest_id FROM chess.challenges WHERE id = $1', [first]);
+  await pool.query('UPDATE chess.guest_sessions SET account_id = $2 WHERE id = $1', [seat.creator_guest_id, unrelated.id]);
+  try {
+    expect(await read(first)).toMatchObject({ playerNames: { white: white.username }, playerRatings: saved });
+    expect((await get(app, unrelated.who, `/games/${first}`)).statusCode).toBe(403);
+    const favorite = await app.inject({ method: 'PUT', url: `/account/games/${first}/favorite`, headers: {
+      cookie: cookie(white.who), 'x-csrf-token': white.who.csrf,
+    } });
+    expect(favorite.statusCode).toBe(200);
+    expect((await get(app, white.who, '/account/games?filter=favorites')).json().games)
+      .toEqual([expect.objectContaining({ id: first, rated: true, favorite: true, playerRatings: saved, opponent: black.username })]);
+    expect((await get(app, white.who, '/account/games')).json().games.map((entry: { id: string }) => entry.id).sort())
+      .toEqual([first, second].sort());
+    expect((await get(app, unrelated.who, '/account/games')).json().games).toEqual([]);
+  } finally {
+    await pool.query('UPDATE chess.guest_sessions SET account_id = $2 WHERE id = $1', [seat.creator_guest_id, white.id]);
+  }
 });
 
 it('recovers a ply-zero resignation after restart, publishes the final version and settles once', async () => {

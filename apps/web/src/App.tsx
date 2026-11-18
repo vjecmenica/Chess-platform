@@ -64,6 +64,7 @@ import { MoveClassificationBadge } from './MoveClassificationBadge';
 import { FinishedResultArea } from './FinishedResultArea';
 import { importParsedPgn, importPgn, importPgnFile, importedResultDisplay, type ImportedGame } from './pgn-import';
 import { ImportedPlayerRow } from './PlayerIdentity';
+import { gamePlayerRating } from './rating-display';
 import { moveNavigationDirection, isViewingLiveHistory, nextReplaySelection } from './move-keyboard';
 import { advanceDragVisual } from './drag-visual';
 
@@ -1349,6 +1350,7 @@ export function App() {
                   : <ClockPanel clock={game.clocks} side={topSide}
                   playerNames={game.playerNames}
                   avatar={game.playerAvatars?.[topSide]}
+                  rating={gamePlayerRating(game, topSide) ?? (game.status === 'finished' ? null : undefined)}
                   isYou={topSide === game.yourSeat}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />}
@@ -1507,6 +1509,7 @@ export function App() {
                   : <ClockPanel clock={game.clocks} side={bottomSide} isYou={bottomSide === game.yourSeat}
                   playerNames={game.playerNames}
                   avatar={game.playerAvatars?.[bottomSide]}
+                  rating={gamePlayerRating(game, bottomSide) ?? (game.status === 'finished' ? null : undefined)}
                   showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />}
               </PlayerMaterialPanel>
