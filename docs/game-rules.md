@@ -36,7 +36,7 @@ An offer survives the sender's moves. It ends on recipient acceptance, explicit 
 
 ## Mating possibility, resignation, and timeout
 
-Casual games use `casual_concession` and `casual_flag_forfeit`. A proven no-mate position draws and other supported resignations or flags award the opponent a win. Rated games use `fide_proof_required` for both events. The domain distinguishes proven impossibility, verified mating possibility, and unresolved positions. Unresolved Rated events stop play and both clocks while a bounded search or an authorized operator looks for a verified witness. Ratings change only after a final result. [Adjudication and review procedure](adjudication-design.md#rated-recovery-and-operator-review)
+New Rated and Casual games use `casual_concession` and `casual_flag_forfeit`. A proven no-mate position draws. A possible or unresolved mating query awards the opponent a win under the practical online policy. The domain still distinguishes proven impossibility, verified possibility, and unresolved positions. Saved strict-policy pending cases retain their original event and require a verified witness or, for a voluntary resignation, an authorized concession ruling. Ratings change only after a final Rated result. [Adjudication and review procedure](adjudication-design.md#rated-recovery-and-operator-review)
 
 The detector proves impossibility for:
 
@@ -51,7 +51,7 @@ Both sides must be proven unable to mate for an automatic dead-position result. 
 
 In newly accepted casual games, each side has a separate 30-second deadline for its own first legal move. White's starts at challenge acceptance; after White's free first move commits, Black's starts alongside Black's regular 5+3 clock. An arrival strictly before its first-move deadline can be processed ahead of a late timer. At or after that deadline, the game aborts with no winner or loss, even if Black's regular clock is still running. The separate deadline survives restart and is cleared after that player's first legal move. Older games keep their saved start rule.
 
-At flag fall, the clock calls `flagTimeout` once with the side to move and the saved deadline. A sound no-mate proof produces `timeout_no_mating_possibility`. A verified mate line supports a timeout win. An unresolved Rated flag keeps the original deadline and flagged side, and the game remains pending if search exhausts its limits. Rulings add evidence separately from played moves. A repeated flag or ruling cannot create a second result.
+At flag fall, the clock calls `flagTimeout` once with the side to move and the saved deadline. A sound no-mate proof produces `timeout_no_mating_possibility`. With the practical policy, every other valid flag produces a timeout win in that transaction. A saved unresolved strict-policy flag keeps the original deadline and flagged side, and remains pending if search exhausts its limits. Rulings add evidence separately from played moves. A repeated flag or ruling cannot create a second result.
 
 ## Client premove admission
 
@@ -83,6 +83,6 @@ The requested repetition thresholds and claim procedure are implemented for gues
 
 - Pause a valid claim at server receipt. An incorrect threshold claim adds the applicable time penalty, creates a draw offer, and commits its legal intended move if supplied. The guest server applies these effects through a durable receipt; the standalone domain claim command still rejects an unmet threshold unchanged.
 - The transport-free 5+3 clock wrapper stamps commands, orders them, charges accepted moves, and applies the three-answer timeout rule at flag fall. The guest server persists the casual flag-forfeit policy for new and legacy clock-start modes, using UTC deadlines that continue through outages. A flagged game finishes in the same transaction.
-- Migration 011 finalized historical Casual timeouts. Migration 031 queues unresolved Rated games for restart-safe processing and review. Public competitive play still requires operational validation.
+- Migration 011 finalized historical Casual timeouts. Migration 031 queues unresolved strict Rated games for restart-safe processing and review. Migration 033 records the rules per game and preserves saved pending and terminal Rated events. Public competitive play still requires operational validation.
 
 Arbiter intervention, paper notation, and touch-move procedures are not simulated. The current guest server authorizes moves, resignation, claims, and explicit draw actions and orders their durable receipts against flags across processes, and sends post-commit game-update signals. For every such action, the trusted server receipt time wins if strictly before the current deadline; an action received at or after it loses to the flag, including an opponent's draw acceptance or a resignation. A successful acceptance or resignation stops the running clock at receipt time, even if database processing finishes later. Offers and declines leave the clock running. Public competitive play still needs synchronized host clocks, handling for wall-clock corrections and expired ingress leases, and exact timeout adjudication for competitive play.

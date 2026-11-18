@@ -4,12 +4,13 @@ import { appendSystemChat } from './game-chat-events.js';
 import { avatarUrl } from './account-session.js';
 import { settleGameRatings } from './rating-settlement.js';
 import { currentPlayerRatings, settledGameRatings, type SettlementRatingsRow } from './account-ratings.js';
-import { adjudicationPolicy, type AdjudicationAuthority, type AdjudicationCase,
+import { adjudicationPolicy, resignationRecoveryPolicy, type AdjudicationAuthority, type AdjudicationCase,
   type AdjudicationPosition } from './rated-adjudication-store.js';
 import type pg from 'pg';
 import { createGameFromPosition } from '@chess/domain';
 import { ratingPoolByTimeControl, timeControlPresets, type TimeControlId } from '@chess/contracts';
-import type { ChessGame, GameResult, MateLine, MoveRecord, MoveRequest, Promotion, Side } from '@chess/domain';
+import type { ChessGame, GameResult, MateLine, MoveRecord, MoveRequest, Promotion, ResignationPolicy, Side,
+  TimeoutPolicy } from '@chess/domain';
 import type { ClockState, GameActionAcceptedResponse, GameClaimAcceptedResponse,
   GameReadResponse, GameState, MoveAcceptedResponse, SavedMove } from '@chess/contracts';
 
@@ -37,6 +38,8 @@ interface GameRow {
   acceptor_guest_id: string;
   accepted_at: Date | null;
   starting_fen: string;
+  resignation_policy: ResignationPolicy;
+  timeout_policy: TimeoutPolicy;
   fen: string;
   side_to_move: Side;
   status: Status;
@@ -117,8 +120,7 @@ function applyMateRuling(game: ChessGame, kind: AdjudicationCase['kind'], mateLi
 }
 
 async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGame> {
-  const game = row.rated ? createGameFromPosition(row.starting_fen, 'fide_proof_required', 'fide_proof_required')
-    : createGameFromPosition(row.starting_fen, 'casual_concession', 'casual_flag_forfeit');
+  const game = createGameFromPosition(row.starting_fen, row.resignation_policy, row.timeout_policy);
   const { rows } = await client.query<StoredMove>(
     'SELECT ply, record FROM chess.game_moves WHERE game_id = $1 ORDER BY ply', [row.id],
   );
@@ -180,9 +182,13 @@ async function reconstruct(client: pg.PoolClient, row: GameRow): Promise<ChessGa
       || row.status !== (resolved ? 'finished' : 'pending_adjudication')) {
       throw new Error('Saved rated adjudication does not match its original event.');
     }
-    if (resolved && (adjudication.policy_version !== adjudicationPolicy || !adjudication.mate_line
-      || !applyMateRuling(game, adjudication.kind, adjudication.mate_line).accepted)) {
-      throw new Error('Saved rated adjudication witness cannot be replayed.');
+    if (resolved) {
+      const replayed = adjudication.policy_version === resignationRecoveryPolicy
+        && adjudication.kind === 'resignation' && adjudication.mate_line?.length === 0
+        ? game.resolveResignationByConcession()
+        : adjudication.policy_version === adjudicationPolicy && adjudication.mate_line
+          ? applyMateRuling(game, adjudication.kind, adjudication.mate_line) : null;
+      if (!replayed?.accepted) throw new Error('Saved rated adjudication cannot be replayed.');
     }
   } else if (row.rated && row.status === 'pending_adjudication') {
     throw new Error('Pending rated game has no adjudication case.');
@@ -444,6 +450,7 @@ export interface GameService {
   pollDueGames(): Promise<number>;
   adjudicationPosition(id: string, leaseToken: string): Promise<AdjudicationPosition | null>;
   finalizeAdjudication(id: string, mateLine: MateLine, authority: AdjudicationAuthority): Promise<boolean>;
+  recoverRatedResignation(id: string, reviewer: string): Promise<boolean>;
   /** Background preparation only. A witness is verified before it can affect a timeout. */
   registerTimeoutWitness(id: string, line: readonly Omit<MoveRequest, 'side'>[]): Promise<boolean>;
 }
@@ -923,6 +930,49 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
     }
   }
 
+  async function finalizePendingAdjudication(id: string, ruling:
+    | { kind: 'witness'; mateLine: MateLine; authority: AdjudicationAuthority }
+    | { kind: 'concession'; reviewer: string }): Promise<boolean> {
+    return transaction(async client => {
+      const row = await loadGame(client, id, true);
+      const pending = row?.ratedAdjudication;
+      if (row?.status !== 'pending_adjudication' || !pending) return false;
+      const authority = ruling.kind === 'witness' ? ruling.authority : ruling;
+      const automated = 'leaseToken' in authority;
+      if (automated) {
+        if (pending.lease_token !== authority.leaseToken || !pending.lease_valid) return false;
+      } else {
+        if (!authority.reviewer.trim() || authority.reviewer.length > 128) {
+          throw new Error('An identified operator is required.');
+        }
+        if (ruling.kind === 'concession' ? pending.kind !== 'resignation' : pending.status !== 'review') return false;
+      }
+
+      const game = await reconstruct(client, row);
+      const decision = ruling.kind === 'concession' ? game.resolveResignationByConcession()
+        : applyMateRuling(game, pending.kind, ruling.mateLine);
+      if (!decision.accepted || decision.game.status !== 'finished'
+        || ruling.kind === 'witness' && !decision.game.adjudication) {
+        throw new Error(ruling.kind === 'witness' ? 'Mating witness is invalid for the pending event.'
+          : 'Concession is invalid for the pending event.');
+      }
+      const decidedBy = automated ? 'automatic' : `operator:${authority.reviewer.trim()}`;
+      // The concession policy records an empty evidence array. Only witness rulings carry moves.
+      await client.query(`UPDATE chess.rated_adjudications SET status = 'resolved', due_at = NULL, lease_token = NULL,
+        mate_line = $2, decided_by = $3, decided_at = clock_timestamp(), policy_version = $4,
+        nodes_visited = COALESCE($5, nodes_visited), search_ms = COALESCE($6, search_ms)
+        WHERE game_id = $1`, [id, JSON.stringify(decision.game.adjudication?.mateLine ?? []), decidedBy,
+        ruling.kind === 'concession' ? resignationRecoveryPolicy : adjudicationPolicy,
+        automated ? authority.metrics.nodesVisited : null, automated ? authority.metrics.searchMs : null]);
+      row.status = 'finished';
+      row.result = decision.game.result;
+      row.pending = null;
+      row.version += 1;
+      await saveGame(client, row);
+      return true;
+    });
+  }
+
   const service: GameService = {
     start, stop, heartbeat, beginReceipt,
     trustedNowMs: () => now(clock),
@@ -1010,34 +1060,10 @@ export function createGameService(pool: pg.Pool, clock: WallClock = systemClock,
       });
     },
     finalizeAdjudication(id, mateLine, authority) {
-      return transaction(async client => {
-        const row = await loadGame(client, id, true);
-        const pending = row?.ratedAdjudication;
-        if (row?.status !== 'pending_adjudication' || !pending) return false;
-        const automated = 'leaseToken' in authority;
-        if (automated ? pending.lease_token !== authority.leaseToken || !pending.lease_valid
-          : pending.status !== 'review') return false;
-        const game = await reconstruct(client, row);
-        const decision = applyMateRuling(game, pending.kind, mateLine);
-        if (!decision.accepted || decision.game.status !== 'finished' || !decision.game.adjudication) {
-          throw new Error('Mating witness is invalid for the pending event.');
-        }
-        const decidedBy = automated ? 'automatic' : `operator:${authority.reviewer.trim()}`;
-        if (!automated && (!authority.reviewer.trim() || authority.reviewer.length > 128)) {
-          throw new Error('An identified operator is required.');
-        }
-        await client.query(`UPDATE chess.rated_adjudications SET status = 'resolved', due_at = NULL, lease_token = NULL,
-          mate_line = $2, decided_by = $3, decided_at = clock_timestamp(), policy_version = $4,
-          nodes_visited = COALESCE($5, nodes_visited), search_ms = COALESCE($6, search_ms)
-          WHERE game_id = $1`, [id, JSON.stringify(decision.game.adjudication.mateLine), decidedBy, adjudicationPolicy,
-          automated ? authority.metrics.nodesVisited : null, automated ? authority.metrics.searchMs : null]);
-        row.status = 'finished';
-        row.result = decision.game.result;
-        row.pending = null;
-        row.version += 1;
-        await saveGame(client, row);
-        return true;
-      });
+      return finalizePendingAdjudication(id, { kind: 'witness', mateLine, authority });
+    },
+    recoverRatedResignation(id, reviewer) {
+      return finalizePendingAdjudication(id, { kind: 'concession', reviewer });
     },
     async registerTimeoutWitness(id, line) {
       await start();

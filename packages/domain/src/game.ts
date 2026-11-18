@@ -93,6 +93,7 @@ export interface ChessGame {
   verifyMateLine(winner: Side, mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   verifyResignationMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   resolveResignation(ruling: ResignationRuling): CommandResult;
+  resolveResignationByConcession(): CommandResult;
   verifyTimeoutMateLine(mateLine: readonly Omit<MoveRequest, 'side'>[]): boolean;
   resolveTimeout(ruling: MateRuling): CommandResult;
   offerDraw(command: SideCommand): CommandResult;
@@ -242,6 +243,22 @@ export function createGameFromPosition(startingFen: string,
     })) };
   }
 
+  function applyResignation(side: Side, policy: ResignationPolicy): CommandResult {
+    const winner = side === 'white' ? 'black' : 'white';
+    const possibility = board.matingPossibility(winner);
+    if (possibility === 'impossible') {
+      finish({ outcome: 'draw', reason: 'resignation_no_mating_possibility' });
+    } else if (possibility === 'possible' || policy === 'casual_concession') {
+      // An unresolved mating query can be conceded without claiming a proof.
+      finish({ outcome: 'win', winner, reason: 'resignation' });
+    } else {
+      pendingResignation = side;
+      drawOffer = null;
+      claimDrawOffer = null;
+    }
+    return { accepted: true, game: getState() };
+  }
+
   adjudicate();
   return {
     getState,
@@ -323,19 +340,7 @@ export function createGameFromPosition(startingFen: string,
     resign(command) {
       const rejection = validate(command);
       if (rejection) return rejection;
-      const winner = command.side === 'white' ? 'black' : 'white';
-      const possibility = board.matingPossibility(winner);
-      if (possibility === 'impossible') {
-        finish({ outcome: 'draw', reason: 'resignation_no_mating_possibility' });
-      } else if (possibility === 'possible' || resignationPolicy === 'casual_concession') {
-        // Casual games treat an unresolved mating query as a concession, not as a proof.
-        finish({ outcome: 'win', winner, reason: 'resignation' });
-      } else {
-        pendingResignation = command.side;
-        drawOffer = null;
-        claimDrawOffer = null;
-      }
-      return { accepted: true, game: getState() };
+      return applyResignation(command.side, resignationPolicy);
     },
     flagTimeout(command) {
       if (result !== null) return reject('game_finished');
@@ -390,6 +395,11 @@ export function createGameFromPosition(startingFen: string,
       finish({ outcome: 'win', winner, reason: 'resignation' });
       retainRuling(ruling);
       return { accepted: true, game: getState() };
+    },
+    resolveResignationByConcession() {
+      if (result !== null) return reject('game_finished');
+      if (pendingResignation === null) return reject('no_pending_resignation');
+      return applyResignation(pendingResignation, 'casual_concession');
     },
     resolveTimeout(ruling) {
       if (result !== null) return reject('game_finished');

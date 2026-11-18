@@ -41,7 +41,7 @@ describe('display clocks', () => {
     expect(html).toContain('You');
     expect(html).toContain('White');
     expect(html).toContain('05:00');
-    expect(html).toContain('Clock paused');
+    expect(html).not.toContain('Clock paused');
     expect(html).not.toContain('Not ready');
   });
 
@@ -104,21 +104,22 @@ describe('display clocks', () => {
     expect(unavailable).toContain('>—</strong>');
   });
 
-  it('keeps player identities and clock values without status copy in finished analysis', () => {
-    const shown = renderToStaticMarkup(createElement(ClockPanel, {
-      clock: running, side: 'white', isYou: true, historicalMs: 300_000, showStatus: false,
-    }));
-    expect(shown).toContain('clock-no-status');
-    expect(shown).toContain('You');
-    expect(shown).toContain('White');
-    expect(shown).toContain('05:00');
-    expect(shown).not.toContain('<small>');
-    const replay = renderToStaticMarkup(createElement(ClockPanel, {
-      clock: { ...running, activeSide: null }, side: 'black', isYou: false, showStatus: false,
-    }));
-    expect(replay).toContain('Opponent');
-    expect(replay).toContain('05:03');
-    expect(replay).not.toContain('Stopped');
+  it('shows the player rating and clock without status labels in each clock mode', () => {
+    const clocks: (ClockState | null)[] = [null, running,
+      { ...running, startMode: 'first_move' },
+      { ...running, startMode: 'first_move', phase: 'stopped', activeSide: null },
+      { ...running, phase: 'waiting', ready: { white: false, black: false }, activeSide: null }];
+    for (const clock of clocks) {
+      const html = renderToStaticMarkup(createElement(ClockPanel, {
+        clock, side: 'white', isYou: true,
+        rating: { rating: 1654, provisional: false }, playerNames: { white: 'Ada', black: 'Ben' },
+      }));
+      expect(html).toContain('Your white clock');
+      expect(html).toContain('>Ada</span>');
+      expect(html).toContain('1654');
+      expect(html).toContain(clock ? '05:00' : 'Untimed');
+      expect(html).not.toMatch(/Running|Stopped|Clock paused|Ready|Not ready|Earlier untimed game/);
+    }
   });
 
   it('warns at thirty seconds in live and historical clocks with smaller hundredths', () => {

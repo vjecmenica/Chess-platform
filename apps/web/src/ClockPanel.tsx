@@ -26,7 +26,7 @@ export function firstMoveRemainingMs(clock: ClockState, side: GameSide, elapsedM
     : Math.max(0, deadlineMs - clock.serverNowMs - Math.max(0, elapsedMs));
 }
 
-export function ClockPanel({ clock, side, isYou, playerNames, avatar, rating, historicalMs, isReplayTurn = false, showStatus = true }: {
+export function ClockPanel({ clock, side, isYou, playerNames, avatar, rating, historicalMs, isReplayTurn = false }: {
   clock: ClockState | null;
   side: GameSide;
   isYou: boolean;
@@ -35,7 +35,6 @@ export function ClockPanel({ clock, side, isYou, playerNames, avatar, rating, hi
   rating?: SitePlayerRating | null | undefined;
   historicalMs?: number | null | undefined;
   isReplayTurn?: boolean;
-  showStatus?: boolean;
 }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -61,12 +60,9 @@ export function ClockPanel({ clock, side, isYou, playerNames, avatar, rating, hi
   const valueMs = historicalMs !== undefined ? historicalMs
     : clock === null ? null : displayedMs(clock, side, elapsedMs);
   const running = historicalMs === undefined && clock?.phase === 'running' && clock.activeSide === side;
-  const status = !showStatus || historicalMs !== undefined ? null : clock === null ? 'Earlier untimed game'
-    : clock.startMode === 'readiness' ? clock.ready[side] ? 'Ready' : 'Not ready'
-      : clock.phase === 'awaiting_first_move' ? 'Clock paused' : clock.activeSide === side ? 'Running' : 'Stopped';
-  return <div className={`clock${!showStatus ? ' clock-no-status' : ''}${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
+  return <div className={`clock${running ? ' clock-active' : ''}${isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={`${isYou ? 'Your' : "Opponent's"} ${side} clock`}>
-      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} status={status} rating={rating}
+      <PlayerIdentity side={side} name={sitePlayerName(playerNames, side)} rating={rating}
         accountName={playerNames?.[side]} avatarUrl={avatar?.url} />
       <PlayerClockValue side={side} milliseconds={valueMs} fallback={historicalMs !== undefined ? '—' : 'Untimed'} />
       {graceMs !== null && <span className="first-move-countdown"

@@ -6,7 +6,7 @@ import { databaseUrl, loadEnvironment } from './config.js';
 import { createPool } from './database.js';
 import { createGameService } from './game-service.js';
 
-const usage = 'Usage: npm run adjudication -- list [AFTER_GAME_ID] | show GAME_ID | resolve GAME_ID WITNESS.json';
+const usage = 'Usage: npm run adjudication -- list [AFTER_GAME_ID] | show GAME_ID | resolve GAME_ID WITNESS.json | concede GAME_ID';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const square = /^[a-h][1-8]$/;
 const maxFileBytes = 32_768;
@@ -37,7 +37,7 @@ async function main() {
   if (args.length === 1 && args[0] === '--help') { console.log(usage); return; }
   const [command, id, path] = args;
   if (!(command === 'list' && (args.length === 1 || args.length === 2 && id && uuid.test(id))
-    || command === 'show' && args.length === 2 && id && uuid.test(id)
+    || (command === 'show' || command === 'concede') && args.length === 2 && id && uuid.test(id)
     || command === 'resolve' && args.length === 3 && id && uuid.test(id) && path)) throw new Error(usage);
 
   loadEnvironment();
@@ -62,6 +62,9 @@ async function main() {
         FROM chess.rated_adjudications a JOIN chess.games g ON g.id = a.game_id WHERE a.game_id = $1`, [id]);
       if (!rows[0]) throw new Error('No adjudication case for this game.');
       console.log(JSON.stringify(rows[0], null, 2));
+    } else if (command === 'concede') {
+      const applied = await createGameService(pool).recoverRatedResignation(id!, reviewer);
+      console.log(applied ? 'Resignation recorded as a concession.' : 'No pending Rated resignation was changed.');
     } else {
       const applied = await createGameService(pool).finalizeAdjudication(id!, await readWitness(path!), { reviewer });
       if (!applied) throw new Error('This game is not awaiting operator review.');

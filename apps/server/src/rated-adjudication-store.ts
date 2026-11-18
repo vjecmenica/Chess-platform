@@ -3,6 +3,7 @@ import type pg from 'pg';
 import type { GameSnapshot, MateLine, MoveRecord } from '@chess/domain';
 
 export const adjudicationPolicy = 'rated-mate-witness-v1';
+export const resignationRecoveryPolicy = 'rated-resignation-concession-v1';
 export const maxAdjudicationAttempts = 3;
 
 export type PendingDecision = Extract<GameSnapshot, { status: 'pending_adjudication' }>['pending'];

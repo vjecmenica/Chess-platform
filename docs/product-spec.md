@@ -23,7 +23,7 @@ The domain supports checkmate, stalemate, resignation, agreement, automatic five
 
 ### Ratings and matchmaking
 
-The [Glicko-2 rating system](ratings.md) has independent Bullet, Blitz, Rapid, and Classical pools and transactional settlement for eligible rated results. Rated/Casual selection is implemented for direct challenges. Rated creation is available under a default-off development flag while strict adjudication is validated. Production and existing games remain Casual.
+The [Glicko-2 rating system](ratings.md) has independent Bullet, Blitz, Rapid, and Classical pools and transactional settlement for eligible rated results. Rated/Casual selection is implemented for direct challenges. Rated creation is available under a default-off development flag while competitive play is validated. Rated games use the practical online resignation and flag-forfeit rules. Saved strict-policy cases retain their original rules. Production challenge creation remains Casual.
 
 Only registered players may play Rated games, and the two seats must belong to different accounts. A completed Rated result updates both players immediately in the game's pool. Casual, aborted, and pending adjudication games leave ratings untouched. Rated settlement is transactional and idempotent, with history for auditing and future corrections. Rated rematches and disconnect forfeits remain separate work.
 

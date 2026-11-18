@@ -263,7 +263,6 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
 .site-rating { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rating-change[data-direction="positive"] { color: var(--color-success); }
 .rating-change[data-direction="negative"] { color: var(--color-error); }
-.player-meta small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
 .profile-avatar { --avatar-size: 34px; display: grid; place-items: center; flex: 0 0 var(--avatar-size);
   inline-size: var(--avatar-size); block-size: var(--avatar-size); overflow: hidden;
   border-radius: 0; background: var(--color-surface-selected); color: var(--color-accent-text);
@@ -608,7 +607,8 @@ footer { margin-top: 36px; color: var(--color-text-muted); font-size: var(--text
   .review-summary { grid-template-columns: minmax(0, 1fr); }
   .piece { font-size: clamp(24px, 8vw, 38px); }
   .clock { --player-row-size: 40px; gap: 2px 5px; }
-  .clock-no-status .player-label { font-size: var(--text-compact); }
+  .analysis-workspace .player-label, .game-layout[data-game-status="finished"] .player-label,
+  .imported-player .player-label { font-size: var(--text-compact); }
   .player-clock-value { font-size: clamp(21px, 6vw, 28px); }
   .seats { flex-direction: column; }
   .section-heading { align-items: flex-start; flex-direction: column; }

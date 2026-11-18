@@ -16,9 +16,9 @@ export function importedPlayer(imported: ImportedGame, side: GameSide): {
   return { name: name || 'Unknown player', rating: elo && /^\d{1,5}$/.test(elo) ? elo : null };
 }
 
-export function PlayerIdentity({ side, name, rating, accountName, avatarUrl, status }: {
+export function PlayerIdentity({ side, name, rating, accountName, avatarUrl }: {
   side: GameSide; name: string; rating?: string | SitePlayerRating | null | undefined;
-  accountName?: string | null | undefined; avatarUrl?: string | undefined; status?: string | null;
+  accountName?: string | null | undefined; avatarUrl?: string | undefined;
 }) {
   return <span className="player-label">
     <ProfileAvatar className="player-avatar" name={accountName ?? null} url={avatarUrl} />
@@ -28,7 +28,6 @@ export function PlayerIdentity({ side, name, rating, accountName, avatarUrl, sta
       <span className="player-meta">
         {typeof rating === 'string' ? <span className="player-rating" aria-label={`Rating ${rating}`}>{rating}</span>
           : rating !== undefined && <span className="player-rating"><SiteRating value={rating} /></span>}
-        {status && <small>{status}</small>}
       </span>
     </span>
   </span>;
@@ -40,7 +39,7 @@ export function ImportedPlayerRow({ imported, side, historicalMs, isReplayTurn =
 }) {
   const player = importedPlayer(imported, side);
   const timed = historicalMs !== undefined && historicalMs !== null;
-  return <div className={`clock clock-no-status imported-player${timed && isReplayTurn ? ' clock-replay-turn' : ''}`}
+  return <div className={`clock imported-player${timed && isReplayTurn ? ' clock-replay-turn' : ''}`}
     aria-label={timed ? `${side} clock at selected move` : undefined}>
     <PlayerIdentity side={side} name={player.name} rating={player.rating ?? undefined} />
     {timed && <PlayerClockValue side={side} milliseconds={historicalMs} />}

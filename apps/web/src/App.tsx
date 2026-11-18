@@ -1333,6 +1333,7 @@ export function App() {
         {game === null && gameError !== null && <p className="error" role="alert">{gameError}</p>}
         {game !== null && rows !== null && <>
           <div className={`game-layout${analysisOpen ? ' analysis-workspace' : ''}${imported === null ? ' site-game-workspace' : ''}`}
+            data-game-status={game.status}
             data-coordinates={appearance.coordinates}
             ref={gameLayoutRef}
             style={{
@@ -1352,7 +1353,6 @@ export function App() {
                   avatar={game.playerAvatars?.[topSide]}
                   rating={gamePlayerRating(game, topSide) ?? (game.status === 'finished' ? null : undefined)}
                   isYou={topSide === game.yourSeat}
-                  showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(topSide)} isReplayTurn={topSide === replaySide} />}
               </PlayerMaterialPanel>
               <div className="board-stage">
@@ -1510,7 +1510,6 @@ export function App() {
                   playerNames={game.playerNames}
                   avatar={game.playerAvatars?.[bottomSide]}
                   rating={gamePlayerRating(game, bottomSide) ?? (game.status === 'finished' ? null : undefined)}
-                  showStatus={!analysisOpen && game.status !== 'finished'}
                   historicalMs={siteHistoricalMs(bottomSide)} isReplayTurn={bottomSide === replaySide} />}
               </PlayerMaterialPanel>
               {drag !== null && <img className="drag-piece" ref={dragPieceRef} src={pieceImage(drag.piece, appearance.pieceSet)} alt=""

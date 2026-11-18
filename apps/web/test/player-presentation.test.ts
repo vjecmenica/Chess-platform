@@ -14,7 +14,7 @@ describe('shared game presentation', () => {
     for (const side of ['white', 'black'] as const) {
       for (const historicalMs of [undefined, 287_000]) {
         const html = renderToStaticMarkup(createElement(ClockPanel, { clock: null, side,
-          isYou: false, playerNames, historicalMs, showStatus: false }));
+          isYou: false, playerNames, historicalMs }));
         expect(html).toContain(`class="player-name" title="${playerNames[side]}">${playerNames[side]}</span>`);
         expect(html).toContain(`<span class="visually-hidden">${side === 'white' ? 'White' : 'Black'} player: </span>`);
         expect(html).not.toMatch(/<b>(White|Black)<\/b>/);
@@ -33,7 +33,7 @@ describe('shared game presentation', () => {
     expect(importedPlayer(imported, 'black')).toEqual({ name: 'Ben', rating: null });
     const white = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'white' }));
     const black = renderToStaticMarkup(createElement(ImportedPlayerRow, { imported, side: 'black' }));
-    expect(white).toContain('class="clock clock-no-status imported-player"');
+    expect(white).toContain('class="clock imported-player"');
     expect(white).toMatch(/player-name"[^>]*>Ada<\/span><span class="player-meta"><span class="player-rating"[^>]*>1820<\/span>/);
     expect(white).not.toContain('player-clock-value');
     expect(white).not.toContain('(1820)');
@@ -131,7 +131,6 @@ describe('shared game presentation', () => {
     const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
     expect(app).not.toContain('Select Analysis to explore legal alternatives.');
     expect(app).not.toContain('Time continues through disconnects and server outages.');
-    expect(app).toContain("showStatus={!analysisOpen && game.status !== 'finished'}");
     expect(app).not.toContain('Analysis: ${');
     expect(app).toContain('className="replay-position visually-hidden" aria-live="polite"');
     expect(app).not.toContain("analysisOpen ? 'replay-position visually-hidden' : 'replay-position'");

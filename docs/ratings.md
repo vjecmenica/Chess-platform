@@ -12,9 +12,9 @@ Rated rematches are unavailable during this phase. Casual rematches continue thr
 
 ## Adjudication and first moves
 
-Development Rated games use the domain's `fide_proof_required` resignation and timeout policies. Phase 2C adds durable processing for unresolved mating decisions. Both clocks stop while an isolated worker searches for a verified witness. An inconclusive case stays pending for authorized review, and ratings remain untouched. The operator CLI can submit a verified witness. Cases requiring a negative judgment beyond the domain's proven rules remain unresolved. [Adjudication and review procedure](adjudication-design.md#rated-recovery-and-operator-review)
+Development Rated games use the same practical resignation and timeout policies as Casual games. A proven no-mate position draws. Otherwise, a valid resignation or flag awards the opponent a win immediately. An unresolved mating query under these rules carries no claim of verified mating possibility. Migration `033_game_adjudication_policies.sql` preserves strict replay for saved pending and terminal Rated games. Existing pending games still use the durable worker and review path. An authorized operator can also recover a saved pending resignation as a recorded concession. Ratings change when the final result commits. [Adjudication and review procedure](adjudication-design.md#rated-recovery-and-operator-review)
 
-Both modes use the existing 30-second first-move grace period. A missed first-move deadline aborts the game and leaves ratings untouched. A voluntary resignation received before the deadline follows the applicable resignation policy even at ply zero. It can remain pending in a Rated game. Disconnect forfeits remain separate work.
+Both modes use the existing 30-second first-move grace period. A missed first-move deadline aborts the game and leaves ratings untouched. A voluntary resignation received before the deadline finalizes immediately under the practical policy, even at ply zero. Disconnect forfeits remain separate work.
 
 ## Parameters and pools
 

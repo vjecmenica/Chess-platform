@@ -15,7 +15,7 @@ it('uses the same avatar in the account header and a saved site-game player row'
     section: 'overview', state: { account, createdAt: null, guestLinked: false },
   }));
   const clock = renderToStaticMarkup(createElement(ClockPanel, {
-    clock: null, side: 'white', isYou: false, showStatus: false, historicalMs: 5000,
+    clock: null, side: 'white', isYou: false, historicalMs: 5000,
     playerNames: { white: 'ada', black: null }, avatar: { accountId: account.id, url: avatarUrl },
   }));
   for (const html of [header, clock]) expect(html).toContain(`<img src="${avatarUrl}" alt=""`);
